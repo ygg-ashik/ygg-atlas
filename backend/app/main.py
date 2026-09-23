@@ -11,6 +11,15 @@ from app.database import get_engine
 
 logger = structlog.get_logger()
 
+try:
+    from app.mcp.server import build_http_app, mcp
+
+    _mcp_app = build_http_app()
+except Exception:  # MCP is optional at runtime; never block the chat API
+    logger.exception("mcp.load_failed")
+    mcp = None
+    _mcp_app = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -18,7 +27,12 @@ async def lifespan(app: FastAPI):
     async with get_engine().begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
     logger.info("startup.complete")
-    yield
+    if mcp is not None:
+        # The mounted streamable-HTTP app requires its session manager running.
+        async with mcp.session_manager.run():
+            yield
+    else:
+        yield
 
 
 app = FastAPI(title="ygg-atlas", version="0.1.0", lifespan=lifespan)
@@ -39,13 +53,5 @@ async def healthz():
     return {"status": "ok"}
 
 
-def _mount_mcp() -> None:
-    try:
-        from app.mcp.server import build_http_app
-
-        app.mount("/mcp-server", build_http_app())
-    except Exception:
-        logger.exception("mcp.mount_failed")
-
-
-_mount_mcp()
+if _mcp_app is not None:
+    app.mount("/mcp-server", _mcp_app)
