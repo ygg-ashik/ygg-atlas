@@ -51,12 +51,29 @@ cd backend && uv run python ../evals/run_evals.py   # golden suite (needs seeded
 
 ## Deployment (AWS EC2)
 
-The app runs on an existing EC2 machine, reachable via `ssh atlas`.
+The app runs on an existing EC2 machine, reachable via `ssh atlas` (Amazon Linux 2023,
+docker + compose; buildx installed at `~/.docker/cli-plugins/`). The repo lives at
+`~/ygg-atlas` and is synced from a dev machine (git is not installed on the box):
 
 ```bash
+# from your machine, repo root
+rsync -az --delete --exclude '.git' --exclude 'node_modules' --exclude '.venv' \
+  --exclude 'dist' --exclude '__pycache__' --exclude '.env' --exclude '.env.local' \
+  ./ atlas:~/ygg-atlas/
+
 ssh atlas
-cd /opt/ygg-atlas && git pull
+cd ~/ygg-atlas
 docker compose up -d --build
+docker compose exec backend uv run --no-dev python scripts/seed_demo.py   # demo data
+curl http://127.0.0.1:8081/healthz
 ```
 
-Runbook details (env files, reverse proxy, HTTPS) live in `docs/plans/` once provisioned.
+Server-only files on the box (not in git):
+- `backend/.env` — secrets: `ANTHROPIC_API_KEY`, `FIREBASE_PROJECT_ID`, `ATLAS_MCP_TOKEN`.
+  Currently `AUTH_DISABLED=true` for smoke testing; set `false` once Firebase is configured.
+- `docker-compose.override.yml` — binds all ports to `127.0.0.1` so nothing is publicly
+  exposed while auth is disabled. Remove the binds and add a reverse proxy (nginx/caddy
+  with HTTPS) when going live.
+
+MCP endpoint (for Claude Desktop / other agents): `http://127.0.0.1:8081/mcp-server/mcp`
+(streamable HTTP; set `ATLAS_MCP_TOKEN` and send it as a bearer token).
