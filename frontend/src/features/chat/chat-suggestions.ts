@@ -8,37 +8,36 @@ export interface SuggestionGroup {
 
 export const SUGGESTION_GROUPS: SuggestionGroup[] = [
   {
-    category: 'Revenue',
+    category: 'Revenue & orders',
     questions: [
       'What was revenue last week?',
-      'How is revenue trending this quarter?',
-      'Which region drove the most revenue this month?',
-      'Revenue split by brand for the last 30 days',
-    ],
-  },
-  {
-    category: 'Orders & customers',
-    questions: [
       "Compare this month's orders to last month",
-      'How many new customers did we acquire this week?',
       'What is the average order value this month?',
-      'Top 10 gift card brands by orders this month',
+      'What was total corporate revenue in AED this year?',
     ],
   },
   {
-    category: 'Funnels & conversion',
+    category: 'Portfolio health',
+    questions: [
+      'How many accounts are currently at risk?',
+      'What does the health band distribution look like?',
+      'Which are our top 10 accounts by YTD revenue?',
+    ],
+  },
+  {
+    category: 'Tasks & CSMs',
+    questions: [
+      'How many tasks are overdue right now?',
+      'How are open tasks distributed across CSMs?',
+      'How many tasks were completed this month?',
+    ],
+  },
+  {
+    category: 'Funnels & leads',
     questions: [
       'Where do users drop off in checkout?',
-      'What is our checkout conversion rate this week?',
-      'How did conversion change after the last campaign?',
-    ],
-  },
-  {
-    category: 'Campaigns & ads',
-    questions: [
-      'Which campaign had the best ROAS last month?',
-      'How much did we spend on ads this week vs last week?',
-      'Which channel brings the highest-value customers?',
+      'Show the lead pipeline funnel for this year',
+      'How many leads came in this month, by channel?',
     ],
   },
 ];

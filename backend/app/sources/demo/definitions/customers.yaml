@@ -3,7 +3,6 @@ name: Customers
 description: >
   Registered customers (consumer and corporate buyers). Demo dataset until the
   production read replica is connected.
-source: appdb
 pii_fields: [email, name]
 fields:
   id: Customer id
@@ -11,6 +10,12 @@ fields:
   created_at: Signup time (UTC)
 freshness_query: SELECT MAX(created_at) AS freshest FROM demo_customers
 metrics:
+  - id: customers_total
+    name: Total customers
+    description: All registered customers as of now (point-in-time snapshot).
+    unit: customers
+    time_scope: snapshot
+    query: SELECT COUNT(*) AS value FROM demo_customers
   - id: new_customers
     name: New customers
     description: Customers who signed up in the period.

@@ -79,10 +79,12 @@ async def seed_demo(conn, days: int = 10) -> None:
 @pytest_asyncio.fixture
 async def db():
     """Fresh app schema + seeded demo data on the shared test database."""
-    from app.connectors.base import reset_connectors
+    from app.atlas.registry import reset_registry
     from app.database import get_engine, get_session_factory
+    from app.sources import reset_plugins
 
-    reset_connectors()
+    reset_plugins()
+    reset_registry()
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.drop_all)

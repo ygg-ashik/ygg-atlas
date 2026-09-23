@@ -146,7 +146,7 @@ async def test_tool_round_collects_provenance(db):
     done = events[-1]
     assert done["type"] == "done"
     assert done["provenance"][0]["metric_id"] == "revenue"
-    assert done["provenance"][0]["source"] == "appdb"
+    assert done["provenance"][0]["source"] == "demo"
 
 
 async def test_guardrail_blocks_before_model(db):

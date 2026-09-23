@@ -17,8 +17,7 @@ class Settings(BaseSettings):
     allowed_email_domain: str = "yougotagift.com"
     auth_disabled: bool = False
 
-    appdb_url: str = "postgresql+asyncpg://atlas:atlas@localhost:5433/ygg_atlas"
-    ga4_property_id: str = ""
+    # Source-specific config lives in each plugin's Settings (app/sources/<id>/manifest.py)
 
     chat_daily_message_limit: int = 200
     agent_max_tool_rounds: int = 6

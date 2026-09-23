@@ -1,0 +1,35 @@
+# DeepSales goldens — structural assertions only (live data changes; no exact values).
+# Requires the deepsales plugin to be enabled (DEEPSALES_DB_URL_LIVE set).
+
+- id: ds-portfolio-size
+  question: "How many analyzed accounts are in the DeepSales portfolio?"
+  expect_tool: query_metric
+  expect_metric: ds_total_accounts
+  expect_any: ["accounts"]
+
+- id: ds-at-risk
+  question: "How many accounts are currently at risk?"
+  expect_tool: query_metric
+  expect_metric: ds_at_risk_accounts
+  expect_any: ["red", "at risk", "at-risk"]
+
+- id: ds-top-accounts-revenue
+  question: "Which are our top 5 corporate accounts by year-to-date revenue?"
+  expect_tool: metric_breakdown
+  expect_metric: ds_portfolio_revenue_ytd
+
+- id: ds-revenue-this-year
+  question: "What was total corporate revenue in AED for January through June 2026?"
+  expect_tool: query_metric
+  expect_metric: ds_revenue_aed
+  expect_any: ["AED"]
+
+- id: ds-csm-workload
+  question: "How are open tasks distributed across CSMs?"
+  expect_tool: metric_breakdown
+  expect_metric: ds_open_tasks
+
+- id: ds-lead-funnel
+  question: "Show the lead pipeline funnel for 2026 so far."
+  expect_tool: funnel_analyze
+  expect_metric: ds_lead_funnel

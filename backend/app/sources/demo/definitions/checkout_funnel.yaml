@@ -3,7 +3,6 @@ name: Checkout journey
 description: >
   User events through the storefront checkout. Used to find where users drop
   off or resist. Demo dataset until the production events store is connected.
-source: appdb
 fields:
   user_id: Acting user
   event: "'view_product' | 'add_to_cart' | 'begin_checkout' | 'payment_info' | 'purchase'"

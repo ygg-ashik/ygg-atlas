@@ -14,7 +14,7 @@ async def api(db, monkeypatch):
         yield {
             "type": "done",
             "content": "42 AED",
-            "provenance": [{"tool": "query_metric", "source": "appdb", "metric_id": "revenue"}],
+            "provenance": [{"tool": "query_metric", "source": "demo", "metric_id": "revenue"}],
             "model": "test-model",
             "token_usage": {"input_tokens": 1, "output_tokens": 2},
         }

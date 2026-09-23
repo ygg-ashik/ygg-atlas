@@ -1,0 +1,54 @@
+id: ds_lead
+name: Sales leads
+description: >
+  Inbound sales pipeline (DeepSales leads). Stages: new, contacted, qualified,
+  won, lost. Contact details are PII and never exposed.
+pii_fields: [contact_name, contact_email, contact_phone, owner_email]
+fields:
+  stage: new | contacted | qualified | won | lost
+  channel: Marketing channel (registrations, chat, helpdesk, upn, call_center, ...)
+  recommended_team: direct | platform (from firmographic scoring)
+freshness_query: SELECT MAX(last_activity_at) AS freshest FROM leads
+metrics:
+  - id: ds_leads_created
+    name: Leads created
+    description: New leads created in the date range. Breakdown by channel.
+    unit: leads
+    query: >
+      SELECT COUNT(*) AS value FROM leads
+      WHERE created_at >= :start AND created_at <= :end
+    breakdown_query: >
+      SELECT COALESCE(channel, 'unknown') AS label, COUNT(*) AS value FROM leads
+      WHERE created_at >= :start AND created_at <= :end
+      GROUP BY 1 ORDER BY value DESC LIMIT :limit
+funnels:
+  - id: ds_lead_funnel
+    name: Lead pipeline funnel
+    description: >
+      Progression of leads created in the range. Cumulative interpretation of
+      the CURRENT stage: "contacted" counts every lead at or beyond contacted;
+      leads marked lost are counted only at stages they reached before losing
+      is unknown, so lost leads count as their final recorded stage.
+    steps:
+      - id: created
+        name: Created
+        query: >
+          SELECT COUNT(*) AS value FROM leads
+          WHERE created_at >= :start AND created_at <= :end
+      - id: contacted
+        name: Contacted
+        query: >
+          SELECT COUNT(*) AS value FROM leads
+          WHERE created_at >= :start AND created_at <= :end
+            AND stage IN ('contacted', 'qualified', 'won')
+      - id: qualified
+        name: Qualified
+        query: >
+          SELECT COUNT(*) AS value FROM leads
+          WHERE created_at >= :start AND created_at <= :end
+            AND stage IN ('qualified', 'won')
+      - id: won
+        name: Won
+        query: >
+          SELECT COUNT(*) AS value FROM leads
+          WHERE created_at >= :start AND created_at <= :end AND stage = 'won'

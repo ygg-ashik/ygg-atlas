@@ -8,8 +8,8 @@ GA4_PROPERTY_ID and GOOGLE_APPLICATION_CREDENTIALS to be configured.
 
 from typing import Any
 
-from app.config import get_settings
-from app.connectors.base import ConnectorError, ConnectorNotConfigured
+from app.sources.base import ConnectorError, ConnectorNotConfigured
+from app.sources.ga4.manifest import GA4Settings
 
 
 def _parse_spec(spec: str) -> dict[str, str]:
@@ -27,7 +27,7 @@ class GA4Connector:
     key = "ga4"
 
     async def fetch_one(self, query: str, params: dict[str, Any]) -> dict[str, Any] | None:
-        settings = get_settings()
+        settings = GA4Settings()
         if not settings.ga4_property_id:
             raise ConnectorNotConfigured(
                 "GA4 is not configured yet (GA4_PROPERTY_ID missing). "
@@ -68,3 +68,6 @@ class GA4Connector:
         response = client.run_report(request)
         value = response.rows[0].metric_values[0].value if response.rows else 0
         return {"value": float(value)}
+
+    async def fetch_all(self, query: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+        raise ConnectorError("GA4 breakdowns are not supported yet")

@@ -1,0 +1,62 @@
+id: ds_task
+name: CSM tasks
+description: >
+  Operational action items for customer success managers (DeepSales tasks).
+  Statuses: pending, in_progress, blocked, completed, cancelled. "Open" =
+  pending/in_progress/blocked.
+pii_fields: [created_by_email, assignee_email]
+fields:
+  status: pending | in_progress | blocked | completed | cancelled
+  priority: low | medium | high
+  assignee_name: CSM responsible (names allowed in answers per internal PII policy)
+  due_date: Deadline
+  source: What created the task (manual, email_action, topup_invoice, suggestion, insight)
+freshness_query: SELECT MAX(updated_at) AS freshest FROM tasks
+metrics:
+  - id: ds_open_tasks
+    name: Open tasks
+    description: >
+      Tasks currently open (pending, in progress, or blocked). Breakdown gives
+      per-CSM workload by assignee.
+    unit: tasks
+    time_scope: snapshot
+    good_direction: down
+    query: >
+      SELECT COUNT(*) AS value FROM tasks
+      WHERE status IN ('pending', 'in_progress', 'blocked')
+    breakdown_query: >
+      SELECT COALESCE(assignee_name, 'Unassigned') AS label, COUNT(*) AS value
+      FROM tasks WHERE status IN ('pending', 'in_progress', 'blocked')
+      GROUP BY 1 ORDER BY value DESC LIMIT :limit
+  - id: ds_overdue_tasks
+    name: Overdue open tasks
+    description: Open tasks past their due date. Lower is better.
+    unit: tasks
+    time_scope: snapshot
+    good_direction: down
+    query: >
+      SELECT COUNT(*) AS value FROM tasks
+      WHERE status IN ('pending', 'in_progress', 'blocked')
+        AND due_date IS NOT NULL AND due_date < CURRENT_DATE
+    breakdown_query: >
+      SELECT COALESCE(assignee_name, 'Unassigned') AS label, COUNT(*) AS value
+      FROM tasks
+      WHERE status IN ('pending', 'in_progress', 'blocked')
+        AND due_date IS NOT NULL AND due_date < CURRENT_DATE
+      GROUP BY 1 ORDER BY value DESC LIMIT :limit
+  - id: ds_tasks_created
+    name: Tasks created
+    description: Tasks created in the date range.
+    unit: tasks
+    query: >
+      SELECT COUNT(*) AS value FROM tasks
+      WHERE created_at >= :start AND created_at <= :end
+  - id: ds_tasks_completed
+    name: Tasks completed
+    description: >
+      Tasks whose status is completed and were last updated in the range
+      (approximation: completion time is the final update).
+    unit: tasks
+    query: >
+      SELECT COUNT(*) AS value FROM tasks
+      WHERE status = 'completed' AND updated_at >= :start AND updated_at <= :end

@@ -108,6 +108,20 @@ async def main() -> int:
     print(f"Provider: {settings.llm_provider} / {settings.resolved_agent_model}")
 
     goldens = _load_goldens(args.filter)
+
+    # Skip goldens whose metric isn't in the registry (source plugin not configured here).
+    from app.atlas.registry import get_registry
+
+    registry = get_registry()
+    known = set(registry.metrics) | set(registry.funnels)
+    runnable, skipped = [], []
+    for golden in goldens:
+        metric = golden.get("expect_metric")
+        (runnable if metric is None or metric in known else skipped).append(golden)
+    if skipped:
+        print(f"Skipping {len(skipped)} goldens (source not configured): "
+              f"{[g['id'] for g in skipped]}")
+    goldens = runnable
     print(f"Running {len(goldens)} goldens...\n")
 
     passed = 0

@@ -17,7 +17,7 @@ from datetime import UTC, datetime, time, timedelta
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.config import get_settings
+from app.sources.demo.manifest import DemoSettings
 
 DDL = [
     "DROP TABLE IF EXISTS demo_orders",
@@ -60,7 +60,7 @@ FUNNEL_COUNTS = [
 
 
 async def seed() -> None:
-    engine = create_async_engine(get_settings().appdb_url)
+    engine = create_async_engine(DemoSettings().appdb_url)
     today = datetime.now(UTC).date()
 
     async with engine.begin() as conn:

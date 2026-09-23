@@ -29,11 +29,27 @@ async def list_metrics() -> dict:
 
 
 @mcp.tool()
-async def query_metric(metric_id: str, start_date: str, end_date: str) -> dict:
-    """Get the value of a governed metric for a UTC date range (ISO dates, inclusive)."""
+async def query_metric(
+    metric_id: str, start_date: str | None = None, end_date: str | None = None
+) -> dict:
+    """Get a governed metric value. Range metrics need ISO dates; snapshot metrics don't."""
     return await _run(
         "query_metric",
         {"metric_id": metric_id, "start_date": start_date, "end_date": end_date},
+    )
+
+
+@mcp.tool()
+async def metric_breakdown(
+    metric_id: str,
+    limit: int = 10,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict:
+    """Top-N breakdown of a metric (e.g. top accounts by revenue, tasks per CSM)."""
+    return await _run(
+        "metric_breakdown",
+        {"metric_id": metric_id, "limit": limit, "start_date": start_date, "end_date": end_date},
     )
 
 

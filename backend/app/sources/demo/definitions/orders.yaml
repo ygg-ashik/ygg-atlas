@@ -3,7 +3,6 @@ name: Orders
 description: >
   Gift card orders across ecommerce and corporate channels. One row per order.
   Demo dataset until the production read replica is connected.
-source: appdb
 pii_fields: [customer_email]
 fields:
   id: Order id
@@ -16,11 +15,17 @@ freshness_query: SELECT MAX(created_at) AS freshest FROM demo_orders
 metrics:
   - id: revenue
     name: Total revenue
-    description: Sum of paid order amounts in AED across all channels.
+    description: >
+      Sum of paid order amounts in AED across all channels. Breakdown available
+      by sales channel.
     unit: AED
     query: >
       SELECT COALESCE(SUM(amount), 0) AS value FROM demo_orders
       WHERE status = 'paid' AND created_at >= :start AND created_at <= :end
+    breakdown_query: >
+      SELECT channel AS label, SUM(amount) AS value FROM demo_orders
+      WHERE status = 'paid' AND created_at >= :start AND created_at <= :end
+      GROUP BY channel ORDER BY value DESC LIMIT :limit
   - id: orders_count
     name: Paid orders
     description: Number of successfully paid orders.

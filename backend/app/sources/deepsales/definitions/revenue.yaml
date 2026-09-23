@@ -1,0 +1,34 @@
+id: ds_revenue
+name: Corporate revenue (monthly)
+description: >
+  AED-normalized monthly revenue and transaction counts per corporate
+  (corporate_revenue_monthly). Data from Jan 2024 onward. Date ranges select
+  whole months whose bucket date falls in the range.
+fields:
+  month: Month bucket (first of month)
+  revenue_aed: Revenue normalized to AED
+  transaction_count: Orders in the month
+freshness_query: SELECT MAX(computed_at) AS freshest FROM corporate_revenue_monthly
+metrics:
+  - id: ds_revenue_aed
+    name: Corporate revenue (AED)
+    description: >
+      Total AED revenue across corporates for months in the date range.
+      Breakdown gives top corporates by revenue in the same range.
+    unit: AED
+    query: >
+      SELECT COALESCE(SUM(revenue_aed), 0) AS value FROM corporate_revenue_monthly
+      WHERE month >= CAST(:start AS date) AND month <= CAST(:end AS date)
+    breakdown_query: >
+      SELECT c.corporate_name AS label, SUM(m.revenue_aed) AS value
+      FROM corporate_revenue_monthly m
+      JOIN corporate c ON c.id = m.corporate_id
+      WHERE m.month >= CAST(:start AS date) AND m.month <= CAST(:end AS date)
+      GROUP BY c.corporate_name ORDER BY value DESC LIMIT :limit
+  - id: ds_transactions
+    name: Corporate transactions
+    description: Total order/transaction count across corporates for months in the range.
+    unit: orders
+    query: >
+      SELECT COALESCE(SUM(transaction_count), 0) AS value FROM corporate_revenue_monthly
+      WHERE month >= CAST(:start AS date) AND month <= CAST(:end AS date)
