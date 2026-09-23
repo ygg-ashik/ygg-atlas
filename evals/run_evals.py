@@ -101,9 +101,11 @@ async def main() -> int:
     sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
     from app.config import get_settings
 
-    if not get_settings().anthropic_api_key:
-        print("ANTHROPIC_API_KEY is not set — cannot run evals.")
+    settings = get_settings()
+    if not (settings.anthropic_api_key or settings.openai_api_key):
+        print("No LLM API key set (ANTHROPIC_API_KEY or OPENAI_API_KEY) — cannot run evals.")
         return 2
+    print(f"Provider: {settings.llm_provider} / {settings.resolved_agent_model}")
 
     goldens = _load_goldens(args.filter)
     print(f"Running {len(goldens)} goldens...\n")
