@@ -8,8 +8,10 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://atlas:atlas@localhost:5433/ygg_atlas"
 
+    # LLM provider: set exactly one key; anthropic wins if both are set.
     anthropic_api_key: str = ""
-    agent_model: str = "claude-sonnet-4-6"
+    openai_api_key: str = ""
+    agent_model: str = ""  # optional override; sensible per-provider default otherwise
 
     firebase_project_id: str = ""
     allowed_email_domain: str = "yougotagift.com"
@@ -29,6 +31,16 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def llm_provider(self) -> str:
+        return "anthropic" if self.anthropic_api_key or not self.openai_api_key else "openai"
+
+    @property
+    def resolved_agent_model(self) -> str:
+        if self.agent_model:
+            return self.agent_model
+        return "claude-sonnet-4-6" if self.llm_provider == "anthropic" else "gpt-4.1"
 
 
 @lru_cache

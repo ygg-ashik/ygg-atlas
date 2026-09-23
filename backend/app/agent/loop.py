@@ -1,4 +1,4 @@
-"""Thin Claude tool-calling loop.
+"""Chat turn orchestration: guardrails → provider tool loop → SSE events.
 
 Yields SSE-ready event dicts:
   {type: 'token', content}      streamed text delta
@@ -6,25 +6,23 @@ Yields SSE-ready event dicts:
   {type: 'done', content, provenance, model, token_usage}
   {type: 'blocked', reason}     guardrail rejection
   {type: 'error', message}
+
+The LLM provider (Anthropic or OpenAI) is selected from which API key is
+configured; see Settings.llm_provider.
 """
 
-import json
 from collections.abc import AsyncGenerator
 from uuid import UUID
 
 import structlog
-from anthropic import AsyncAnthropic
 
 from app.agent.guardrails import check_input
 from app.agent.prompts import build_system_prompt
-from app.atlas import ATLAS_TOOL_SCHEMAS, AtlasTools
+from app.agent.providers import anthropic_loop, openai_loop
+from app.atlas import AtlasTools
 from app.config import get_settings
 
 logger = structlog.get_logger()
-
-
-def _client() -> AsyncAnthropic:
-    return AsyncAnthropic(api_key=get_settings().anthropic_api_key)
 
 
 def _history_to_messages(history: list[dict]) -> list[dict]:
@@ -36,13 +34,27 @@ def _history_to_messages(history: list[dict]) -> list[dict]:
     ]
 
 
+def _select_provider(client):
+    """Returns (provider_module, client). An injected client implies Anthropic (tests)."""
+    settings = get_settings()
+    if client is not None:
+        return anthropic_loop, client
+    if settings.llm_provider == "openai":
+        from openai import AsyncOpenAI
+
+        return openai_loop, AsyncOpenAI(api_key=settings.openai_api_key)
+    from anthropic import AsyncAnthropic
+
+    return anthropic_loop, AsyncAnthropic(api_key=settings.anthropic_api_key)
+
+
 async def run_chat_turn(
     user_uid: str,
     session_id: UUID,
     content: str,
     history: list[dict],
     db,
-    client: AsyncAnthropic | None = None,
+    client=None,
 ) -> AsyncGenerator[dict, None]:
     settings = get_settings()
 
@@ -51,72 +63,38 @@ async def run_chat_turn(
         yield {"type": "blocked", "reason": verdict.reason}
         return
 
-    client = client or _client()
+    provider, client = _select_provider(client)
     tools = AtlasTools(user_uid=user_uid, surface="chat", session_id=session_id, db=db)
+    provenance: list[dict] = []
+
+    async def execute_tool(name: str, arguments: dict) -> dict:
+        result = await tools.execute(name, arguments)
+        if isinstance(result, dict) and result.get("provenance"):
+            provenance.extend(result["provenance"])
+        return result
 
     messages = _history_to_messages(history) + [{"role": "user", "content": content}]
-    provenance: list[dict] = []
-    final_text_parts: list[str] = []
-    usage_totals = {"input_tokens": 0, "output_tokens": 0}
+    model = settings.resolved_agent_model
 
     try:
-        for _round in range(settings.agent_max_tool_rounds):
-            round_text_parts: list[str] = []
-            async with client.messages.stream(
-                model=settings.agent_model,
-                max_tokens=2048,
-                system=build_system_prompt(),
-                messages=messages,
-                tools=ATLAS_TOOL_SCHEMAS,
-            ) as stream:
-                async for event in stream:
-                    if (
-                        event.type == "content_block_delta"
-                        and getattr(event.delta, "type", "") == "text_delta"
-                    ):
-                        round_text_parts.append(event.delta.text)
-                        yield {"type": "token", "content": event.delta.text}
-                response = await stream.get_final_message()
-
-            usage_totals["input_tokens"] += response.usage.input_tokens
-            usage_totals["output_tokens"] += response.usage.output_tokens
-            final_text_parts.extend(round_text_parts)
-
-            if response.stop_reason != "tool_use":
-                break
-
-            messages.append({"role": "assistant", "content": response.content})
-            tool_results = []
-            for block in response.content:
-                if block.type != "tool_use":
-                    continue
-                yield {"type": "tool_status", "tool": block.name}
-                result = await tools.execute(block.name, dict(block.input))
-                if isinstance(result, dict) and result.get("provenance"):
-                    provenance.extend(result["provenance"])
-                tool_results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(result, default=str),
-                    }
-                )
-            messages.append({"role": "user", "content": tool_results})
-        else:
-            yield {
-                "type": "error",
-                "message": "The assistant hit its tool budget for this question. "
-                "Try a narrower question.",
-            }
-            return
-
-        yield {
-            "type": "done",
-            "content": "".join(final_text_parts),
-            "provenance": provenance,
-            "model": settings.agent_model,
-            "token_usage": usage_totals,
-        }
+        async for event in provider.run_tool_loop(
+            client=client,
+            model=model,
+            system=build_system_prompt(),
+            messages=messages,
+            execute_tool=execute_tool,
+            max_rounds=settings.agent_max_tool_rounds,
+        ):
+            if event["type"] == "final":
+                yield {
+                    "type": "done",
+                    "content": event["content"],
+                    "provenance": provenance,
+                    "model": model,
+                    "token_usage": event["token_usage"],
+                }
+            else:
+                yield event
     except Exception:
         logger.exception("agent.turn_failed", session_id=str(session_id))
         yield {"type": "error", "message": "Something went wrong answering that. Please retry."}
