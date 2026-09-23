@@ -1,0 +1,46 @@
+"""Typed definitions for the atlas semantic registry.
+
+Every metric/funnel is a vetted, parameterized query authored by a human.
+The agent can only choose WHICH definition to run and for WHAT date range —
+never the SQL itself.
+"""
+
+from pydantic import BaseModel, Field
+
+
+class MetricDef(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    entity: str = ""  # filled by registry loader
+    source: str = ""  # filled by registry loader (entity default) unless overridden
+    unit: str = ""
+    query: str  # parameterized with :start and :end (UTC date bounds)
+    good_direction: str = "up"  # 'up' | 'down' — how to read changes
+
+
+class FunnelStepDef(BaseModel):
+    id: str
+    name: str
+    query: str  # parameterized with :start and :end, returns a single count
+
+
+class FunnelDef(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    entity: str = ""
+    source: str = ""
+    steps: list[FunnelStepDef]
+
+
+class EntityDef(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    source: str  # connector key, e.g. 'appdb' | 'ga4'
+    pii_fields: list[str] = Field(default_factory=list)
+    fields: dict[str, str] = Field(default_factory=dict)  # field name -> description
+    freshness_query: str | None = None  # returns single timestamp of newest data
+    metrics: list[MetricDef] = Field(default_factory=list)
+    funnels: list[FunnelDef] = Field(default_factory=list)

@@ -1,0 +1,41 @@
+id: checkout
+name: Checkout journey
+description: >
+  User events through the storefront checkout. Used to find where users drop
+  off or resist. Demo dataset until the production events store is connected.
+source: appdb
+fields:
+  user_id: Acting user
+  event: "'view_product' | 'add_to_cart' | 'begin_checkout' | 'payment_info' | 'purchase'"
+  created_at: Event time (UTC)
+freshness_query: SELECT MAX(created_at) AS freshest FROM demo_events
+funnels:
+  - id: checkout_funnel
+    name: Checkout funnel
+    description: Product view through purchase; shows conversion and biggest drop per step.
+    steps:
+      - id: view_product
+        name: Viewed product
+        query: >
+          SELECT COUNT(DISTINCT user_id) AS value FROM demo_events
+          WHERE event = 'view_product' AND created_at >= :start AND created_at <= :end
+      - id: add_to_cart
+        name: Added to cart
+        query: >
+          SELECT COUNT(DISTINCT user_id) AS value FROM demo_events
+          WHERE event = 'add_to_cart' AND created_at >= :start AND created_at <= :end
+      - id: begin_checkout
+        name: Began checkout
+        query: >
+          SELECT COUNT(DISTINCT user_id) AS value FROM demo_events
+          WHERE event = 'begin_checkout' AND created_at >= :start AND created_at <= :end
+      - id: payment_info
+        name: Entered payment info
+        query: >
+          SELECT COUNT(DISTINCT user_id) AS value FROM demo_events
+          WHERE event = 'payment_info' AND created_at >= :start AND created_at <= :end
+      - id: purchase
+        name: Purchased
+        query: >
+          SELECT COUNT(DISTINCT user_id) AS value FROM demo_events
+          WHERE event = 'purchase' AND created_at >= :start AND created_at <= :end

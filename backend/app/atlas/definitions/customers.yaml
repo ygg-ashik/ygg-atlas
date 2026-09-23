@@ -1,0 +1,27 @@
+id: customer
+name: Customers
+description: >
+  Registered customers (consumer and corporate buyers). Demo dataset until the
+  production read replica is connected.
+source: appdb
+pii_fields: [email, name]
+fields:
+  id: Customer id
+  segment: "'consumer' | 'corporate'"
+  created_at: Signup time (UTC)
+freshness_query: SELECT MAX(created_at) AS freshest FROM demo_customers
+metrics:
+  - id: new_customers
+    name: New customers
+    description: Customers who signed up in the period.
+    unit: customers
+    query: >
+      SELECT COUNT(*) AS value FROM demo_customers
+      WHERE created_at >= :start AND created_at <= :end
+  - id: new_corporate_customers
+    name: New corporate customers
+    description: Corporate (B2B) accounts created in the period.
+    unit: customers
+    query: >
+      SELECT COUNT(*) AS value FROM demo_customers
+      WHERE segment = 'corporate' AND created_at >= :start AND created_at <= :end

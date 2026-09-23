@@ -1,0 +1,53 @@
+id: order
+name: Orders
+description: >
+  Gift card orders across ecommerce and corporate channels. One row per order.
+  Demo dataset until the production read replica is connected.
+source: appdb
+pii_fields: [customer_email]
+fields:
+  id: Order id
+  customer_id: Purchasing customer
+  channel: "'b2c' consumer storefront or 'b2b' corporate portal"
+  amount: Order value in AED
+  status: "'paid' | 'refunded' | 'failed'"
+  created_at: Order creation time (UTC)
+freshness_query: SELECT MAX(created_at) AS freshest FROM demo_orders
+metrics:
+  - id: revenue
+    name: Total revenue
+    description: Sum of paid order amounts in AED across all channels.
+    unit: AED
+    query: >
+      SELECT COALESCE(SUM(amount), 0) AS value FROM demo_orders
+      WHERE status = 'paid' AND created_at >= :start AND created_at <= :end
+  - id: orders_count
+    name: Paid orders
+    description: Number of successfully paid orders.
+    unit: orders
+    query: >
+      SELECT COUNT(*) AS value FROM demo_orders
+      WHERE status = 'paid' AND created_at >= :start AND created_at <= :end
+  - id: aov
+    name: Average order value
+    description: Average paid order amount in AED.
+    unit: AED
+    query: >
+      SELECT COALESCE(AVG(amount), 0) AS value FROM demo_orders
+      WHERE status = 'paid' AND created_at >= :start AND created_at <= :end
+  - id: refund_amount
+    name: Refunded amount
+    description: Sum of refunded order amounts in AED. Lower is better.
+    unit: AED
+    good_direction: down
+    query: >
+      SELECT COALESCE(SUM(amount), 0) AS value FROM demo_orders
+      WHERE status = 'refunded' AND created_at >= :start AND created_at <= :end
+  - id: b2b_revenue
+    name: Corporate (B2B) revenue
+    description: Paid revenue from the corporate portal channel only.
+    unit: AED
+    query: >
+      SELECT COALESCE(SUM(amount), 0) AS value FROM demo_orders
+      WHERE status = 'paid' AND channel = 'b2b'
+        AND created_at >= :start AND created_at <= :end
