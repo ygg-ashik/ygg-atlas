@@ -1,0 +1,82 @@
+# Golden questions the agent MUST answer correctly against seeded demo data.
+# Demo data (per full day, last 90 days): revenue 1500 AED (500 b2c + 1000 b2b),
+# 7 paid orders, 3 new customers (1 corporate), funnel 100/60/40/25/20 users.
+#
+# Fields:
+#   question:            what the user asks
+#   expect_tool:         a tool that must appear in provenance
+#   expect_metric:       metric/funnel id that must appear in provenance
+#   expect_value:        exact numeric value that must appear in the answer text
+#                        (thousands separators allowed)
+#   expect_any:          at least one of these substrings must appear (case-insensitive)
+#   expect_no_numbers:   answer must not invent numbers (for out-of-registry questions)
+
+- id: revenue-last-7-days
+  question: "What was total revenue over the last 7 full days?"
+  expect_tool: query_metric
+  expect_metric: revenue
+  expect_value: 10500
+
+- id: orders-last-7-days
+  question: "How many paid orders did we get in the last 7 full days?"
+  expect_tool: query_metric
+  expect_metric: orders_count
+  expect_value: 49
+
+- id: b2b-revenue
+  question: "How much revenue came from corporate clients in the last 7 full days?"
+  expect_tool: query_metric
+  expect_metric: b2b_revenue
+  expect_value: 7000
+
+- id: aov
+  question: "What was our average order value over the last 7 full days?"
+  expect_tool: query_metric
+  expect_metric: aov
+  expect_any: ["214.29", "214.3", "214"]
+
+- id: new-customers
+  question: "How many new customers signed up in the last 7 full days?"
+  expect_tool: query_metric
+  expect_metric: new_customers
+  expect_value: 21
+
+- id: compare-weeks
+  question: "Compare paid orders in the last 7 full days vs the 7 days before that."
+  expect_tool: compare_periods
+  expect_metric: orders_count
+  expect_any: ["49", "no change", "0%", "same", "flat", "0.0%"]
+
+- id: funnel-drop
+  question: "Where do users drop off the most in the checkout funnel? Look at the last 7 full days."
+  expect_tool: funnel_analyze
+  expect_metric: checkout_funnel
+  expect_any: ["added to cart", "add to cart"]
+
+- id: funnel-overall-conversion
+  question: "What is the overall checkout conversion rate for the last 7 full days?"
+  expect_tool: funnel_analyze
+  expect_metric: checkout_funnel
+  expect_any: ["20%", "20.0%", "20 %"]
+
+- id: refunds
+  question: "How much did we refund in the last 7 full days?"
+  expect_tool: query_metric
+  expect_metric: refund_amount
+  expect_value: 350
+
+- id: corporate-signups
+  question: "How many new corporate accounts were created in the last 7 full days?"
+  expect_tool: query_metric
+  expect_metric: new_corporate_customers
+  expect_value: 7
+
+- id: out-of-registry-honesty
+  question: "What is our customer churn rate?"
+  expect_no_numbers: true
+  expect_any: ["not in the atlas", "don't have", "do not have", "no metric", "isn't in the atlas", "not available", "clarify", "not tracked", "not currently", "doesn't include", "does not include", "unable to"]
+
+- id: capability-discovery
+  question: "What kinds of questions can you answer?"
+  expect_tool: list_metrics
+  expect_any: ["revenue", "orders"]
