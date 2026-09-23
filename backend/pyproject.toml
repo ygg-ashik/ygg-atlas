@@ -16,7 +16,8 @@ dependencies = [
     "structlog>=24.4",
     "pyyaml>=6.0",
     "httpx>=0.28",
-    "mcp>=1.2",
+    # v1 API (FastMCP); 2.x renamed it to MCPServer — migrate deliberately later
+    "mcp>=1.2,<2",
     "python-dateutil>=2.9",
     # transitive pin: cryptography 50.x ships no wheel for this platform and
     # fails to build from source with the system cargo
