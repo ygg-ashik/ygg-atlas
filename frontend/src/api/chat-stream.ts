@@ -48,7 +48,8 @@ export async function streamChatMessage(
   onEvent: (event: ChatStreamEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const user = auth.currentUser;
+  const authDisabled = import.meta.env.VITE_AUTH_DISABLED === 'true';
+  const user = authDisabled ? null : auth.currentUser;
   const token = user ? await user.getIdToken() : '';
   const resp = await fetch(`${backendUrl}/api/v1/chat/sessions/${sessionId}/messages`, {
     method: 'POST',

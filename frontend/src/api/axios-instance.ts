@@ -18,6 +18,7 @@ export const api = axios.create({
 // Attach the Firebase ID token on every request. Scope is derived from this
 // token server-side — never from anything the user typed.
 api.interceptors.request.use(async (config) => {
+  if (import.meta.env.VITE_AUTH_DISABLED === 'true') return config;
   const user = auth.currentUser;
   if (user) {
     try {

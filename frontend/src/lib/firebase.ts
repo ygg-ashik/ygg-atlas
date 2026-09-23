@@ -3,11 +3,15 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 
+// With VITE_AUTH_DISABLED (dev bypass) Firebase is never actually used, but the
+// SDK still initializes at import time — placeholders keep that from throwing.
+const devBypass = import.meta.env.VITE_AUTH_DISABLED === 'true';
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY ?? (devBypass ? 'dev-placeholder' : undefined),
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID ?? (devBypass ? 'dev' : undefined),
+  appId: import.meta.env.VITE_FIREBASE_APP_ID ?? (devBypass ? 'dev' : undefined),
 };
 
 const app = initializeApp(firebaseConfig);

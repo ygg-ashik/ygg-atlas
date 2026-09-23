@@ -10,6 +10,9 @@ import { auth, googleProvider } from '@/lib/firebase';
 const ALLOWED_DOMAIN = 'yougotagift.com';
 const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000; // force daily login
 
+/** Dev-only bypass, mirrors the backend's AUTH_DISABLED. Never set in production. */
+export const AUTH_DISABLED = import.meta.env.VITE_AUTH_DISABLED === 'true';
+
 export interface AtlasUser {
   uid: string;
   email: string;
@@ -46,11 +49,19 @@ function toAtlasUser(firebaseUser: FirebaseUser): AtlasUser {
   };
 }
 
+const DEV_USER: AtlasUser = {
+  uid: 'dev-user',
+  email: `dev@${ALLOWED_DOMAIN}`,
+  name: 'Dev User',
+  avatar: '',
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AtlasUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<AtlasUser | null>(AUTH_DISABLED ? DEV_USER : null);
+  const [isLoading, setIsLoading] = useState(!AUTH_DISABLED);
 
   useEffect(() => {
+    if (AUTH_DISABLED) return;
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (!firebaseUser) {
         setUser(null);
@@ -84,6 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signInWithGoogle = useCallback(async () => {
+    if (AUTH_DISABLED) return;
     const credential = await signInWithPopup(auth, googleProvider);
     const email = credential.user.email ?? '';
     if (!isAllowedDomain(email)) {
@@ -94,6 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    if (AUTH_DISABLED) return;
     await firebaseSignOut(auth);
     setUser(null);
   }, []);

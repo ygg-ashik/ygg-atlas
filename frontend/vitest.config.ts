@@ -9,6 +9,11 @@ export default defineConfig({
     globals: true,
     environment: 'happy-dom',
     setupFiles: './vitest.setup.ts',
+    // Tests must be deterministic regardless of the developer's .env.local
+    // (e.g. VITE_AUTH_DISABLED dev bypass must not leak into assertions).
+    env: {
+      VITE_AUTH_DISABLED: 'false',
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
