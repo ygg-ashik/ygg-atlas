@@ -1,0 +1,54 @@
+# Fast checks on changed files at commit time. The full gate is `make check` and CI.
+# Install once: `make hooks`.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+        exclude: ^frontend/tsconfig\.json$  # tsconfig allows comments (JSONC)
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.0
+    hooks:
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      # Ruff runs from the project's locked version so commit-time and CI agree.
+      - id: ruff-check
+        name: ruff check --fix
+        entry: bash -c 'cd backend && uv run ruff check --fix "${@/#/../}"' --
+        language: system
+        types: [python]
+        files: ^(backend|evals)/
+      - id: ruff-format
+        name: ruff format
+        entry: bash -c 'cd backend && uv run ruff format "${@/#/../}"' --
+        language: system
+        types: [python]
+        files: ^(backend|evals)/
+      - id: import-contracts
+        name: import-linter contracts
+        entry: bash -c 'cd backend && uv run lint-imports'
+        language: system
+        files: ^backend/(app/|pyproject\.toml$)
+        pass_filenames: false
+      - id: prettier
+        name: prettier
+        entry: bash -c 'cd frontend && ./node_modules/.bin/prettier --write --ignore-unknown "${@#frontend/}"' --
+        language: system
+        files: ^frontend/
+        exclude: ^frontend/pnpm-lock\.yaml$
+      - id: eslint
+        name: eslint
+        entry: bash -c 'cd frontend && ./node_modules/.bin/eslint --fix "${@#frontend/}"' --
+        language: system
+        files: ^frontend/src/.*\.(ts|tsx)$

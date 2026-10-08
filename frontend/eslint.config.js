@@ -32,6 +32,35 @@ export default tseslint.config(
     },
   },
   {
+    // Engineering standards (ARCHITECTURE.md): size, complexity and type-safety limits.
+    // Machine-enforced; a justified exception is a single-line disable with a reason.
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/consistent-type-imports': ['error', { fixStyle: 'inline-type-imports' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
+      'max-lines': ['error', { max: 300, skipBlankLines: true, skipComments: true }],
+      'max-lines-per-function': ['error', { max: 150, skipBlankLines: true, skipComments: true }],
+      complexity: ['error', 12],
+      'max-depth': ['error', 4],
+      'max-params': ['error', 4],
+      'no-console': ['error', { allow: ['warn', 'error'] }],
+      eqeqeq: ['error', 'always'],
+      'no-nested-ternary': 'error',
+    },
+  },
+  {
+    // Test files: long describe blocks are fine; everything else still applies.
+    files: ['src/**/*.test.{ts,tsx}'],
+    rules: {
+      'max-lines-per-function': 'off',
+      'max-lines': 'off',
+    },
+  },
+  {
     // Features are self-contained silos: internal imports are relative (./x),
     // everything else comes from the api/lib/ui layers via @/.
     files: ['src/features/**/*.{ts,tsx}'],
@@ -87,8 +116,7 @@ export default tseslint.config(
           patterns: [
             {
               group: ['@/features/*', '@/api/*', '@/lib/*'],
-              message:
-                'Component standard: ui primitives may not depend on features, api, or lib.',
+              message: 'Component standard: ui primitives may not depend on features, api, or lib.',
             },
             {
               group: ['../../*'],

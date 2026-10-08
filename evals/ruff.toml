@@ -1,0 +1,5 @@
+# evals/ follows the backend engineering standard (ARCHITECTURE.md).
+extend = "../backend/pyproject.toml"
+
+[lint.per-file-ignores]
+"run_evals.py" = ["T20"]  # CLI tool: printing results is its job

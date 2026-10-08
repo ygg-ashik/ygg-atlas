@@ -20,9 +20,11 @@ dependencies = [
     # v1 API (FastMCP); 2.x renamed it to MCPServer — migrate deliberately later
     "mcp>=1.2,<2",
     "python-dateutil>=2.9",
-    # transitive pin: cryptography 50.x ships no wheel for this platform and
-    # fails to build from source with the system cargo
-    "cryptography<46",
+    # Transitive security pin. Linux (CI, Docker, EC2) and arm64 macOS get the latest
+    # patched release. x86_64 macOS (an Intel Mac, or an x86_64 Python under Rosetta)
+    # has no wheels after 48.x, so that toolchain stays on 48.0.1 (ARCHITECTURE.md §6).
+    "cryptography>=50; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    "cryptography>=48.0.1,<49; sys_platform == 'darwin' and platform_machine == 'x86_64'",
 ]
 
 [project.optional-dependencies]
@@ -36,6 +38,9 @@ dev = [
     "aiosqlite>=0.20",
     "ruff>=0.9",
     "httpx>=0.28",
+    "pyright>=1.1.390",
+    "import-linter>=2.1",
+    "packaging>=24",
 ]
 
 [tool.pytest.ini_options]
@@ -46,18 +51,124 @@ filterwarnings = [
     "ignore:The default datetime adapter is deprecated:DeprecationWarning",
 ]
 
+# ---------------------------------------------------------------------------
+# Engineering standards (see ARCHITECTURE.md). These are enforced, not advisory:
+# `make check` and CI fail on any violation. Never weaken a rule to make code pass;
+# a justified exception is a targeted `# noqa: <CODE>  # <reason>` on one line.
+# ---------------------------------------------------------------------------
+
 [tool.ruff]
-line-length = 100
+line-length = 88
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
-# B008: `Depends(...)` in argument defaults is the standard FastAPI idiom
-ignore = ["B008"]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # import ordering
+    "N",        # naming
+    "UP",       # modern syntax
+    "B",        # bugbear
+    "A",        # shadowing builtins
+    "C4",       # comprehensions
+    "SIM",      # simplifications
+    "RET",      # return hygiene
+    "PIE",      # misc anti-patterns
+    "PT",       # pytest style
+    "RUF",      # ruff-specific
+    "S",        # bandit security
+    "T20",      # no print in app code
+    "ERA",      # no commented-out code
+    "TID",      # banned / relative imports
+    "ASYNC",    # async pitfalls
+    "DTZ",      # timezone-aware datetimes only (UTC rule)
+    "C90",      # cyclomatic complexity
+    "PL",       # pylint: size and complexity limits
+    "ANN",      # type annotations on functions
+]
+ignore = [
+    "B008",     # `Depends(...)` in argument defaults is the FastAPI idiom
+    "PLR2004",  # magic-value comparisons: too noisy for metrics/thresholds
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "ANN", "PLR0913", "PLR2004", "S105", "S106", "S608"]
+"scripts/**" = ["T20"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 6
+max-branches = 12
+max-returns = 6
+max-statements = 50
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.pyright]
+include = ["app", "tests", "scripts"]
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "standard"
+reportMissingTypeStubs = false
+# Ratchet: new self-contained modules are added here and checked in strict mode.
+strict = []
+
+[tool.importlinter]
+root_package = "app"
+
+[[tool.importlinter.contracts]]
+name = "Backend layers: main > api|mcp > agent > atlas > sources"
+type = "layers"
+layers = [
+    "app.main",
+    "app.api | app.mcp",
+    "app.agent",
+    "app.atlas",
+    "app.sources",
+]
+
+[[tool.importlinter.contracts]]
+name = "Source plugins are leaves: no atlas DB, no HTTP, no higher layers"
+type = "forbidden"
+source_modules = ["app.sources"]
+forbidden_modules = [
+    "app.main", "app.api", "app.mcp", "app.agent", "app.atlas",
+    "app.models", "app.database", "app.middleware",
+]
+
+[[tool.importlinter.contracts]]
+name = "Source plugins are independent of each other"
+type = "independence"
+modules = ["app.sources.demo", "app.sources.deepsales", "app.sources.ga4"]
+
+[[tool.importlinter.contracts]]
+name = "Platform modules never depend on features"
+type = "forbidden"
+source_modules = ["app.config", "app.database", "app.models", "app.middleware"]
+forbidden_modules = [
+    "app.main", "app.api", "app.mcp", "app.agent", "app.atlas", "app.sources",
+]
+
+[[tool.importlinter.contracts]]
+name = "Agent and atlas never use HTTP-layer auth"
+type = "forbidden"
+source_modules = ["app.agent", "app.atlas"]
+forbidden_modules = ["app.middleware"]
 
 [tool.coverage.run]
 source = ["app"]
 omit = ["app/mcp/*", "migrations/*"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
 
 [build-system]
 requires = ["hatchling"]

@@ -80,8 +80,13 @@ pnpm lint && pnpm typecheck
 Full stack: `docker compose up` (Postgres 16 + backend + frontend).
 Evals: `cd backend && uv run python ../evals/run_evals.py`
 
+Quality gate (repo root): `make check` runs every CI gate except the dependency and secret scans
+(`make audit` runs the dependency scan). `make format` auto-fixes, `make hooks` installs the
+pre-commit hooks.
+
 ## Quality gates (before marking any task complete)
 
+- `make check` is green (format, lint, types, architecture contracts, tests, build)
 - All tests pass; coverage >80% for new code
 - No lint or type errors
 - Follows the component standard above
@@ -94,3 +99,33 @@ Evals: `cd backend && uv run python ../evals/run_evals.py`
 - Commits: `<type>(<scope>): <description>` (feat, fix, docs, refactor, test, chore).
 - TDD: write the failing test first (Red → Green → Refactor).
 - Design docs in `docs/specs/`, implementation plans in `docs/plans/`.
+
+## Engineering standards (applies to ALL code)
+
+This repository is production code. The full rulebook is **`ARCHITECTURE.md`** (layers, module
+anatomy, where code goes, limits, enforcement). Machines enforce it; CI is the final authority.
+
+**Mandatory skills:**
+- Invoke **`engineering-standards`** before writing or modifying any code, tests, migrations or
+  plugin YAML.
+- Invoke **`production-code-review`** before declaring a coding task complete, before committing,
+  and before opening a PR.
+
+**The contract:**
+- Inspect the existing architecture and reuse existing abstractions before creating new ones. No
+  new top-level structure without justification and matching import-linter contracts.
+- Backend: thin routers (parse, call a service, return a schema). Business logic in services, all
+  database access in repositories, Pydantic schemas separate from SQLModel tables. Layers
+  `main > api|mcp > agent > atlas > sources`, never upward.
+- Frontend: thin pages, data through hooks, features never import features, shared components
+  only in `ui/` when generic and used by two or more features.
+- No `utils.py` / `utils.ts` grab-bags. Something moves to `core/` only with a stable, generic
+  responsibility and several real consumers.
+- Python: Ruff at 88 columns, annotations on every function, no `Any` shortcuts, timezone-aware
+  UTC datetimes. TypeScript: `strict` plus `noUncheckedIndexedAccess`, no `any`.
+- No abstractions for hypothetical needs, no unrelated changes, no weakened or skipped tests.
+- Never relax a rule in `pyproject.toml`, `eslint.config.js` or `tsconfig.json` to make code
+  pass. A justified exception is one line with the exact code and a reason.
+
+**Validation before calling work done:** `make check` green, then the `production-code-review`
+verdict. If a check fails, fix the underlying problem; never bypass the check.
