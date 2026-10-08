@@ -40,3 +40,14 @@ async def test_create_or_get_inserts_when_free(db) -> None:
     users = UserRepository(db)
     created = await users.create_or_get(User(email="new@yougotagift.com"))
     assert await users.get(created.id) is not None
+
+
+async def test_conflict_keeps_other_pending_work_in_the_session(db) -> None:
+    users = UserRepository(db)
+    await users.save(User(email="sara@yougotagift.com", firebase_uid="fb-1"))
+    db.add(User(email="pending@yougotagift.com"))  # caller's uncommitted work
+
+    await users.create_or_get(User(email="sara@yougotagift.com", firebase_uid="fb-1"))
+    await db.commit()
+
+    assert await users.get_by_email("pending@yougotagift.com") is not None
