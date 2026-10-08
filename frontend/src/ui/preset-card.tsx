@@ -54,7 +54,7 @@ const FUNNEL: readonly (readonly [number, number, number])[] = [
 
 function Preview({ kind }: { kind: PresetPreview }) {
   const drawn =
-    'transition-[stroke-dashoffset] duration-[1100ms] ease-out [stroke-dasharray:420] [stroke-dashoffset:420] group-hover:[stroke-dashoffset:0]';
+    'transition-[stroke-dashoffset] [transition-duration:1100ms] ease-out [stroke-dasharray:420] [stroke-dashoffset:420] group-hover:[stroke-dashoffset:0]';
   if (kind === 'line') {
     return (
       <svg
