@@ -15,6 +15,7 @@ class VerifiedToken:
     email_verified: bool
     name: str
     auth_time: int  # epoch seconds of the original sign-in
+    sign_in_provider: str  # e.g. "google.com", "password", "emailLink"
 
 
 class TokenVerifier(Protocol):

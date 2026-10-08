@@ -4,13 +4,12 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import SQLModel
 
 from app.api import chat_router
 from app.config import get_settings
-from app.database import get_engine
+from app.database import get_session_factory
+from app.identity import bootstrap_admins, identity_router
 from app.insights import router as insights_router
-from app.models.migrations import ensure_blocks_column
 
 logger = structlog.get_logger()
 
@@ -24,12 +23,15 @@ except Exception:  # MCP is optional at runtime; never block the chat API
     _mcp_app = None
 
 
+async def apply_bootstrap_admins() -> None:
+    async with get_session_factory()() as db:
+        await bootstrap_admins(db, get_settings().bootstrap_admin_list)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    # MVP schema management; Alembic takes over once the schema stabilizes.
-    async with get_engine().begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
-        await ensure_blocks_column(conn)
+    # Schema is owned by Alembic: `alembic upgrade head` runs before the app starts.
+    await apply_bootstrap_admins()
     logger.info("startup.complete")
     if mcp is not None:
         # The mounted streamable-HTTP app requires its session manager running.
@@ -50,6 +52,7 @@ app.add_middleware(
 )
 
 app.include_router(chat_router)
+app.include_router(identity_router)
 app.include_router(insights_router)
 
 

@@ -11,7 +11,7 @@ from sqlmodel import col, select
 
 from app.agent import run_chat_turn
 from app.database import get_db, get_session_factory
-from app.middleware import AuthUser, get_current_user
+from app.identity import Principal, get_principal
 from app.models.chat import ChatMessage, ChatSession
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
@@ -33,12 +33,12 @@ class FeedbackRequest(BaseModel):
 
 
 async def _owned_session(
-    session_id: UUID, user: AuthUser, db: AsyncSession
+    session_id: UUID, principal: Principal, db: AsyncSession
 ) -> ChatSession:
     session = (
         await db.execute(select(ChatSession).where(ChatSession.id == session_id))
     ).scalar_one_or_none()
-    if session is None or session.user_uid != user.uid:
+    if session is None or session.user_id != principal.user_id:
         raise HTTPException(status_code=404, detail="Session not found")
     return session
 
@@ -46,11 +46,14 @@ async def _owned_session(
 @router.post("/sessions", response_model=ChatSession)
 async def create_session(
     body: CreateSessionRequest,
-    user: AuthUser = Depends(get_current_user),
+    principal: Principal = Depends(get_principal),
     db: AsyncSession = Depends(get_db),
 ) -> ChatSession:
     session = ChatSession(
-        user_uid=user.uid, user_email=user.email, title=body.title or "New chat"
+        user_id=principal.user_id,
+        user_uid=str(principal.user_id),
+        user_email=principal.email,
+        title=body.title or "New chat",
     )
     db.add(session)
     await db.commit()
@@ -60,11 +63,11 @@ async def create_session(
 
 @router.get("/sessions", response_model=list[ChatSession])
 async def list_sessions(
-    user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    principal: Principal = Depends(get_principal), db: AsyncSession = Depends(get_db)
 ) -> Sequence[ChatSession]:
     result = await db.execute(
         select(ChatSession)
-        .where(ChatSession.user_uid == user.uid)
+        .where(col(ChatSession.user_id) == principal.user_id)
         .order_by(col(ChatSession.updated_at).desc())
     )
     return result.scalars().all()
@@ -73,10 +76,10 @@ async def list_sessions(
 @router.get("/sessions/{session_id}/messages", response_model=list[ChatMessage])
 async def list_messages(
     session_id: UUID,
-    user: AuthUser = Depends(get_current_user),
+    principal: Principal = Depends(get_principal),
     db: AsyncSession = Depends(get_db),
 ) -> Sequence[ChatMessage]:
-    await _owned_session(session_id, user, db)
+    await _owned_session(session_id, principal, db)
     result = await db.execute(
         select(ChatMessage)
         .where(ChatMessage.session_id == session_id)
@@ -89,10 +92,10 @@ async def list_messages(
 @router.delete("/sessions/{session_id}", status_code=204)
 async def delete_session(
     session_id: UUID,
-    user: AuthUser = Depends(get_current_user),
+    principal: Principal = Depends(get_principal),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    session = await _owned_session(session_id, user, db)
+    session = await _owned_session(session_id, principal, db)
     messages = (
         (
             await db.execute(
@@ -112,7 +115,7 @@ async def delete_session(
 async def message_feedback(
     message_id: UUID,
     body: FeedbackRequest,
-    user: AuthUser = Depends(get_current_user),
+    principal: Principal = Depends(get_principal),
     db: AsyncSession = Depends(get_db),
 ) -> ChatMessage:
     if body.rating not in ("up", "down"):
@@ -122,7 +125,7 @@ async def message_feedback(
     ).scalar_one_or_none()
     if message is None:
         raise HTTPException(status_code=404, detail="Message not found")
-    await _owned_session(message.session_id, user, db)
+    await _owned_session(message.session_id, principal, db)
 
     message.feedback_rating = body.rating
     message.feedback_category = body.category
@@ -136,10 +139,10 @@ async def message_feedback(
 async def send_message(
     session_id: UUID,
     body: SendMessageRequest,
-    user: AuthUser = Depends(get_current_user),
+    principal: Principal = Depends(get_principal),
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
-    session = await _owned_session(session_id, user, db)
+    session = await _owned_session(session_id, principal, db)
 
     history_rows = (
         (
@@ -168,7 +171,7 @@ async def send_message(
         # so streaming uses its own session for the turn + persistence.
         async with get_session_factory()() as stream_db:
             async for event in run_chat_turn(
-                user_uid=user.uid,
+                user_uid=str(principal.user_id),
                 session_id=session_id,
                 content=body.content,
                 history=history,

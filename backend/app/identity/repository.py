@@ -2,6 +2,7 @@
 
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 
@@ -33,3 +34,19 @@ class UserRepository:
         await self._db.commit()
         await self._db.refresh(user)
         return user
+
+    async def create_or_get(self, user: User) -> User:
+        """Insert a new user; if a concurrent request inserted the same identity first,
+        return that row instead (unique email / firebase_uid decide the winner)."""
+        try:
+            return await self.save(user)
+        except IntegrityError:
+            await self._db.rollback()
+        existing = None
+        if user.firebase_uid:
+            existing = await self.get_by_firebase_uid(user.firebase_uid)
+        if existing is None:
+            existing = await self.get_by_email(user.email)
+        if existing is None:
+            raise LookupError(user.email)  # the conflict was on something else
+        return existing

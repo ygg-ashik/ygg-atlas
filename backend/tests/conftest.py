@@ -12,6 +12,10 @@ from app.config import get_settings
 from app.database import get_engine, get_session_factory
 from app.sources import reset_plugins
 
+# Settings fail closed (unset ENVIRONMENT means production), and some test modules
+# import app.main, which reads settings, at collection time, before any fixture runs.
+os.environ["ENVIRONMENT"] = "test"
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _test_env(tmp_path_factory):
@@ -19,6 +23,7 @@ def _test_env(tmp_path_factory):
     os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{dbfile}"
     os.environ["APPDB_URL"] = f"sqlite+aiosqlite:///{dbfile}"
     os.environ["AUTH_DISABLED"] = "true"
+    os.environ["ENVIRONMENT"] = "test"
     os.environ["ANTHROPIC_API_KEY"] = "test-key"
     os.environ["CHAT_DAILY_MESSAGE_LIMIT"] = "5"
 

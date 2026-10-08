@@ -20,7 +20,8 @@ class Settings(BaseSettings):
     firebase_project_id: str = ""
     allowed_email_domain: str = "yougotagift.com"
     auth_disabled: bool = False
-    environment: Literal["development", "test", "production"] = "development"
+    # Fails closed: an unset ENVIRONMENT means production rules.
+    environment: Literal["development", "test", "production"] = "production"
     # Comma-separated emails made admin at startup (idempotent). Spec §3.3.
     bootstrap_admins: str = ""
     # Web sessions are capped server-side from the token's auth_time. Spec §3.1.
@@ -48,9 +49,12 @@ class Settings(BaseSettings):
         ]
 
     @model_validator(mode="after")
-    def _forbid_auth_bypass_in_production(self) -> Self:
-        if self.environment == "production" and self.auth_disabled:
-            msg = "AUTH_DISABLED=true is not allowed when ENVIRONMENT=production"
+    def _fail_closed_outside_development(self) -> Self:
+        if self.auth_disabled and self.environment == "production":
+            msg = "AUTH_DISABLED=true needs ENVIRONMENT=development or test"
+            raise ValueError(msg)
+        if self.environment == "production" and not self.firebase_project_id:
+            msg = "FIREBASE_PROJECT_ID is required when ENVIRONMENT=production"
             raise ValueError(msg)
         return self
 

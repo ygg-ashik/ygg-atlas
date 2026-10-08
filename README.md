@@ -68,6 +68,15 @@ docker compose exec backend uv run --no-dev python scripts/seed_demo.py   # demo
 curl http://127.0.0.1:8081/healthz
 ```
 
+Migrations run automatically when the backend container starts (`alembic upgrade head`). The
+baseline is idempotent, so a database created by the old `create_all` upgrades in place; it is also
+irreversible (`alembic downgrade base` refuses), so back up before risky migrations.
+
+`ENVIRONMENT` fails closed: unset means `production`, which refuses `AUTH_DISABLED=true` and requires
+`FIREBASE_PROJECT_ID`. While the box still runs with `AUTH_DISABLED=true`, `backend/.env` must set
+`ENVIRONMENT=development` or the backend will not start. `BOOTSTRAP_ADMINS` (comma-separated emails)
+creates the first admins; the dev user is a plain viewer.
+
 Server-only files on the box (not in git):
 - `backend/.env` — secrets: `ANTHROPIC_API_KEY`, `FIREBASE_PROJECT_ID`, `ATLAS_MCP_TOKEN`.
   Currently `AUTH_DISABLED=true` for smoke testing; set `false` once Firebase is configured.

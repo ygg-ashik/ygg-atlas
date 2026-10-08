@@ -118,7 +118,7 @@ venv = ".venv"
 typeCheckingMode = "standard"
 reportMissingTypeStubs = false
 # Ratchet: new self-contained modules are added here and checked in strict mode.
-strict = ["app/insights"]
+strict = ["app/insights", "app/identity"]
 
 [tool.importlinter]
 root_package = "app"
@@ -140,7 +140,7 @@ type = "forbidden"
 source_modules = ["app.sources"]
 forbidden_modules = [
     "app.main", "app.api", "app.mcp", "app.insights", "app.agent", "app.atlas",
-    "app.models", "app.database", "app.middleware",
+    "app.models", "app.database", "app.middleware", "app.identity",
 ]
 
 [[tool.importlinter.contracts]]
@@ -151,17 +151,45 @@ modules = ["app.sources.demo", "app.sources.deepsales", "app.sources.ga4"]
 [[tool.importlinter.contracts]]
 name = "Platform modules never depend on features"
 type = "forbidden"
-source_modules = ["app.config", "app.database", "app.models", "app.middleware"]
+source_modules = ["app.config", "app.database", "app.models"]
 forbidden_modules = [
     "app.main", "app.api", "app.mcp", "app.insights", "app.agent", "app.atlas",
-    "app.sources",
+    "app.sources", "app.identity", "app.middleware",
 ]
 
 [[tool.importlinter.contracts]]
 name = "Agent and atlas never use HTTP-layer auth"
 type = "forbidden"
 source_modules = ["app.agent", "app.atlas"]
-forbidden_modules = ["app.middleware"]
+forbidden_modules = [
+    "app.middleware",
+    "app.identity.router",
+    "app.identity.dependencies",
+    "app.identity.firebase",
+]
+
+[[tool.importlinter.contracts]]
+name = "Identity depends only on platform modules"
+type = "forbidden"
+source_modules = ["app.identity"]
+forbidden_modules = [
+    "app.main", "app.api", "app.mcp", "app.insights", "app.agent", "app.atlas",
+    "app.sources", "app.middleware",
+]
+
+[[tool.importlinter.contracts]]
+name = "Identity module layering (ARCHITECTURE.md §2.2)"
+type = "layers"
+containers = ["app.identity"]
+layers = [
+    "router",
+    "dependencies | bootstrap",
+    "service | firebase",
+    "repository",
+    "models",
+    "schemas",
+    "principal | tokens | errors",
+]
 
 [tool.coverage.run]
 source = ["app"]

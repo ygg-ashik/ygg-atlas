@@ -28,5 +28,6 @@ def test_verified_token_fields() -> None:
         email_verified=True,
         name="A",
         auth_time=1,
+        sign_in_provider="google.com",
     )
     assert token.email == "a@yougotagift.com"

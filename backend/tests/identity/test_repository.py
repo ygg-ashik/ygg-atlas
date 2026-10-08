@@ -22,3 +22,21 @@ async def test_lookups_return_none_when_missing(db) -> None:
     users = UserRepository(db)
     assert await users.get_by_email("nobody@yougotagift.com") is None
     assert await users.get_by_firebase_uid("fb-none") is None
+
+
+async def test_create_or_get_returns_the_winner_on_conflict(db) -> None:
+    users = UserRepository(db)
+    winner = await users.save(User(email="sara@yougotagift.com", firebase_uid="fb-1"))
+
+    # A concurrent first sign-in lost the race: same identity, inserted second.
+    loser = await users.create_or_get(
+        User(email="sara@yougotagift.com", firebase_uid="fb-1")
+    )
+
+    assert loser.id == winner.id
+
+
+async def test_create_or_get_inserts_when_free(db) -> None:
+    users = UserRepository(db)
+    created = await users.create_or_get(User(email="new@yougotagift.com"))
+    assert await users.get(created.id) is not None

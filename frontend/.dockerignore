@@ -1,0 +1,7 @@
+# Dev-only env files (e.g. VITE_AUTH_DISABLED=true) must never reach a production bundle.
+# frontend/.env is kept: it may carry the public Firebase web config for builds.
+.env.local
+.env.*.local
+node_modules
+dist
+coverage

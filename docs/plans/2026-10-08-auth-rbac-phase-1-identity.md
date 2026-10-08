@@ -2042,12 +2042,12 @@ tests
 ```
 
 Create `frontend/.dockerignore` (a baked `.env.local` with `VITE_AUTH_DISABLED=true` would ship a
-production bundle with login bypassed):
+production bundle with login bypassed; `frontend/.env` stays, as it may carry the public Firebase web
+config the build needs):
 
 ```
-.env
-.env.*
-!.env.example
+.env.local
+.env.*.local
 node_modules
 dist
 coverage
