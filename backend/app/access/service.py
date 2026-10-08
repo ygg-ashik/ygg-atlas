@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.access.cache import PolicyCache, shared_cache
 from app.access.errors import PolicyUnavailableError
 from app.access.evaluator import evaluate
-from app.access.facts import STATUS_ACTIVE, PolicyInputs
+from app.access.facts import STATUS_ACTIVE, PolicyInputs, UserFacts
 from app.access.policy import Policy
 from app.access.repository import AccessRepository
 from app.access.schemas import GroupRefOut, MeAccessOut
@@ -61,14 +61,7 @@ class AccessService:
         user = await self._repo.user_facts(user_id)
         if user is None:
             return Policy.deny_all(user_id, "", version)
-        groups = await self._repo.tenant_groups(user.tenant)
-        inputs = PolicyInputs(
-            user=user,
-            groups=groups,
-            memberships=await self._repo.memberships(user_id),
-            grants=await self._repo.grants_for(user_id, groups),
-            policy_version=version,
-        )
+        inputs = await self._inputs(user, version)
         policy = evaluate(inputs, now)
         self._cache.put(policy)
         return policy
@@ -94,15 +87,18 @@ class AccessService:
         if user is None:
             return frozenset()
         user = replace(user, status=STATUS_ACTIVE)
+        inputs = await self._inputs(user, version)
+        return evaluate(inputs, now).capabilities
+
+    async def _inputs(self, user: UserFacts, version: int) -> PolicyInputs:
         groups = await self._repo.tenant_groups(user.tenant)
-        inputs = PolicyInputs(
+        return PolicyInputs(
             user=user,
             groups=groups,
-            memberships=await self._repo.memberships(user_id),
-            grants=await self._repo.grants_for(user_id, groups),
+            memberships=await self._repo.memberships(user.id),
+            grants=await self._repo.grants_for(user.id, groups),
             policy_version=version,
         )
-        return evaluate(inputs, now).capabilities
 
     async def describe(self, policy: Policy) -> MeAccessOut:
         """What /me/access shows: role, capabilities, groups, any data at all.
