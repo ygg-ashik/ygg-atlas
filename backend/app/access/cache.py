@@ -14,6 +14,9 @@ DEFAULT_MAX_ENTRIES = 1024
 
 
 class PolicyCache:
+    """Event-loop only (no locking): every method is synchronous with no
+    awaits, so calls are atomic in asyncio."""
+
     def __init__(self, max_entries: int = DEFAULT_MAX_ENTRIES) -> None:
         self._entries: OrderedDict[tuple[UUID, int], Policy] = OrderedDict()
         self._max = max_entries

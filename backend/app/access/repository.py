@@ -56,8 +56,17 @@ class AccessRepository:
         return UserFacts(user.id, user.role, user.status, user.tenant)
 
     async def tenant_groups(self, tenant: str) -> dict[UUID, GroupFacts]:
+        # populate_existing: another session may have changed this row after
+        # ours loaded it into its identity map (expire_on_commit=False leaves
+        # it stale); a bumped version must never still read it.
         rows = (
-            (await self._db.execute(select(Group).where(col(Group.tenant) == tenant)))
+            (
+                await self._db.execute(
+                    select(Group)
+                    .where(col(Group.tenant) == tenant)
+                    .execution_options(populate_existing=True)
+                )
+            )
             .scalars()
             .all()
         )
@@ -67,7 +76,9 @@ class AccessRepository:
         rows = (
             (
                 await self._db.execute(
-                    select(GroupMember).where(col(GroupMember.user_id) == user_id)
+                    select(GroupMember)
+                    .where(col(GroupMember.user_id) == user_id)
+                    .execution_options(populate_existing=True)
                 )
             )
             .scalars()
@@ -90,7 +101,17 @@ class AccessRepository:
                     col(Grant.subject_id).in_(ids),
                 ),
             )
-        rows = (await self._db.execute(select(Grant).where(clause))).scalars().all()
+        rows = (
+            (
+                await self._db.execute(
+                    select(Grant)
+                    .where(clause)
+                    .execution_options(populate_existing=True)
+                )
+            )
+            .scalars()
+            .all()
+        )
         return [
             GrantFacts(
                 g.id,

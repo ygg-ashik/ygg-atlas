@@ -49,6 +49,8 @@ class AccessService:
             raise PolicyUnavailableError(msg) from exc
 
     async def _resolve(self, user_id: UUID) -> Policy:
+        # Read the version before the facts: a policy cached under version v
+        # then never predates v.
         version = await self._repo.policy_version()
         now = self._clock()
         cached = self._cache.get(user_id, version, now)
