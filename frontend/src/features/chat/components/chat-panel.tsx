@@ -54,10 +54,11 @@ export function ChatPanel({ sessionId, ensureSession }: ChatPanelProps) {
       <Composer
         value={input}
         onChange={setInput}
+        onSend={() => sendText(input)}
+        onStop={abort}
         isStreaming={isStreaming}
-        canSend={canSend}
-        onSubmit={() => sendText(input)}
-        onAbort={abort}
+        disabled={!canSend}
+        startedAt={draft?.startedAt}
       />
     </div>
   );
