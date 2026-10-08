@@ -46,11 +46,13 @@ def _history_to_messages(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
-CLARIFY_SHOWN = {
+_CLARIFY_SHOWN = {
     "status": "shown_to_user",
     "instruction": "End your turn with one short sentence.",
 }
-CLARIFY_INVALID = {"error": "Provide a question and 2-4 options with non-empty labels."}
+_CLARIFY_INVALID = {
+    "error": "Provide a question and 2-4 options with non-empty labels."
+}
 
 
 class _TurnRecorder:
@@ -80,10 +82,11 @@ class _TurnRecorder:
         # Control tool: no data access, so not an atlas execution and not audited.
         block = build_clarify_block(arguments, set(self._tools.registry.metrics))
         if block is None:
-            return dict(CLARIFY_INVALID)
+            logger.info("agent.clarify_rejected", reason="needs question + 2-4 labels")
+            return dict(_CLARIFY_INVALID)
         if not any(b["kind"] == "clarify" for b in self.blocks):
             self.blocks.append(block)
-        return dict(CLARIFY_SHOWN)
+        return dict(_CLARIFY_SHOWN)
 
 
 def _select_provider(client: AnthropicClient | None) -> ToolLoopRunner:
