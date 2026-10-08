@@ -5,7 +5,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.access.startup import prepare_access
+from app.access import AccessError, access_error_handler, access_router, prepare_access
 from app.api import chat_router
 from app.config import get_settings
 from app.database import get_session_factory
@@ -60,9 +60,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_exception_handler(AccessError, access_error_handler)
 
 app.include_router(chat_router)
 app.include_router(identity_router)
+app.include_router(access_router)
 app.include_router(insights_router)
 
 

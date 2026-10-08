@@ -13,6 +13,7 @@ from app.access.evaluator import evaluate
 from app.access.facts import PolicyInputs
 from app.access.policy import Policy
 from app.access.repository import AccessRepository
+from app.access.schemas import GroupRefOut, MeAccessOut
 from app.identity import Principal
 
 logger = structlog.get_logger()
@@ -70,6 +71,22 @@ class AccessService:
         policy = evaluate(inputs, now)
         self._cache.put(policy)
         return policy
+
+    async def describe(self, policy: Policy) -> MeAccessOut:
+        """What /me/access shows: role, capabilities, groups, any data at all."""
+        memberships = await self._repo.memberships(policy.user_id)
+        groups = await self._repo.tenant_groups(policy.tenant)
+        refs = [
+            GroupRefOut(id=gid, name=groups[gid].name, standing=standing)
+            for gid, standing in memberships.items()
+            if gid in groups
+        ]
+        return MeAccessOut(
+            role=policy.role,
+            capabilities=sorted(policy.capabilities),
+            groups=sorted(refs, key=lambda ref: ref.name),
+            has_data_access=policy.has_data_access,
+        )
 
 
 async def policy_for(db: AsyncSession, principal: Principal) -> Policy:

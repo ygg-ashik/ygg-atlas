@@ -18,9 +18,25 @@ async def make_user(
     status: str = "active",
     kind: str = "human",
 ) -> User:
-    user = User(email=email, role=role, status=status, kind=kind)
+    """Get or create. AUTH_DISABLED may already have created this email
+    (the dev user) before a test gets a chance to, so this upserts rather
+    than insert, which would otherwise hit the email unique constraint."""
+    user = (
+        await db.execute(select(User).where(col(User.email) == email))
+    ).scalar_one_or_none()
+    existed = user is not None
+    if user is None:
+        user = User(email=email, role=role, status=status, kind=kind)
+    else:
+        user.role = role
+        user.status = status
+        user.kind = kind
     db.add(user)
     await db.commit()
+    if existed:
+        # A role/status change on an already-cached policy needs a version
+        # bump too, same as a grant or membership change.
+        await bump(db)
     return user
 
 
