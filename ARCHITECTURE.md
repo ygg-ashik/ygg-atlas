@@ -24,19 +24,19 @@ code disagree, fix one of them in the same change.
 ### 2.1 Layers
 
 ```
-app.main                         app wiring only
-app.api | app.mcp                edges: HTTP routes / MCP handlers (thin)
-app.agent                        LLM loop, prompts, guardrails, providers
-app.atlas                        governed semantic layer: tools, registry, provenance
-app.sources                      source plugins (leaves)
+app.main                           app wiring only
+app.api | app.mcp | app.insights   edges (thin) + read-only insights
+app.agent                          LLM loop, prompts, guardrails, providers
+app.atlas                          governed semantic layer: tools, registry, provenance
+app.sources                        source plugins (leaves)
 ─────────────────────────────────────────────────────────────────────
 platform: app.models · app.database · app.middleware · app.config   (+ app.core, new)
 ```
 
 | Rule | Enforced by (import-linter contract) |
 |---|---|
-| main > api, mcp > agent > atlas > sources, never upward | "Backend layers" |
-| `api` and `mcp` are siblings and never import each other | "Backend layers" (`\|` layer) |
+| main > api, mcp, insights > agent > atlas > sources, never upward | "Backend layers" |
+| `api`, `mcp` and `insights` are siblings and never import each other | "Backend layers" (`\|` layer) |
 | Source plugins import nothing above them, plus no atlas DB, no HTTP | "Source plugins are leaves" |
 | Plugins never import each other | "Source plugins are independent" |
 | Platform modules never import features | "Platform modules never depend on features" |
