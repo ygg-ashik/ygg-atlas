@@ -1,12 +1,18 @@
 """Direct-to-database helpers for tests. They skip AccessAdmin on purpose."""
 
 from datetime import datetime
+from uuid import uuid4
 
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 
+from app.access.admin import AccessAdmin, Actor
+from app.access.cache import PolicyCache
 from app.access.models import Grant, Group, GroupMember, PolicyState
+from app.access.repository import AccessRepository
+from app.access.service import AccessService
+from app.identity import TokenVerifier
 from app.identity.models import User
 
 
@@ -109,3 +115,31 @@ async def grant_all(
         await db.commit()
     await add_grant(db, user, "*")
     return user
+
+
+def admin_for(db: AsyncSession, verifier: TokenVerifier | None = None) -> AccessAdmin:
+    repo = AccessRepository(db)
+    return AccessAdmin(repo, AccessService(repo, PolicyCache()), verifier)
+
+
+async def actor_with(
+    db: AsyncSession,
+    role: str = "admin",
+    *,
+    member_of: Group | None = None,
+    standing: str = "member",
+) -> Actor:
+    """An API actor backed by a real user and an evaluated policy."""
+    user = await make_user(db, f"{role}-{uuid4().hex[:8]}@yougotagift.com", role=role)
+    if member_of is not None:
+        await add_member(db, member_of, user, standing)
+    policy = await AccessService(AccessRepository(db), PolicyCache()).policy_for_user(
+        user.id
+    )
+    return Actor.from_policy(policy)
+
+
+async def policy_version(db: AsyncSession) -> int:
+    state = await db.get(PolicyState, 1, populate_existing=True)
+    assert state is not None
+    return state.policy_version

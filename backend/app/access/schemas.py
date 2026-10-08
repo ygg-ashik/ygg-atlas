@@ -1,9 +1,10 @@
 """Request and response shapes for the access API (separate from the tables)."""
 
-from typing import Self
+from datetime import datetime
+from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.access.catalog import CAPABILITIES, ROLES, role_capabilities
 
@@ -47,3 +48,29 @@ class CatalogOut(BaseModel):
                 for role in ROLES
             ],
         )
+
+
+class GroupCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    description: str = Field(default="", max_length=500)
+    parent_id: UUID | None = None
+
+
+class GroupUpdate(BaseModel):
+    """Only the fields sent are changed; send `parent_id: null` to make a root group."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=500)
+    parent_id: UUID | None = None
+
+
+class MemberPut(BaseModel):
+    standing: Literal["member", "manager"] = "member"
+
+
+class MemberOut(BaseModel):
+    user_id: UUID
+    email: str
+    display_name: str
+    standing: str
+    added_at: datetime

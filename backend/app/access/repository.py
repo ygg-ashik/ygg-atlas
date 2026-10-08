@@ -6,12 +6,12 @@ service `commit`s once, so a change, its audit row and the version bump
 land together.
 """
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, CursorResult, and_, or_, update
+from sqlalchemy import ColumnElement, CursorResult, and_, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, col, select
 
@@ -179,3 +179,71 @@ class AccessRepository:
             if code not in catalog:
                 row.deprecated = True
                 self._db.add(row)
+
+    # ---- reads for administration ---------------------------------------
+
+    async def group(self, group_id: UUID) -> Group | None:
+        return await self._db.get(Group, group_id, populate_existing=True)
+
+    async def group_by_name(self, tenant: str, name: str) -> Group | None:
+        stmt = (
+            select(Group)
+            .where(col(Group.tenant) == tenant, col(Group.name) == name)
+            .execution_options(populate_existing=True)
+        )
+        return (await self._db.execute(stmt)).scalar_one_or_none()
+
+    async def list_groups(self, tenant: str) -> list[Group]:
+        stmt = (
+            select(Group)
+            .where(col(Group.tenant) == tenant)
+            .order_by(col(Group.name))
+            .execution_options(populate_existing=True)
+        )
+        return list((await self._db.execute(stmt)).scalars().all())
+
+    async def group_in_use(self, group_id: UUID) -> bool:
+        """True when the group has subgroups, members or grants."""
+        checks = (
+            select(func.count())
+            .select_from(Group)
+            .where(col(Group.parent_id) == group_id),
+            select(func.count())
+            .select_from(GroupMember)
+            .where(col(GroupMember.group_id) == group_id),
+            select(func.count())
+            .select_from(Grant)
+            .where(
+                col(Grant.subject_type) == SUBJECT_GROUP,
+                col(Grant.subject_id) == group_id,
+            ),
+        )
+        for stmt in checks:
+            if (await self._db.execute(stmt)).scalar_one():
+                return True
+        return False
+
+    async def member(self, group_id: UUID, user_id: UUID) -> GroupMember | None:
+        return await self._db.get(
+            GroupMember, (group_id, user_id), populate_existing=True
+        )
+
+    async def list_members(self, group_id: UUID) -> list[tuple[GroupMember, User]]:
+        stmt = (
+            select(GroupMember, User)
+            .join(User, col(User.id) == col(GroupMember.user_id))
+            .where(col(GroupMember.group_id) == group_id)
+            .order_by(col(User.email))
+            .execution_options(populate_existing=True)
+        )
+        # SQLModel's Select[tuple[_T0, _T1]] re-wraps _T in another tuple
+        # (sql/_expression_select_cls.py), so the static row type from
+        # .tuples() is one level deeper than the actual runtime rows.
+        rows = cast(
+            "Sequence[tuple[GroupMember, User]]",
+            (await self._db.execute(stmt)).tuples().all(),
+        )
+        return list(rows)
+
+    async def user(self, user_id: UUID) -> User | None:
+        return await self._db.get(User, user_id, populate_existing=True)
