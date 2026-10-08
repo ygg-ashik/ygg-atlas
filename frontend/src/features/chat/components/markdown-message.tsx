@@ -1,44 +1,75 @@
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import type { ReactNode } from 'react';
+import { useReducedMotion } from 'motion/react';
+import { Streamdown, type AnimateOptions, type Components } from 'streamdown';
 
 interface MarkdownMessageProps {
   text: string;
+  /** True while tokens are still arriving. Enables incomplete-markdown repair,
+   * word blur-in (DESIGN.md › Streaming) and the caret. */
+  streaming?: boolean;
 }
 
-/** Assistant-message markdown: GFM tables/lists, no raw HTML; external links
- * open in a new tab. Wide tables scroll inside the bubble. */
-export function MarkdownMessage({ text }: MarkdownMessageProps) {
-  return (
-    <div className="min-w-0 text-sm leading-relaxed [&_h1]:mb-1 [&_h1]:mt-3 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:mb-1 [&_h2]:mt-3 [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:mt-2 [&_h3]:text-sm [&_h3]:font-semibold [&_table]:my-0 [&_table]:w-max [&_table]:min-w-full [&_td]:border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:bg-muted [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_p]:my-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-secondary [&_pre]:p-3 [&_pre]:text-xs [&_code]:rounded [&_code]:bg-secondary [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_blockquote]:my-2 [&_blockquote]:border-l-2 [&_blockquote]:border-primary/40 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          // Wide tables scroll horizontally INSIDE the bubble instead of
-          // bleeding past its background.
-          table: ({ children }) => (
-            <div className="my-2 max-w-full overflow-x-auto">
-              <table>{children}</table>
-            </div>
-          ),
-          a: ({ href, children }) => {
-            if (href && /^https?:\/\//.test(href)) {
-              return (
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary underline underline-offset-2"
-                >
-                  {children}
-                </a>
-              );
-            }
-            return <span>{children}</span>;
-          },
-        }}
+// DESIGN.md › Streaming: word chunks fade in from blur(3px) over 420ms. The
+// animate plugin staggers words 40ms apart and caps the backlog at 320ms, which
+// is the adaptive pacing (bursty network chunks flow out evenly).
+const STREAM_ANIMATION: AnimateOptions = {
+  animation: 'blurIn',
+  sep: 'word',
+  duration: 420,
+  stagger: 40,
+  maxBacklogMs: 320,
+  easing: 'cubic-bezier(.22,1,.36,1)',
+};
+
+const PROSE =
+  'min-w-0 text-answer text-body [&_h1]:mb-2.5 [&_h1]:mt-1.5 [&_h1]:font-serif [&_h1]:text-title [&_h1]:font-normal [&_h1]:text-ink [&_h2]:mb-2.5 [&_h2]:mt-1.5 [&_h2]:font-serif [&_h2]:text-title [&_h2]:font-normal [&_h2]:text-ink [&_h3]:mb-1.5 [&_h3]:mt-3 [&_h3]:font-serif [&_h3]:text-section [&_h3]:font-normal [&_h3]:text-ink [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-3 [&_strong]:font-semibold [&_strong]:text-ink [&_table]:tabular [&_td]:border-b [&_td]:px-2 [&_td]:py-1.5 [&_th]:border-b [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_th]:text-label [&_th]:font-medium [&_th]:text-muted-foreground [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5';
+
+/** Only http(s) links render as anchors (new tab); anything else is plain text. */
+function SafeLink({ href, children }: { href?: string; children?: ReactNode }) {
+  if (href && /^https?:\/\//.test(href)) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary-text underline underline-offset-2"
       >
-        {text}
-      </ReactMarkdown>
+        {children}
+      </a>
+    );
+  }
+  return <span>{children}</span>;
+}
+
+/** Wide tables scroll horizontally inside a solid card (never on glass). */
+function ScrollTable({ children }: { children?: ReactNode }) {
+  return (
+    <div className="my-3 max-w-full overflow-x-auto rounded-lg bg-card shadow-[0_0_0_1px_hsl(var(--border)/0.6)]">
+      <table className="w-max min-w-full">{children}</table>
     </div>
+  );
+}
+
+const COMPONENTS: Components = {
+  a: ({ href, children }) => <SafeLink href={href}>{children}</SafeLink>,
+  table: ({ children }) => <ScrollTable>{children}</ScrollTable>,
+};
+
+/** Assistant prose: GFM, no raw HTML, safe links. Text already on screen never re-animates. */
+export function MarkdownMessage({ text, streaming = false }: MarkdownMessageProps) {
+  const reduced = useReducedMotion();
+  return (
+    <Streamdown
+      mode={streaming ? 'streaming' : 'static'}
+      isAnimating={streaming}
+      parseIncompleteMarkdown
+      animated={streaming && !reduced ? STREAM_ANIMATION : false}
+      caret={streaming ? 'circle' : undefined}
+      controls={{ table: false, code: { copy: true } }}
+      className={PROSE}
+      components={COMPONENTS}
+    >
+      {text}
+    </Streamdown>
   );
 }

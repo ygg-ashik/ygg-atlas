@@ -455,7 +455,8 @@ Library: **`motion`** (springs, layout/shared-element, `AnimatePresence`). Numbe
 5. **No bounce** except after momentum gestures. No looping motion except status indicators.
 
 ### Streaming (the core of the chat experience)
-- **Adaptive pacing**: buffer incoming tokens and release them on a ~40ms tick, 1 word per tick normally, 2 when the backlog is over 5, 3 when it's over 12. Text flows evenly and never falls far behind the network.
+- **Adaptive pacing:** implemented by `streamdown`'s animate plugin. Words are staggered 40ms apart and the
+  scheduling backlog is capped at 320ms, so bursty network chunks flow out evenly and never fall far behind.
 - **Reveal**: each released word chunk fades in from `blur(3px)` to sharp over 420ms. **Text already on screen never re-animates or reflows.**
 - **Incomplete markdown** is held back until it closes (`streamdown`, replacing the bespoke `markdown-stream.ts`). Only the last block re-renders.
 - **Caret**: a small pulsing accent dot after the last token. It's removed at the end.

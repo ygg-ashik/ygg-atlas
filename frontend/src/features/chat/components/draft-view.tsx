@@ -1,15 +1,10 @@
 import { Loader2 } from 'lucide-react';
 import type { DraftTurn } from '../hooks/use-chat-turn';
-import { stabilizeStreamingMarkdown } from '../markdown-stream';
 import { MessageBubble } from './message-bubble';
 import { ProvenanceChips } from './provenance-chips';
 
 export function DraftView({ draft }: { draft: DraftTurn }) {
   const provenance = draft.provenance ?? [];
-  const assistantText =
-    draft.phase === 'streaming'
-      ? stabilizeStreamingMarkdown(draft.assistantText)
-      : draft.assistantText;
   return (
     <>
       <MessageBubble role="user" text={draft.userText} />
@@ -19,7 +14,7 @@ export function DraftView({ draft }: { draft: DraftTurn }) {
           Thinking…
         </div>
       )}
-      {draft.assistantText && <MessageBubble role="assistant" text={assistantText} />}
+      {draft.assistantText && <MessageBubble role="assistant" text={draft.assistantText} />}
       {provenance.length > 0 && <ProvenanceChips provenance={provenance} />}
       {draft.toolStatus && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
