@@ -4,6 +4,7 @@ import { Loader2, Orbit } from 'lucide-react';
 import { Button } from '@/ui';
 import { useAuth } from './auth-context';
 
+/* eslint-disable no-restricted-syntax -- official Google "G" brand colors, not design tokens */
 const GoogleMark = () => (
   <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
     <path
@@ -24,6 +25,7 @@ const GoogleMark = () => (
     />
   </svg>
 );
+/* eslint-enable no-restricted-syntax */
 
 export default function LoginPage() {
   const { isAuthenticated, isLoading, signInWithGoogle } = useAuth();
