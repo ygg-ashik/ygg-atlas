@@ -26,7 +26,9 @@ class AtlasAuditLog(SQLModel, table=True):
     arguments: dict | None = Field(default=None, sa_column=Column(JSON))
     success: bool = True
     error: str | None = None
-    decision: str = Field(default="allow", max_length=8)  # 'allow' | 'deny'
+    decision: str = Field(  # 'allow' | 'deny'
+        default="allow", max_length=8, sa_column_kwargs={"server_default": "allow"}
+    )
     deny_reason: str | None = Field(default=None, max_length=200)
     duration_ms: int | None = None
     created_at: datetime = Field(

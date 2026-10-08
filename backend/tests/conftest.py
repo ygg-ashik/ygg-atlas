@@ -114,6 +114,8 @@ async def db():
         await conn.run_sync(SQLModel.metadata.drop_all)
         await conn.run_sync(SQLModel.metadata.create_all)
         await seed_demo(conn)
+        # Tests start with no groups (migration 0003 seeds the starter groups in
+        # real databases); tests create the groups they need.
         await conn.execute(
             text(
                 "INSERT INTO policy_state (id, policy_version, updated_at) "

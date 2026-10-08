@@ -102,3 +102,22 @@ async def test_legacy_create_all_database_upgrades_in_place(
         ("sara@yougotagift.com", "fb-sara"),
     ]
     assert unlinked == 0
+
+
+def _check_names(conn: Connection, table: str) -> set[str | None]:
+    return {c["name"] for c in sa.inspect(conn).get_check_constraints(table)}
+
+
+async def test_check_constraints_match_the_models(engine: AsyncEngine) -> None:
+    await _upgrade("head")
+    tables = ("grants", "group_members", "policy_state")
+    async with engine.connect() as conn:
+        for table in tables:
+            migrated = await conn.run_sync(_check_names, table)
+            declared = {
+                c.name
+                for c in SQLModel.metadata.tables[table].constraints
+                if isinstance(c, sa.CheckConstraint)
+            }
+            assert declared, table
+            assert migrated == declared, table

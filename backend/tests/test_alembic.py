@@ -289,6 +289,17 @@ def test_sessions_without_an_owner_stop_the_migration(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="no user_id"):
         command.upgrade(config, "0003")
 
+    # The check runs before any DDL, so a failed run leaves the database at 0002
+    # (SQLite does not roll back DDL).
+    assert "groups" not in _tables(f"sqlite:///{db}")
+    engine = sa.create_engine(f"sqlite:///{db}")
+    with engine.connect() as conn:
+        version = conn.execute(
+            sa.text("SELECT version_num FROM alembic_version")
+        ).scalar_one()
+    engine.dispose()
+    assert version == "0002"
+
 
 def test_malformed_grant_rows_are_rejected(tmp_path: Path) -> None:
     db = tmp_path / "m.db"

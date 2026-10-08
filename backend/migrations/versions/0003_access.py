@@ -8,6 +8,9 @@
   legacy column stays because the log is append-only.
 - chat_sessions: user_id becomes required and the user_uid mirror is dropped.
 
+Deploy only together with the code that stops writing chat_sessions.user_uid (auth
+phase 2 tasks 13-14); the backend runs this migration at container start.
+
 Revision ID: 0003
 Revises: 0002
 """
@@ -62,6 +65,9 @@ _policy_state = sa.table(
 
 
 def upgrade() -> None:
+    # Checked before any DDL: SQLite does not roll DDL back, so a failed run must
+    # leave nothing behind.
+    _assert_sessions_owned()
     _create_tables()
     _seed()
     _extend_audit()
@@ -138,9 +144,10 @@ def _create_tables() -> None:
     op.create_index("ix_rbac_changes_at", "rbac_changes", ["at"])
     op.create_table(
         "policy_state",
-        sa.Column("id", sa.Integer(), primary_key=True),
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=False),
         sa.Column("policy_version", sa.BigInteger(), nullable=False),
         sa.Column("updated_at", TS, nullable=False),
+        sa.CheckConstraint("id = 1", name="ck_policy_state_singleton"),
     )
 
 
@@ -196,7 +203,7 @@ def _backfill_audit_owners() -> None:
             )
 
 
-def _require_session_owner() -> None:
+def _assert_sessions_owned() -> None:
     orphans = (
         op.get_bind()
         .execute(
@@ -212,6 +219,9 @@ def _require_session_owner() -> None:
             "(see migration 0002's backfill) before upgrading"
         )
         raise RuntimeError(msg)
+
+
+def _require_session_owner() -> None:
     with op.batch_alter_table("chat_sessions") as batch:
         batch.drop_index("ix_chat_sessions_user_uid")
         batch.drop_column("user_uid")

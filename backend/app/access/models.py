@@ -113,8 +113,11 @@ class PolicyState(SQLModel, table=True):
     """Single row. Every access write increments policy_version (spec §8)."""
 
     __tablename__ = "policy_state"  # pyright: ignore[reportAssignmentType]  # sqlmodel types it as declared_attr
+    __table_args__ = (CheckConstraint("id = 1", name="ck_policy_state_singleton"),)
 
-    id: int = Field(default=1, primary_key=True)
+    id: int = Field(
+        default=1, primary_key=True, sa_column_kwargs={"autoincrement": False}
+    )
     policy_version: int = Field(default=1, sa_type=BigInteger)
     updated_at: datetime = Field(
         default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True)
