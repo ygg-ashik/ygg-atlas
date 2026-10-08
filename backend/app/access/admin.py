@@ -5,11 +5,15 @@ policy_version bump commit together, so no cached policy can miss a change.
 Every write also locks `policy_state` first (`AccessRepository.lock_for_write`),
 so concurrent admin writes serialize and a losing write sees a 409 instead of
 racing past another write's application-level checks.
+
+A failed write rolls the session back, which expires loaded objects; reload
+them before reuse.
 """
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Self
 from uuid import UUID
 
@@ -17,18 +21,27 @@ import structlog
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import SQLModel
 
-from app.access.catalog import ADMIN_GROUPS
+from app.access.catalog import ADMIN_GROUPS, ADMIN_USERS, CAPABILITIES
 from app.access.errors import (
     AccessDeniedError,
     ConflictError,
     InvalidChangeError,
     NotFoundError,
 )
-from app.access.facts import DEFAULT_TENANT, STANDING_MANAGER, STANDING_MEMBER
-from app.access.models import Group, GroupMember, RbacChange
+from app.access.facts import (
+    DEFAULT_TENANT,
+    KIND_CAPABILITY,
+    KIND_CLEARANCE,
+    STANDING_MANAGER,
+    STANDING_MEMBER,
+    SUBJECT_GROUP,
+    SUBJECT_USER,
+)
+from app.access.models import Grant, Group, GroupMember, RbacChange
+from app.access.patterns import InvalidPatternError, validate_pattern
 from app.access.policy import Policy
 from app.access.repository import AccessRepository
-from app.access.schemas import GroupCreate, GroupUpdate, MemberOut
+from app.access.schemas import GrantCreate, GroupCreate, GroupUpdate, MemberOut
 from app.access.service import AccessService
 from app.identity import TokenVerifier, User
 
@@ -94,6 +107,49 @@ def _member_out(member: GroupMember, user: User) -> MemberOut:
         standing=member.standing,
         added_at=member.added_at,
     )
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+def _grant_capability(subject_type: str) -> str:
+    """Group grants are group administration; direct user grants are user admin."""
+    return ADMIN_GROUPS if subject_type == SUBJECT_GROUP else ADMIN_USERS
+
+
+def _validated_target(payload: GrantCreate, now: datetime) -> str:
+    if payload.expires_at is not None and payload.expires_at <= now:
+        msg = "The expiry must be in the future."
+        raise InvalidChangeError(msg)
+    if payload.subject_type == SUBJECT_USER and not payload.reason.strip():
+        msg = "Direct user grants need a reason."
+        raise InvalidChangeError(msg)
+    if payload.target_kind == KIND_CLEARANCE:
+        msg = (
+            "Field clearances arrive with row and field controls; "
+            "they can't be granted yet."
+        )
+        raise InvalidChangeError(msg)
+    if payload.target_kind == KIND_CAPABILITY:
+        return _capability_target(payload)
+    try:
+        return validate_pattern(payload.target)
+    except InvalidPatternError as exc:
+        raise InvalidChangeError(str(exc)) from None
+
+
+def _capability_target(payload: GrantCreate) -> str:
+    if payload.subject_type != SUBJECT_USER:
+        msg = (
+            "Groups grant data, not actions. Change the user's role, or give the "
+            "capability to a user directly."
+        )
+        raise InvalidChangeError(msg)
+    if payload.target not in CAPABILITIES:
+        msg = f"Unknown capability '{payload.target}'."
+        raise InvalidChangeError(msg)
+    return payload.target
 
 
 class AccessAdmin:
@@ -236,6 +292,61 @@ class AccessAdmin:
             target = ("group_member", f"{group.id}:{user_id}")
             await self._commit(_change(actor, "member.remove", target, before, None))
 
+    # ---- grants ---------------------------------------------------------
+
+    async def list_grants(
+        self, actor: Actor, subject_type: str, subject_id: UUID
+    ) -> list[Grant]:
+        actor.require(_grant_capability(subject_type))
+        await self._subject(actor, subject_type, subject_id)
+        return await self._repo.list_grants(subject_type, subject_id)
+
+    async def create_grant(self, actor: Actor, payload: GrantCreate) -> Grant:
+        actor.require(_grant_capability(payload.subject_type))
+        target = _validated_target(payload, _utcnow())
+        async with self._write():
+            await self._repo.lock_for_write()
+            await self._subject(actor, payload.subject_type, payload.subject_id)
+            subject = (payload.subject_type, payload.subject_id)
+            existing = await self._repo.find_grant(
+                subject, payload.effect, payload.target_kind, target
+            )
+            if existing is not None:
+                msg = "That grant already exists."
+                raise ConflictError(msg)
+            grant = Grant(
+                subject_type=payload.subject_type,
+                subject_id=payload.subject_id,
+                effect=payload.effect,
+                target_kind=payload.target_kind,
+                target=target,
+                reason=payload.reason.strip(),
+                expires_at=payload.expires_at,
+                created_by=actor.user_id,
+            )
+            self._repo.add(grant)
+            await self._commit(
+                _change(
+                    actor, "grant.create", ("grant", grant.id), None, _snapshot(grant)
+                )
+            )
+        return grant
+
+    async def revoke_grant(self, actor: Actor, grant_id: UUID) -> None:
+        async with self._write():
+            await self._repo.lock_for_write()
+            grant = await self._repo.grant(grant_id)
+            if grant is None:
+                msg = "No such grant."
+                raise NotFoundError(msg)
+            actor.require(_grant_capability(grant.subject_type))
+            await self._subject(actor, grant.subject_type, grant.subject_id)
+            before = _snapshot(grant)
+            await self._repo.delete(grant)
+            await self._commit(
+                _change(actor, "grant.revoke", ("grant", grant.id), before, None)
+            )
+
     # ---- helpers ------------------------------------------------------------
 
     @asynccontextmanager
@@ -279,6 +390,13 @@ class AccessAdmin:
             msg = "No such user."
             raise NotFoundError(msg)
         return user
+
+    async def _subject(self, actor: Actor, subject_type: str, subject_id: UUID) -> None:
+        """The grant subject must exist in the actor's tenant."""
+        if subject_type == SUBJECT_GROUP:
+            await self._group(actor, subject_id)
+        else:
+            await self._user(actor, subject_id)
 
     async def _ensure_name_free(self, actor: Actor, name: str) -> None:
         if await self._repo.group_by_name(actor.tenant, name) is not None:

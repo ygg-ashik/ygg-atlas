@@ -271,3 +271,35 @@ class AccessRepository:
 
     async def user(self, user_id: UUID) -> User | None:
         return await self._db.get(User, user_id, populate_existing=True)
+
+    async def grant(self, grant_id: UUID) -> Grant | None:
+        return await self._db.get(Grant, grant_id, populate_existing=True)
+
+    async def list_grants(self, subject_type: str, subject_id: UUID) -> list[Grant]:
+        stmt = (
+            select(Grant)
+            .where(
+                col(Grant.subject_type) == subject_type,
+                col(Grant.subject_id) == subject_id,
+            )
+            .order_by(col(Grant.created_at))
+            .execution_options(populate_existing=True)
+        )
+        return list((await self._db.execute(stmt)).scalars().all())
+
+    async def find_grant(
+        self, subject: tuple[str, UUID], effect: str, target_kind: str, target: str
+    ) -> Grant | None:
+        subject_type, subject_id = subject
+        stmt = (
+            select(Grant)
+            .where(
+                col(Grant.subject_type) == subject_type,
+                col(Grant.subject_id) == subject_id,
+                col(Grant.effect) == effect,
+                col(Grant.target_kind) == target_kind,
+                col(Grant.target) == target,
+            )
+            .execution_options(populate_existing=True)
+        )
+        return (await self._db.execute(stmt)).scalars().first()

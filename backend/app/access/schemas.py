@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from app.access.catalog import CAPABILITIES, ROLES, role_capabilities
 
@@ -74,3 +74,13 @@ class MemberOut(BaseModel):
     display_name: str
     standing: str
     added_at: datetime
+
+
+class GrantCreate(BaseModel):
+    subject_type: Literal["group", "user"]
+    subject_id: UUID
+    effect: Literal["allow", "deny"] = "allow"
+    target_kind: Literal["resource", "capability", "clearance"] = "resource"
+    target: str = Field(min_length=1, max_length=200)
+    reason: str = Field(default="", max_length=500)
+    expires_at: AwareDatetime | None = None
