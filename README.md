@@ -72,6 +72,19 @@ Migrations run automatically when the backend container starts (`alembic upgrade
 baseline is idempotent, so a database created by the old `create_all` upgrades in place; it is also
 irreversible (`alembic downgrade base` refuses), so back up before risky migrations.
 
+### Sign-in (Firebase Auth, Google only)
+
+- **Provider and authorized domains** are config as code in `firebase.json` (project in
+  `.firebaserc`). Apply with `firebase deploy --only auth` while signed in to the Firebase CLI as a
+  `@yougotagift.com` account. atlas uses Firebase **Auth only**; users, permissions and chat live in
+  Postgres.
+- **Web config** (public): repo-root `.env` on the box, from `.env.example`. docker compose passes it
+  to the frontend build as args. Rebuild the frontend after changing it.
+- **Backend**: `FIREBASE_PROJECT_ID=ygg-atlas` in `backend/.env`. Tokens are verified against
+  Google's public keys, so no service account is needed.
+- **Access**: the box is private (`http://10.4.216.35:8080` over VPN). Without an authorized
+  hostname, use a tunnel: `ssh -L 8080:localhost:8080 atlas`, then open `http://localhost:8080`.
+
 `ENVIRONMENT` fails closed: unset means `production`, which refuses `AUTH_DISABLED=true` and requires
 `FIREBASE_PROJECT_ID`. While the box still runs with `AUTH_DISABLED=true`, `backend/.env` must set
 `ENVIRONMENT=development` or the backend will not start. `BOOTSTRAP_ADMINS` (comma-separated emails)

@@ -25,6 +25,9 @@ dependencies = [
     # has no wheels after 48.x, so that toolchain stays on 48.0.1 (ARCHITECTURE.md §6).
     "cryptography>=50; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     "cryptography>=48.0.1,<49; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "google-auth>=2.30",
+    "cachecontrol>=0.14",
+    "requests>=2.32",
 ]
 
 [project.optional-dependencies]

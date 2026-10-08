@@ -1,0 +1,15 @@
+{
+  "auth": {
+    "providers": {
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "YouGotAGift Atlas",
+        "supportEmail": "ashik@yougotagift.com",
+        "authorizedRedirectUris": [
+          "https://ygg-atlas.firebaseapp.com/__/auth/handler",
+          "http://localhost",
+          "http://10.4.216.35"
+        ]
+      }
+    }
+  }
+}
