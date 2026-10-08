@@ -30,3 +30,13 @@ def test_prompt_explains_missing_access_honestly() -> None:
     prompt = build_system_prompt()
     assert "isn't available" in prompt
     assert "atlas admin" in prompt
+    assert "doesn't exist" in prompt
+    assert "another way" in prompt
+
+
+def test_prompt_frames_a_miss_as_scoped_to_the_users_access() -> None:
+    """Rule 2 + rule 10 must agree: partial access never reads as "this data
+    doesn't exist" — only as "not among what you can see"."""
+    prompt = build_system_prompt()
+    assert "available to you" in prompt
+    assert "may be outside your access" in prompt

@@ -113,7 +113,10 @@ async def run_chat_turn(
     db: AsyncSession,
     client: AnthropicClient | None = None,
 ) -> AsyncGenerator[Event, None]:
-    """One chat turn for the caller bound to `tools` (their policy + audit identity)."""
+    """One chat turn for the caller bound to `tools` (their policy + audit identity).
+
+    `tools` must be bound to the same session the turn is persisted to.
+    """
     settings = get_settings()
 
     verdict = await check_input(content, tools.caller.user_id, db)
@@ -147,7 +150,12 @@ async def run_chat_turn(
             else:
                 yield event
     except Exception:
-        logger.exception("agent.turn_failed", session_id=str(tools.caller.session_id))
+        logger.exception(
+            "agent.turn_failed",
+            session_id=str(tools.caller.session_id),
+            user_id=str(tools.caller.user_id),
+            surface=tools.caller.surface,
+        )
         yield {
             "type": "error",
             "message": "Something went wrong answering that. Please retry.",

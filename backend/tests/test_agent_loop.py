@@ -8,7 +8,7 @@ from sqlmodel import select
 
 from app.agent.loop import run_chat_turn
 from app.models.audit import AtlasAuditLog
-from app.models.chat import ChatSession
+from app.models.chat import ChatMessage, ChatSession
 from tests.fakes import make_tools
 
 
@@ -350,3 +350,28 @@ async def test_clarify_cannot_offer_metrics_the_user_cannot_see(db):
 
     offered = events[-1]["blocks"][0]["options"]
     assert [o["metric_id"] for o in offered] == [None, "revenue"]
+
+
+async def test_guardrail_blocks_by_user_id_across_sessions(db):
+    """A heavy user who used up their daily limit in another session of theirs
+    is blocked here too: the guardrail keys on tools.caller.user_id, not
+    session_id."""
+    heavy = uuid4()
+    other_session = ChatSession(user_id=heavy, user_email="h@yougotagift.com")
+    db.add(other_session)
+    await db.commit()
+    for i in range(5):  # test env sets CHAT_DAILY_MESSAGE_LIMIT=5
+        db.add(ChatMessage(session_id=other_session.id, role="user", content=f"q{i}"))
+    await db.commit()
+
+    session = ChatSession(user_id=heavy, user_email="h@yougotagift.com")
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+
+    client = FakeAnthropicClient([])
+    events = await collect(
+        run_chat_turn(_tools(db, session), "one more", [], db, client=client)
+    )
+    assert events[-1]["type"] == "blocked"
+    assert "limit" in events[-1]["reason"].lower()

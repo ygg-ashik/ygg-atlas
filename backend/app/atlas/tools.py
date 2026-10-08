@@ -50,9 +50,10 @@ class AtlasToolError(Exception):
 class AtlasAccessDeniedError(AtlasToolError):
     """The caller's policy denies a governed resource (spec §6, point 2)."""
 
-    def __init__(self, label: str, reason: str) -> None:
+    def __init__(self, label: str, reason: str, message: str | None = None) -> None:
         super().__init__(
-            f"{label} isn't available to you. Ask an atlas admin if you need it."
+            message
+            or f"{label} isn't available to you. Ask an atlas admin if you need it."
         )
         self.reason = reason
 
@@ -215,12 +216,24 @@ class AtlasTools:
         return AtlasAccessDeniedError(label, reason)
 
     def _authorize(self, resource: str, label: str) -> None:
-        """Execution check (point 2): a failing policy denies."""
+        """Execution check (point 2): a failing policy denies.
+
+        A policy-evaluation failure is not a real denial — it gets its own
+        honest message, never "isn't available to you" (that claims the
+        policy was consulted and said no).
+        """
         try:
             allowed = self._allowed(resource)
         except AtlasPolicyError as exc:
             logger.exception("atlas.policy_error", resource=resource)
-            raise AtlasAccessDeniedError(label, POLICY_FAILED) from exc
+            raise AtlasAccessDeniedError(
+                label,
+                POLICY_FAILED,
+                message=(
+                    f"{label} couldn't be checked against your access right "
+                    "now. Try again shortly."
+                ),
+            ) from exc
         if not allowed:
             raise self._denied(resource, label)
 

@@ -178,7 +178,9 @@ async def test_a_failing_policy_denies_execution_and_is_audited(db) -> None:
 
     result = await tools.execute("query_metric", {"metric_id": "revenue", **WEEK})
 
-    assert "isn't available to you" in result["error"]
+    # A policy-evaluation failure is not the same claim as a real denial: it
+    # gets its own honest message, never "isn't available to you".
+    assert "couldn't be checked against your access right now" in result["error"]
     [row] = await _rows(db, user_id)
     assert (row.decision, row.success) == ("deny", False)
     assert row.deny_reason == "the access check failed"
