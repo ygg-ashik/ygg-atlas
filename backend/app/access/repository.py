@@ -8,9 +8,10 @@ land together.
 
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
+from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, and_, or_, update
+from sqlalchemy import ColumnElement, CursorResult, and_, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, col, select
 
@@ -135,14 +136,22 @@ class AccessRepository:
         await self._db.delete(row)
 
     async def bump_version(self) -> None:
-        await self._db.execute(
-            update(PolicyState)
-            .where(col(PolicyState.id) == 1)
-            .values(
-                policy_version=col(PolicyState.policy_version) + 1,
-                updated_at=datetime.now(UTC),
-            )
+        # An UPDATE always executes through a cursor, so this is a CursorResult
+        # (rowcount) at runtime; Session.execute only types it as the base Result.
+        result = cast(
+            "CursorResult[Any]",
+            await self._db.execute(
+                update(PolicyState)
+                .where(col(PolicyState.id) == 1)
+                .values(
+                    policy_version=col(PolicyState.policy_version) + 1,
+                    updated_at=datetime.now(UTC),
+                )
+            ),
         )
+        if result.rowcount != 1:
+            msg = "policy_state has no row"
+            raise PolicyUnavailableError(msg)
 
     async def commit(self) -> None:
         await self._db.commit()
@@ -154,7 +163,12 @@ class AccessRepository:
 
     async def sync_capabilities(self, catalog: Mapping[str, str]) -> None:
         existing = {
-            c.code: c for c in (await self._db.execute(select(Capability))).scalars()
+            c.code: c
+            for c in (
+                await self._db.execute(
+                    select(Capability).execution_options(populate_existing=True)
+                )
+            ).scalars()
         }
         for code, description in catalog.items():
             row = existing.get(code) or Capability(code=code, description=description)

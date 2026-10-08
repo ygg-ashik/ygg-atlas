@@ -4,7 +4,7 @@ import pytest
 
 from app.config import Settings
 from app.identity.errors import ForbiddenError, UnauthenticatedError
-from app.identity.models import User, UserStatus
+from app.identity.models import User, UserKind, UserStatus
 from app.identity.repository import UserRepository
 from app.identity.service import IdentityService
 from app.identity.tokens import VerifiedToken
@@ -135,3 +135,29 @@ async def test_relinks_a_recreated_google_account_by_email(db) -> None:
     stored = await users.get(existing.id)
     assert stored is not None
     assert stored.firebase_uid == "fb-new"
+
+
+async def test_service_identity_cannot_sign_in_when_found_by_email(db) -> None:
+    await UserRepository(db).save(
+        User(email="sara@yougotagift.com", kind=UserKind.SERVICE)
+    )
+    with pytest.raises(ForbiddenError, match="can't sign in"):
+        await _service(db).resolve_web(_token())
+
+
+async def test_service_identity_cannot_sign_in_when_found_by_firebase_uid(
+    db,
+) -> None:
+    users = UserRepository(db)
+    service = await users.save(
+        User(
+            email="svc@yougotagift.com",
+            firebase_uid="fb-sara",
+            kind=UserKind.SERVICE,
+        )
+    )
+    with pytest.raises(ForbiddenError, match="can't sign in"):
+        await _service(db).resolve_web(_token())
+    stored = await users.get(service.id)
+    assert stored is not None
+    assert stored.firebase_uid == "fb-sara"  # never relinked

@@ -117,6 +117,7 @@ class IdentityService:
     async def _find_or_link(self, token: VerifiedToken) -> User:
         user = await self._users.get_by_firebase_uid(token.uid)
         if user is not None:
+            self._reject_service_identity(user)
             return user
         user = await self._users.get_by_email(token.email)
         if user is None:
@@ -124,6 +125,7 @@ class IdentityService:
             return await self._users.create_or_get(
                 User(email=token.email, firebase_uid=token.uid, display_name=token.name)
             )
+        self._reject_service_identity(user)
         if user.status != UserStatus.ACTIVE:
             return user  # rejected by the caller; never mutate a disabled row
         if user.firebase_uid and user.firebase_uid != token.uid:
@@ -133,6 +135,13 @@ class IdentityService:
         if not user.display_name:
             user.display_name = token.name
         return await self._users.save(user)
+
+    @staticmethod
+    def _reject_service_identity(user: User) -> None:
+        """A service identity has no Firebase session; never link one to it."""
+        if user.kind == UserKind.SERVICE:
+            msg = "This account can't sign in."
+            raise ForbiddenError(msg)
 
     async def _touch(self, user: User) -> None:
         now = self._clock()
