@@ -11,6 +11,31 @@ export interface Provenance {
   executed_at: string;
 }
 
+/** Answer blocks: shared contract with backend/app/agent/blocks.py. */
+export interface ClarifyOption {
+  label: string;
+  metric_id?: string | null;
+}
+
+export interface ClarifyBlock {
+  kind: 'clarify';
+  question: string;
+  options: ClarifyOption[];
+}
+
+export interface ArtifactBlock {
+  kind: 'artifact';
+  id: string; // e.g. "metric_breakdown:revenue:1"
+  artifact_type: 'breakdown' | 'comparison' | 'funnel';
+  title: string;
+  unit: string; // '' when unitless
+  columns: string[];
+  rows: (string | number | null)[][];
+  provenance: Provenance;
+}
+
+export type AnswerBlock = ClarifyBlock | ArtifactBlock;
+
 export interface ChatSession {
   id: string;
   title: string;
@@ -23,6 +48,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   provenance?: Provenance[];
+  blocks?: AnswerBlock[] | null;
   feedback_rating?: 'up' | 'down' | null;
   created_at: string;
 }

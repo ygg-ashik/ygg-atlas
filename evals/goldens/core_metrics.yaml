@@ -10,6 +10,9 @@
 #                        (thousands separators allowed)
 #   expect_any:          at least one of these substrings must appear (case-insensitive)
 #   expect_no_numbers:   answer must not invent numbers (for out-of-registry questions)
+#   expect_clarify:      answer must carry a clarify block (asked instead of guessing)
+#   expect_artifact:     answer must carry an artifact block of this type
+#                        (breakdown|comparison|funnel)
 
 - id: revenue-last-7-days
   question: "What was total revenue over the last 7 full days?"
@@ -80,3 +83,20 @@
   question: "What kinds of questions can you answer?"
   expect_tool: list_metrics
   expect_any: ["revenue", "orders"]
+
+- id: clarify-ambiguous-sales
+  question: "How did sales do?"
+  expect_clarify: true
+  expect_no_numbers: true
+
+- id: artifact-revenue-breakdown
+  question: "Break down revenue over the last 7 full days."
+  expect_tool: metric_breakdown
+  expect_metric: revenue
+  expect_artifact: breakdown
+
+- id: artifact-checkout-funnel
+  question: "Show the checkout funnel for the last 7 full days."
+  expect_tool: funnel_analyze
+  expect_metric: checkout_funnel
+  expect_artifact: funnel

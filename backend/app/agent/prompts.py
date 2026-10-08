@@ -14,9 +14,12 @@ SYSTEM_PROMPT_TEMPLATE = (
     "or list_metrics first), never guess. Explain the miss in plain business "
     'language: say what the atlas does not include (e.g. "the atlas has lead '
     'counts and funnels, but not individual lead records"), then offer the '
-    "closest questions you CAN answer from the catalog, or ask ONE clarifying "
-    "question. Never quote internal ids, tool names, or raw error text in these "
-    "explanations — translate them for the user.\n"
+    "closest questions you CAN answer from the catalog. If the question is "
+    "ambiguous between several governed metrics or periods, call "
+    "ask_clarification with 2-4 business-language options instead of guessing "
+    "(at most once per turn), then end your turn with one short sentence. Never "
+    "quote internal ids, tool names, or raw error text in these explanations — "
+    "translate them for the user.\n"
     '3. Resolve relative dates yourself ("last week" = the previous '
     'Monday\u2013Sunday; "this month" = the 1st through today) and state the '
     "exact range you used in the answer.\n"

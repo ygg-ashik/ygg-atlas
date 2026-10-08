@@ -2,12 +2,19 @@
 // because axios cannot stream response bodies in the browser.
 import { auth } from '@/lib/firebase';
 import { backendUrl } from './axios-instance';
-import type { Provenance } from './chat';
+import type { AnswerBlock, Provenance } from './chat';
 
 export type ChatStreamEvent =
   | { type: 'token'; content: string }
   | { type: 'tool_status'; tool: string }
-  | { type: 'done'; content: string; provenance: Provenance[]; model?: string }
+  | {
+      type: 'done';
+      content: string;
+      provenance: Provenance[];
+      blocks?: AnswerBlock[];
+      message_id?: string;
+      model?: string;
+    }
   | { type: 'blocked'; reason: string }
   | { type: 'error'; message: string };
 

@@ -10,6 +10,7 @@ from app.api import chat_router
 from app.config import get_settings
 from app.database import get_engine
 from app.insights import router as insights_router
+from app.models.migrations import ensure_blocks_column
 
 logger = structlog.get_logger()
 
@@ -28,6 +29,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # MVP schema management; Alembic takes over once the schema stabilizes.
     async with get_engine().begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
+        await ensure_blocks_column(conn)
     logger.info("startup.complete")
     if mcp is not None:
         # The mounted streamable-HTTP app requires its session manager running.

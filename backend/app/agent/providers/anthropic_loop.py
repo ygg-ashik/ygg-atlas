@@ -5,8 +5,7 @@ from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Sequence
 from contextlib import AbstractAsyncContextManager
 from typing import Any, Protocol
 
-from app.agent.providers.types import Event, ExecuteTool
-from app.atlas import ATLAS_TOOL_SCHEMAS
+from app.agent.providers.types import Event, Toolset
 
 BUDGET_ERROR = (
     "The assistant hit its tool budget for this question. Try a narrower question."
@@ -64,7 +63,7 @@ async def run_tool_loop(
     model: str,
     system: str,
     messages: list[dict[str, Any]],
-    execute_tool: ExecuteTool,
+    toolset: Toolset,
     max_rounds: int,
 ) -> AsyncGenerator[Event, None]:
     messages = list(messages)
@@ -77,7 +76,7 @@ async def run_tool_loop(
             max_tokens=2048,
             system=system,
             messages=messages,
-            tools=ATLAS_TOOL_SCHEMAS,
+            tools=toolset.schemas,
         ) as stream:
             async for event in stream:
                 if (
@@ -105,7 +104,7 @@ async def run_tool_loop(
             if block.type != "tool_use":
                 continue
             yield {"type": "tool_status", "tool": block.name}
-            result = await execute_tool(block.name, dict(block.input))
+            result = await toolset.execute(block.name, dict(block.input))
             tool_results.append(
                 {
                     "type": "tool_result",

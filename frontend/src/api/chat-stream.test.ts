@@ -46,6 +46,45 @@ describe('parseSseChunk', () => {
     expect(events).toEqual([done]);
   });
 
+  it('parses a done event with answer blocks', () => {
+    const done = {
+      type: 'done',
+      content: 'Which revenue?',
+      provenance: [],
+      blocks: [
+        {
+          kind: 'clarify',
+          question: 'Which revenue?',
+          options: [
+            { label: 'A', metric_id: null },
+            { label: 'B', metric_id: 'revenue' },
+          ],
+        },
+        {
+          kind: 'artifact',
+          id: 'metric_breakdown:revenue:1',
+          artifact_type: 'breakdown',
+          title: 'Revenue: breakdown',
+          unit: 'AED',
+          columns: ['Label', 'Value'],
+          rows: [
+            ['b2b', 1000],
+            ['b2c', null],
+          ],
+          provenance: {
+            tool: 'metric_breakdown',
+            metric_id: 'revenue',
+            source: 'demo',
+            executed_at: '2026-10-08T00:00:00Z',
+          },
+        },
+      ],
+      message_id: 'm1',
+    } satisfies ChatStreamEvent;
+    const { events } = parseSseChunk(`data: ${JSON.stringify(done)}\n\n`);
+    expect(events).toEqual([done]);
+  });
+
   it('returns an empty result for an empty buffer', () => {
     expect(parseSseChunk('')).toEqual({ events: [], remainder: '' });
   });

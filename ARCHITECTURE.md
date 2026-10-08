@@ -194,6 +194,7 @@ Each item is removed by the change that touches the code, and the matching rule 
 | Debt | Target |
 |---|---|
 | `app/api/chat.py` queries the database directly | Split into `app/chat/{router,service,repository}` (auth/RBAC phase 1) |
+| Schema changes applied by create_all + startup ALTER (`chat_messages.blocks`, `app/models/migrations.py`) | Replaced by the Alembic baseline in auth/RBAC phase 1 |
 | `app/config.py`, `app/database.py` and `app/middleware/` predate `app/core` | Move into `app/core/` and `app/identity/` when next modified |
 | `[tool.pyright].strict` is empty | Each new module (identity, access) joins it on creation |
 | Frontend features are flat files | Split per §3.2 when a feature passes about 8 files |

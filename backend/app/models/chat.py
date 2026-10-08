@@ -32,6 +32,9 @@ class ChatMessage(SQLModel, table=True):
     role: str  # 'user' | 'assistant'
     content: str
     provenance: list | None = Field(default=None, sa_column=Column(JSON))
+    blocks: list | None = Field(  # clarify/artifact answer blocks (app.agent.blocks)
+        default=None, sa_column=Column(JSON)
+    )
     model: str | None = None
     token_usage: dict | None = Field(default=None, sa_column=Column(JSON))
     feedback_rating: str | None = None  # 'up' | 'down'
