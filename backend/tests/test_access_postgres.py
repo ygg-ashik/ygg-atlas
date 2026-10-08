@@ -12,6 +12,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlmodel import select
 
@@ -20,7 +21,20 @@ from app.access.models import Capability, PolicyState
 from app.access.startup import prepare_access
 
 PG_URL = os.environ.get("TEST_PG_URL", "")
-pytestmark = pytest.mark.skipif(not PG_URL, reason="TEST_PG_URL not set")
+
+
+def _is_disposable(url: str) -> bool:
+    """Refuse to run DROP SCHEMA against anything but an obviously scratch DB."""
+    if not url:
+        return False
+    database = make_url(url).database or ""
+    return "test" in database or "scratch" in database
+
+
+pytestmark = pytest.mark.skipif(
+    not _is_disposable(PG_URL),
+    reason="TEST_PG_URL not set, or its database name lacks 'test'/'scratch'",
+)
 
 BACKEND = Path(__file__).parents[1]
 

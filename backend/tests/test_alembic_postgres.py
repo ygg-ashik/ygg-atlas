@@ -22,7 +22,20 @@ import app.identity.models  # registers users on the metadata
 import app.models  # noqa: F401  # registers chat and audit tables
 
 PG_URL = os.environ.get("TEST_PG_URL", "")
-pytestmark = pytest.mark.skipif(not PG_URL, reason="TEST_PG_URL not set")
+
+
+def _is_disposable(url: str) -> bool:
+    """Refuse to run DROP SCHEMA against anything but an obviously scratch DB."""
+    if not url:
+        return False
+    database = sa.engine.make_url(url).database or ""
+    return "test" in database or "scratch" in database
+
+
+pytestmark = pytest.mark.skipif(
+    not _is_disposable(PG_URL),
+    reason="TEST_PG_URL not set, or its database name lacks 'test'/'scratch'",
+)
 
 BACKEND = Path(__file__).parents[1]
 
