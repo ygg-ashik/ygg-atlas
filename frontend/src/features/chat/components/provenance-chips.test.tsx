@@ -56,4 +56,19 @@ describe('ProvenanceChips', () => {
     const { container } = render(<ProvenanceChips provenance={[]} />);
     expect(container).toBeEmptyDOMElement();
   });
+
+  it('opens a glass definition popover from the chip', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event');
+    render(<ProvenanceChips provenance={[base]} />);
+    await userEvent.click(screen.getByRole('button', { name: /Total revenue/ }));
+    expect(await screen.findByText('revenue_total')).toBeInTheDocument();
+  });
+
+  it('marks stale sources amber', () => {
+    render(<ProvenanceChips provenance={[{ ...base, freshness: '2020-01-01T00:00:00Z' }]} />);
+    expect(screen.getByRole('button', { name: /Total revenue/ })).toHaveAttribute(
+      'data-stale',
+      'true',
+    );
+  });
 });
