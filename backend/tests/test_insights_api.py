@@ -7,10 +7,12 @@ from sqlmodel import select
 
 from app.main import app as asgi_app
 from app.models.audit import AtlasAuditLog
+from tests.access_helpers import grant_all
 
 
 @pytest_asyncio.fixture
 async def api(db: AsyncSession) -> AsyncIterator[AsyncClient]:
+    await grant_all(db)
     transport = ASGITransport(app=asgi_app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
@@ -57,3 +59,12 @@ async def test_overview_is_audited_on_the_api_surface(
     rows = (await db.execute(select(AtlasAuditLog))).scalars().all()
     assert rows
     assert all(r.surface == "api" for r in rows)
+
+
+async def test_without_grants_the_catalog_is_empty(db: AsyncSession) -> None:
+    transport = ASGITransport(app=asgi_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        catalog = (await client.get("/api/v1/atlas/metrics")).json()
+        overview = (await client.get("/api/v1/atlas/overview?days=7")).json()
+    assert catalog == {"sources": []}
+    assert overview["kpis"] == []

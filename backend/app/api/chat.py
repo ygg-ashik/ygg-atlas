@@ -9,12 +9,18 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 
+from app.access import CHAT_USE, Policy, get_policy, require_capability
 from app.agent import run_chat_turn
+from app.atlas import AtlasCaller, AtlasTools
 from app.database import get_db, get_session_factory
 from app.identity import Principal, get_principal
 from app.models.chat import ChatMessage, ChatSession
 
-router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
+router = APIRouter(
+    prefix="/api/v1/chat",
+    tags=["chat"],
+    dependencies=[Depends(require_capability(CHAT_USE))],
+)
 
 MAX_HISTORY_MESSAGES = 40
 
@@ -51,7 +57,6 @@ async def create_session(
 ) -> ChatSession:
     session = ChatSession(
         user_id=principal.user_id,
-        user_uid=str(principal.user_id),
         user_email=principal.email,
         title=body.title or "New chat",
     )
@@ -140,6 +145,7 @@ async def send_message(
     session_id: UUID,
     body: SendMessageRequest,
     principal: Principal = Depends(get_principal),
+    policy: Policy = Depends(get_policy),
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     session = await _owned_session(session_id, principal, db)
@@ -170,9 +176,15 @@ async def send_message(
         # The request-scoped db session closes when the response handler returns,
         # so streaming uses its own session for the turn + persistence.
         async with get_session_factory()() as stream_db:
-            async for event in run_chat_turn(
-                user_uid=str(principal.user_id),
+            caller = AtlasCaller(
+                user_id=principal.user_id,
+                auth_method=principal.auth_method,
+                surface="chat",
                 session_id=session_id,
+            )
+            tools = AtlasTools(caller, policy, db=stream_db)
+            async for event in run_chat_turn(
+                tools=tools,
                 content=body.content,
                 history=history,
                 db=stream_db,

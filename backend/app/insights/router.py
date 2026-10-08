@@ -4,12 +4,17 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.access import CHAT_USE, require_capability
 from app.insights.dependencies import get_insights_service
 from app.insights.schemas import MetricsCatalog, Overview
 from app.insights.selection import ALLOWED_DAYS
 from app.insights.service import InsightsService
 
-router = APIRouter(prefix="/api/v1/atlas", tags=["insights"])
+router = APIRouter(
+    prefix="/api/v1/atlas",
+    tags=["insights"],
+    dependencies=[Depends(require_capability(CHAT_USE))],
+)
 
 
 @router.get("/metrics", response_model=MetricsCatalog)

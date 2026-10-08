@@ -40,7 +40,7 @@ class InsightsService:
     async def overview(self, days: int, today: date) -> Overview:
         """Headline KPIs vs the previous window, plus one top-N breakdown."""
         current, previous = windows(days, today)
-        metrics = self._tools.registry.metrics
+        metrics = self._tools.visible_metrics()
         kpis: list[dict[str, Any]] = []
         for metric in pick_kpi_metrics(metrics):
             kpi = await self._kpi(metric, current, previous)
