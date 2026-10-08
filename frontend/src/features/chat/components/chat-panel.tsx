@@ -42,7 +42,7 @@ export function ChatPanel({ sessionId, ensureSession }: ChatPanelProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6">
+        <div className="mx-auto w-full max-w-3xl space-y-4 px-4 pb-6 pt-[84px]">
           {isEmpty && <EmptyState starters={starters} onPick={sendText} />}
           {messages.map((m) => (
             <StoredMessage key={m.id} message={m} />
