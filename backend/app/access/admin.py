@@ -82,6 +82,8 @@ class Actor:
 
     @classmethod
     def cli(cls, tenant: str = DEFAULT_TENANT) -> Self:
+        """The trusted CLI operator (D5): skips capability and D10 checks.
+        Never construct this from request or agent code."""
         return cls(None, "cli", tenant, None)
 
     def require(self, capability: str) -> None:

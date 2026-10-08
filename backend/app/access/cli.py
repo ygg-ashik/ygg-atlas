@@ -15,6 +15,11 @@
 
 On the server: `docker compose exec backend uv run --no-dev python -m app.access.cli
 ...`. Every change is recorded in rbac_changes with via="cli".
+
+The CLI runs as a trusted operator with shell access to the box (D5): it skips
+capability and D10 checks. Never construct Actor.cli() from request or agent code.
+
+It operates on the default tenant only (single-tenant MVP); there is no --tenant flag.
 """
 
 import argparse
@@ -22,22 +27,46 @@ import asyncio
 import sys
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
+
+from pydantic import ValidationError
 
 from app.access.admin import AccessAdmin, Actor
 from app.access.cache import shared_cache
-from app.access.errors import AccessError, InvalidChangeError, NotFoundError
+from app.access.errors import (
+    AccessError,
+    InvalidChangeError,
+    NotFoundError,
+    PolicyUnavailableError,
+)
 from app.access.facts import DEFAULT_TENANT, SUBJECT_GROUP, SUBJECT_USER
 from app.access.models import Group
+from app.access.patterns import is_resource_path
 from app.access.repository import AccessRepository
 from app.access.schemas import GrantCreate, UserUpdate
 from app.access.service import AccessService
-from app.database import get_session_factory
+from app.database import get_engine, get_session_factory
 from app.identity import User
 
 
 def _out(text: str) -> None:
     sys.stdout.write(text + "\n")
+
+
+def _err(text: str) -> None:
+    sys.stderr.write(text + "\n")
+
+
+def _aware_datetime(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+    if parsed.utcoffset() is None:
+        msg = "--expires needs a UTC offset, e.g. 2027-01-01T00:00+04:00"
+        raise argparse.ArgumentTypeError(msg)
+    return parsed
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,26 +122,30 @@ async def _remove_member(ctx: _Context, args: argparse.Namespace) -> None:
 
 
 async def _grant(ctx: _Context, args: argparse.Namespace) -> None:
-    kind, _, name = str(args.subject).partition(":")
-    if kind == SUBJECT_GROUP:
-        subject_id = (await ctx.group(name)).id
-    elif kind == SUBJECT_USER:
-        subject_id = (await ctx.user(name)).id
+    subject_kind, _, name = str(args.subject).partition(":")
+    label: str
+    if subject_kind == SUBJECT_GROUP:
+        group = await ctx.group(name)
+        subject_id, label = group.id, group.name
+    elif subject_kind == SUBJECT_USER:
+        user = await ctx.user(name)
+        subject_id, label = user.id, user.email
     else:
         msg = "The subject must be group:<name> or user:<email>."
         raise InvalidChangeError(msg)
     payload = GrantCreate.model_validate(
         {
-            "subject_type": kind,
+            "subject_type": subject_kind,
             "subject_id": subject_id,
             "effect": args.effect,
+            "target_kind": args.kind,
             "target": args.pattern,
             "reason": args.reason,
             "expires_at": args.expires,
         }
     )
     grant = await ctx.admin.create_grant(ctx.actor, payload)
-    _out(f"granted {grant.id}: {grant.effect} {grant.target} to {args.subject}")
+    _out(f"granted {grant.id}: {grant.effect} {grant.target} to {label}")
 
 
 async def _revoke(ctx: _Context, args: argparse.Namespace) -> None:
@@ -127,6 +160,9 @@ async def _set_role(ctx: _Context, args: argparse.Namespace) -> None:
 
 
 async def _access(ctx: _Context, args: argparse.Namespace) -> None:
+    if args.resource is not None and not is_resource_path(args.resource):
+        msg = f"'{args.resource}' is not a resource path like demo/order/revenue"
+        raise InvalidChangeError(msg)
     user = await ctx.user(args.email)
     policy = await ctx.admin.effective_access(ctx.actor, user.id)
     state = "active" if policy.active else "disabled"
@@ -168,8 +204,19 @@ def _parser() -> argparse.ArgumentParser:
     grant.add_argument("subject", help="group:<name> or user:<email>")
     grant.add_argument("effect", choices=["allow", "deny"])
     grant.add_argument("pattern", help="e.g. '*', 'deepsales/*', 'demo/order/revenue'")
+    grant.add_argument(
+        "--kind",
+        choices=["resource", "capability"],
+        default="resource",
+        help="what 'pattern' names (default: resource)",
+    )
     grant.add_argument("--reason", default="")
-    grant.add_argument("--expires", default=None, help="ISO time with offset")
+    grant.add_argument(
+        "--expires",
+        default=None,
+        type=_aware_datetime,
+        help="ISO time with a UTC offset, e.g. 2027-01-01T00:00+04:00",
+    )
     revoke = sub.add_parser("revoke", help="delete a grant")
     revoke.add_argument("grant_id")
     role = sub.add_parser("set-role", help="change a user's role")
@@ -188,14 +235,34 @@ async def run(argv: Sequence[str]) -> int:
         admin = AccessAdmin(repo, AccessService(repo, shared_cache()))
         try:
             await _COMMANDS[args.command](_Context(admin, repo, Actor.cli()), args)
+        except PolicyUnavailableError:
+            _err(
+                "error: atlas access isn't initialised yet. "
+                "Start the backend once, then retry."
+            )
+            return 1
+        except ValidationError as exc:
+            _err("error: " + "; ".join(e["msg"] for e in exc.errors()))
+            return 1
         except (AccessError, ValueError) as exc:  # ValueError covers bad UUIDs/input
-            _out(f"error: {exc}")
+            _err(f"error: {exc}")
             return 1
     return 0
 
 
 def main() -> None:
-    raise SystemExit(asyncio.run(run(sys.argv[1:])))
+    async def _main(argv: Sequence[str]) -> int:
+        try:
+            return await run(argv)
+        finally:
+            # Tests share the process-wide engine; only the real CLI process
+            # disposes it, and only once it actually exists (argparse errors
+            # and --help exit before `run` ever opens a session, so building
+            # an engine just to dispose it would needlessly require settings).
+            if get_engine.cache_info().currsize:
+                await get_engine().dispose()
+
+    raise SystemExit(asyncio.run(_main(sys.argv[1:])))
 
 
 if __name__ == "__main__":
