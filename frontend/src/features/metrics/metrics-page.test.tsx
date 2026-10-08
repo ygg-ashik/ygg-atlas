@@ -2,44 +2,53 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MetricsPage } from './metrics-page';
+
+const catalog = vi.hoisted(() => ({ isError: false }));
 
 vi.mock('@/api/hooks/use-atlas', () => ({
   useMetricsCatalog: () => ({
     isLoading: false,
-    data: {
-      sources: [
-        {
-          id: 'demo',
-          name: 'Commerce (EMAPI)',
-          description: '',
-          metrics: [
+    isError: catalog.isError,
+    data: catalog.isError
+      ? undefined
+      : {
+          sources: [
             {
-              id: 'revenue',
-              name: 'Revenue',
-              description: 'Sum of paid orders, excluding refunds.',
-              unit: 'AED',
-              time_scope: 'range',
-              has_breakdown: true,
-              entity: 'order',
-            },
-          ],
-          funnels: [
-            {
-              id: 'checkout_funnel',
-              name: 'Checkout funnel',
-              description: 'View → purchase.',
-              entity: 'checkout',
+              id: 'demo',
+              name: 'Commerce (EMAPI)',
+              description: '',
+              metrics: [
+                {
+                  id: 'revenue',
+                  name: 'Revenue',
+                  description: 'Sum of paid orders, excluding refunds.',
+                  unit: 'AED',
+                  time_scope: 'range',
+                  has_breakdown: true,
+                  entity: 'order',
+                },
+              ],
+              funnels: [
+                {
+                  id: 'checkout_funnel',
+                  name: 'Checkout funnel',
+                  description: 'View → purchase.',
+                  entity: 'checkout',
+                },
+              ],
             },
           ],
         },
-      ],
-    },
   }),
 }));
 
 describe('MetricsPage', () => {
+  beforeEach(() => {
+    catalog.isError = false;
+  });
+
   it('groups governed metrics by source with mono ids', () => {
     render(
       <MemoryRouter>
@@ -78,5 +87,15 @@ describe('MetricsPage', () => {
       'aria-expanded',
       'true',
     );
+  });
+
+  it('says so in business language when the catalog cannot load', () => {
+    catalog.isError = true;
+    render(
+      <MemoryRouter>
+        <MetricsPage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('The catalog couldn’t be loaded');
   });
 });

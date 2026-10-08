@@ -45,8 +45,8 @@ export function CommandPalette() {
       onOpenChange={onOpenChange}
       label="Command palette"
       vimBindings={false}
-      overlayClassName="fixed inset-0 z-40 bg-black/20 data-[state=open]:animate-in data-[state=open]:fade-in-0"
-      contentClassName="glass fixed inset-x-0 top-[18%] z-50 mx-auto w-[min(560px,calc(100vw-32px))] rounded-shell p-2.5 data-[state=open]:animate-materialize-in"
+      overlayClassName="fixed inset-0 z-40 bg-black/20 data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+      contentClassName="glass fixed inset-x-0 top-[18%] z-50 mx-auto w-[min(560px,calc(100vw-32px))] rounded-shell p-2.5 data-[state=closed]:animate-materialize-out data-[state=open]:animate-materialize-in"
     >
       <DialogTitle className="sr-only">Command palette</DialogTitle>
       <DialogDescription className="sr-only">
