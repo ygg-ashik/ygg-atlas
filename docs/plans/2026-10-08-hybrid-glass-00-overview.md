@@ -14,7 +14,7 @@ independent work across isolated tracks.
 | `…-01-foundation.md` | **A** | Frontend tokens, fonts, `ui/` primitives, glass shell, routing | none |
 | `…-02-backend-structured-answers.md` | **C** | `clarify` + `artifact` answer blocks, persistence, prompt, goldens | none |
 | `…-03-backend-read-endpoints.md` | **E-be** | `GET /api/v1/atlas/metrics`, `GET /api/v1/atlas/overview` | none |
-| `…-04-chat-experience.md` | **B** | Chat restyle, streamdown streaming, steps block, composer, notices, provenance popover | A |
+| `…-04-chat-experience.md` | **B** | Chat restyle, streamdown streaming, steps block, composer, notices, provenance popover, `/ask?q=` prefill | A |
 | `…-05-catalog-and-command.md` | **D1** | Metrics catalog page, ⌘K palette | A, E-be (contract only) |
 | `…-06-dashboard.md` | **E-fe** | Overview dashboard (briefing-free), KPI cards, top-N, presets | A, E-be (contract only) |
 | `…-07-answer-blocks-ui.md` | **D2** | Clarify pills, artifact card + side panel | B, C (contract only) |
@@ -36,6 +36,9 @@ and `api/` (new files each). Resolve those trivially at merge.
   needs its own guardrail spec first (guardrail #3 read-only connectors).
 - **AI briefing card**: an LLM summary needs its own eval coverage. Goes in a later plan.
 - **`plan` SSE event**: the steps block is derived from `tool_status` (YAGNI, same UX).
+- **Number ↔ chip hover linking**: needs the backend to tag number spans with a metric id. Separate plan.
+- **Chart morph on range change**: the overview endpoint has no time series yet (KPIs + top-N only).
+- **Mobile drag sheets (`vaul`)**: no mobile surface yet (DESIGN.md › Known Gaps).
 
 ## Shared contracts (all tracks code against these, verbatim)
 
@@ -97,3 +100,10 @@ Both endpoints run through `AtlasTools.execute` with `surface="api"` so every ca
 - UI tracks: run the app (`run` skill) and check light, dark, reduced-motion and reduced-transparency against
   `docs/design/reference/atlas-hybrid-glass.html` Mode ①.
 - Commits: `<type>(<scope>): <description>`; branch per track `feature/hybrid-glass-<track>`.
+
+## Cross-track shared pieces (owned by Track A so wave-2 tracks don't collide)
+- `src/ui/preset-card.tsx` (A Task 12): used by chat empty state (B) and dashboard (E-fe)
+- `src/lib/freshness.ts` (A Task 13): used by chat (B) and dashboard (E-fe)
+- `/ask?q=` prefill (B Task 10): entry point used by catalog/⌘K (D1) and dashboard presets (E-fe).
+  Until B merges, those links open an empty chat.
+- `grow` keyframe in `tailwind.config.js`: added by whichever of E-fe/D2 lands first; the other skips it.

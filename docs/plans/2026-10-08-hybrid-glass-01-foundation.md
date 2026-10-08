@@ -35,6 +35,8 @@
 | `src/features/chat/index.tsx` | Rewrite | `ChatPage` reads `:sessionId` from the URL; exports `ChatThreadList` |
 | `src/features/chat/chat-panel.tsx` | Modify | Top padding for the floating toolbar only (Track B restyles) |
 | `src/App.tsx` | Rewrite | Layout route with Shell + Outlet, `/ask/:sessionId?`, Toaster |
+| `src/ui/preset-card.tsx` (+ test) | Create | Preset gallery card with hover-play preview (Task 12) |
+| `src/lib/freshness.ts` (+ test) | Create | Shared provenance freshness helpers (Task 13) |
 
 ---
 
@@ -1594,6 +1596,94 @@ Expected: PASS.
 ```bash
 git add src/ui/preset-card.tsx src/ui/preset-card.test.tsx src/ui/index.ts
 git commit -m "feat(ui): PresetCard with hover-play previews"
+```
+
+---
+
+### Task 13: Shared freshness helpers (`src/lib/freshness.ts`)
+
+Used by the chat (Track B) and dashboard (Track E-fe) features, so they live in `lib`.
+
+**Files:** Create `src/lib/freshness.ts`, `src/lib/freshness.test.ts`
+
+- [ ] **Step 1: Write failing tests**
+
+```ts
+// src/lib/freshness.test.ts
+import { describe, expect, it } from 'vitest';
+import { freshnessLabel, isStale, parseFreshness } from './freshness';
+
+const NOW = new Date('2026-10-08T12:00:00Z');
+
+describe('freshness', () => {
+  it('parses ISO and Postgres-style timestamps', () => {
+    expect(parseFreshness('2026-10-08T10:00:00+00:00')?.toISOString()).toBe('2026-10-08T10:00:00.000Z');
+    expect(parseFreshness('2026-10-08 10:00:00+00:00')?.toISOString()).toBe('2026-10-08T10:00:00.000Z');
+    expect(parseFreshness('2h ago')).toBeNull();
+    expect(parseFreshness(undefined)).toBeNull();
+  });
+
+  it('labels age compactly and passes through unparseable values', () => {
+    expect(freshnessLabel('2026-10-08T11:59:30Z', NOW)).toBe('just now');
+    expect(freshnessLabel('2026-10-08T10:00:00Z', NOW)).toBe('2h ago');
+    expect(freshnessLabel('2026-10-06T12:00:00Z', NOW)).toBe('2d ago');
+    expect(freshnessLabel('2h ago', NOW)).toBe('2h ago');
+  });
+
+  it('is stale after 24h; unknown freshness is never flagged', () => {
+    expect(isStale('2026-10-07T11:00:00Z', NOW)).toBe(true);
+    expect(isStale('2026-10-08T02:00:00Z', NOW)).toBe(false);
+    expect(isStale('2h ago', NOW)).toBe(false);
+    expect(isStale(undefined, NOW)).toBe(false);
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `corepack pnpm vitest run src/lib/freshness.test.ts` → FAIL (module not found)
+
+- [ ] **Step 3: Implement**
+
+```ts
+// src/lib/freshness.ts
+// Provenance `freshness` is the newest-data timestamp a source reports
+// (str(timestamp) from the connector). Stale = older than the source SLA.
+export const STALE_AFTER_HOURS = 24;
+
+export function parseFreshness(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2} \d/.test(value) ? value.replace(' ', 'T') : value;
+  if (!/^\d{4}-\d{2}-\d{2}/.test(normalized)) return null;
+  const date = new Date(normalized);
+  return isNaN(date.getTime()) ? null : date;
+}
+
+export function freshnessLabel(value: string | null | undefined, now = new Date()): string {
+  const date = parseFreshness(value);
+  if (!date) return value ?? '';
+  const minutes = Math.floor((now.getTime() - date.getTime()) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+export function isStale(value: string | null | undefined, now = new Date()): boolean {
+  const date = parseFreshness(value);
+  if (!date) return false;
+  return now.getTime() - date.getTime() > STALE_AFTER_HOURS * 3_600_000;
+}
+```
+
+- [ ] **Step 4: Run + commit**
+
+Run: `corepack pnpm vitest run src/lib/freshness.test.ts` → PASS
+
+```bash
+git add src/lib/freshness.ts src/lib/freshness.test.ts
+git commit -m "feat(lib): provenance freshness parsing and staleness"
 ```
 
 ---
