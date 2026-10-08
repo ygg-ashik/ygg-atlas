@@ -1,6 +1,6 @@
 import type { ChatMessage } from '@/api/chat';
 import { MessageBubble } from './message-bubble';
-import { MessageFeedback } from './message-feedback';
+import { MessageActions } from './message-actions';
 import { ProvenanceChips } from './provenance-chips';
 
 export function StoredMessage({ message }: { message: ChatMessage }) {
@@ -11,7 +11,11 @@ export function StoredMessage({ message }: { message: ChatMessage }) {
       <MessageBubble role={message.role} text={message.content} />
       {isAssistant && provenance.length > 0 && <ProvenanceChips provenance={provenance} />}
       {isAssistant && (
-        <MessageFeedback messageId={message.id} initialRating={message.feedback_rating ?? null} />
+        <MessageActions
+          messageId={message.id}
+          text={message.content}
+          initialRating={message.feedback_rating ?? null}
+        />
       )}
     </div>
   );
