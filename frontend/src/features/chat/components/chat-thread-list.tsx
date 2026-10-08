@@ -61,7 +61,7 @@ export function ChatThreadList() {
                 )}
               >
                 <span className="min-w-0 flex-1 truncate">{s.title || 'Untitled chat'}</span>
-                <span className="font-mono text-[10.5px] text-muted-2 group-hover:invisible">
+                <span className="font-mono text-[10.5px] text-muted-2 group-focus-within:invisible group-hover:invisible">
                   {formatRelativeTime(s.updated_at)}
                 </span>
               </Link>
@@ -69,7 +69,7 @@ export function ChatThreadList() {
                 type="button"
                 aria-label={`Delete ${s.title || 'chat'}`}
                 onClick={() => setPendingDelete(s)}
-                className="absolute right-1.5 top-1/2 hidden -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:text-negative group-hover:block"
+                className="absolute right-1.5 top-1/2 hidden -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:text-negative group-focus-within:block group-hover:block"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>

@@ -1,9 +1,11 @@
 // src/features/chat/components/chat-thread-list.test.tsx
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { ChatThreadList } from './chat-thread-list';
+
+const deleteSession = vi.fn(() => Promise.resolve());
 
 vi.mock('@/api/hooks/use-chat-sessions', () => ({
   useChatSessions: () => ({
@@ -17,7 +19,7 @@ vi.mock('@/api/hooks/use-chat-sessions', () => ({
       { id: 's2', title: 'ROAS by channel', created_at: '', updated_at: new Date().toISOString() },
     ],
   }),
-  useDeleteChatSession: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteChatSession: () => ({ mutateAsync: deleteSession, isPending: false }),
 }));
 
 function Where() {
@@ -58,5 +60,14 @@ describe('ChatThreadList', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/ask/s1');
     await userEvent.click(screen.getByRole('button', { name: /new chat/i }));
     expect(screen.getByTestId('where')).toHaveTextContent('/ask');
+  });
+
+  it('confirms before deleting and leaves the deleted thread when it was open', async () => {
+    renderAt('/ask/s2');
+    await userEvent.click(screen.getByRole('button', { name: 'Delete ROAS by channel' }));
+    expect(deleteSession).not.toHaveBeenCalled();
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    expect(deleteSession).toHaveBeenCalledWith('s2');
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(/^\/ask$/));
   });
 });
