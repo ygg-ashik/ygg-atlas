@@ -40,6 +40,14 @@ def validate_pattern(pattern: str) -> str:
     return pattern
 
 
+def is_resource_path(path: str) -> bool:
+    """True for a well-formed resource path: 2 or 3 segments, each
+    `[a-z0-9_]+` (an entity is `source/entity`; an item is `source/entity/item`).
+    """
+    segments = path.split("/")
+    return len(segments) in (2, 3) and all(_SEGMENT.fullmatch(s) for s in segments)
+
+
 def matches(pattern: str, path: str) -> bool:
     """True if `path` is covered by `pattern`.
 

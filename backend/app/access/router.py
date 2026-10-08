@@ -12,6 +12,8 @@ from app.access.dependencies import (
     get_actor,
     get_policy,
 )
+from app.access.errors import InvalidChangeError
+from app.access.patterns import is_resource_path
 from app.access.policy import Policy
 from app.access.schemas import (
     CatalogOut,
@@ -148,7 +150,7 @@ async def revoke_grant(
 
 @router.get("/admin/users", response_model=list[UserOut])
 async def list_users(
-    q: str = "",
+    q: str = Query("", max_length=100),
     limit: int = Query(50, ge=1, le=200),
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
@@ -169,10 +171,13 @@ async def update_user(
 @router.get("/admin/users/{user_id}/access", response_model=EffectiveAccessOut)
 async def user_access(
     user_id: UUID,
-    resource: str | None = None,
+    resource: str | None = Query(None, min_length=1, max_length=200),
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> EffectiveAccessOut:
+    if resource is not None and not is_resource_path(resource):
+        msg = f"'{resource}' is not a resource path like demo/order/revenue."
+        raise InvalidChangeError(msg)
     policy = await admin.effective_access(actor, user_id)
     return EffectiveAccessOut.from_policy(policy, resource)
 

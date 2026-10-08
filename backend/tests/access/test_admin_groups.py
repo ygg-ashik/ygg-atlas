@@ -313,3 +313,19 @@ async def test_put_member_is_audited_and_bumps_the_version(db) -> None:
 
     assert await policy_version(db) == before + 1
     assert (await _changes(db))[-1].action == "member.put"
+
+
+async def test_list_members_denies_before_revealing_whether_the_group_exists(
+    db,
+) -> None:
+    """A same-tenant viewer with no standing anywhere must not be able to tell
+    an unknown group id apart from one that exists but they don't manage: both
+    must deny before any lookup, never a 404 for one and 403 for the other
+    (the old order checked existence before standing)."""
+    group = await make_group(db, "growth")
+    viewer = await actor_with(db, "viewer")
+
+    with pytest.raises(AccessDeniedError):
+        await admin_for(db).list_members(viewer, uuid4())
+    with pytest.raises(AccessDeniedError):
+        await admin_for(db).list_members(viewer, group.id)

@@ -306,8 +306,8 @@ class AccessAdmin:
     # ---- members ------------------------------------------------------------
 
     async def list_members(self, actor: Actor, group_id: UUID) -> list[MemberOut]:
+        actor.require_member_admin(group_id)
         group = await self._group(actor, group_id)
-        actor.require_member_admin(group.id)
         return [_member_out(m, u) for m, u in await self._repo.list_members(group.id)]
 
     async def put_member(

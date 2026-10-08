@@ -1,6 +1,11 @@
 import pytest
 
-from app.access.patterns import InvalidPatternError, matches, validate_pattern
+from app.access.patterns import (
+    InvalidPatternError,
+    is_resource_path,
+    matches,
+    validate_pattern,
+)
 
 
 @pytest.mark.parametrize(
@@ -57,3 +62,22 @@ def test_invalid_patterns(pattern: str) -> None:
 def test_entity_pattern_error_suggests_trailing_star() -> None:
     with pytest.raises(InvalidPatternError, match=r"demo/order/\*"):
         validate_pattern("demo/order")
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("demo/order/revenue", True),
+        ("demo/order", True),
+        ("demo", False),
+        ("", False),
+        ("demo/order/revenue/extra", False),
+        ("demo//x", False),
+        ("Demo/order/revenue", False),
+        ("demo/ord er/revenue", False),
+        ("demo/*/revenue", False),
+        ("demo/order/", False),
+    ],
+)
+def test_is_resource_path(path: str, expected: bool) -> None:
+    assert is_resource_path(path) is expected
