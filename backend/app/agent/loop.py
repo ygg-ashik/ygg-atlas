@@ -18,7 +18,6 @@ block per table-shaped atlas tool result.
 from collections.abc import AsyncGenerator
 from functools import partial
 from typing import Any
-from uuid import UUID
 
 import structlog
 from anthropic import AsyncAnthropic
@@ -80,7 +79,7 @@ class _TurnRecorder:
 
     def _clarify(self, arguments: dict[str, Any]) -> dict[str, Any]:
         # Control tool: no data access, so not an atlas execution and not audited.
-        block = build_clarify_block(arguments, set(self._tools.registry.metrics))
+        block = build_clarify_block(arguments, set(self._tools.visible_metrics()))
         if block is None:
             logger.info("agent.clarify_rejected", reason="needs question + 2-4 labels")
             return dict(_CLARIFY_INVALID)
@@ -108,22 +107,21 @@ def _select_provider(client: AnthropicClient | None) -> ToolLoopRunner:
 
 
 async def run_chat_turn(
-    user_uid: str,
-    session_id: UUID,
+    tools: AtlasTools,
     content: str,
     history: list[dict[str, Any]],
     db: AsyncSession,
     client: AnthropicClient | None = None,
 ) -> AsyncGenerator[Event, None]:
+    """One chat turn for the caller bound to `tools` (their policy + audit identity)."""
     settings = get_settings()
 
-    verdict = await check_input(content, user_uid, db)
+    verdict = await check_input(content, tools.caller.user_id, db)
     if not verdict.allowed:
         yield {"type": "blocked", "reason": verdict.reason}
         return
 
     run_tool_loop = _select_provider(client)
-    tools = AtlasTools(user_uid=user_uid, surface="chat", session_id=session_id, db=db)
     recorder = _TurnRecorder(tools)
 
     messages = [*_history_to_messages(history), {"role": "user", "content": content}]
@@ -149,7 +147,7 @@ async def run_chat_turn(
             else:
                 yield event
     except Exception:
-        logger.exception("agent.turn_failed", session_id=str(session_id))
+        logger.exception("agent.turn_failed", session_id=str(tools.caller.session_id))
         yield {
             "type": "error",
             "message": "Something went wrong answering that. Please retry.",

@@ -24,3 +24,9 @@ def test_prompt_routes_breakdown_requests_to_the_breakdown_tool() -> None:
 
 def test_prompt_treats_vague_unbounded_questions_as_ambiguous() -> None:
     assert "vague business word" in build_system_prompt()
+
+
+def test_prompt_explains_missing_access_honestly() -> None:
+    prompt = build_system_prompt()
+    assert "isn't available" in prompt
+    assert "atlas admin" in prompt

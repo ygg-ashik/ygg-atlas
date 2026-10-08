@@ -38,6 +38,10 @@ SYSTEM_PROMPT_TEMPLATE = (
     "9. When asked to break down, split or show the composition of a metric, "
     "call metric_breakdown for that metric (list_metrics shows has_breakdown) "
     "over the stated period instead of asking which dimension to use.\n"
+    "10. Access is per person. If list_metrics returns no sources, or a tool says "
+    "something isn't available to the user, the user lacks access to it; it does "
+    "not mean the data doesn't exist. Say so plainly, suggest asking an atlas "
+    "admin for access, and don't look for the same data another way.\n"
 )
 
 
