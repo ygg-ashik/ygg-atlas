@@ -44,7 +44,12 @@ def evaluate(inputs: PolicyInputs, now: datetime) -> Policy:
     reach = _with_ancestors(member_of, groups)
     grants = [g for g in inputs.grants if _applies(g, user.id, reach) and _live(g, now)]
     allow, deny = _resource_rules(grants, groups)
-    managed = {g for g in member_of if inputs.memberships[g] == STANDING_MANAGER}
+    # A corrupt grant also drops manager rights.
+    managed: set[UUID] = (
+        set()
+        if any(_is_malformed(g) for g in grants)
+        else {g for g in member_of if inputs.memberships[g] == STANDING_MANAGER}
+    )
     expiries = [g.expires_at for g in grants if g.expires_at is not None]
     return Policy(
         user_id=user.id,
@@ -108,7 +113,8 @@ def _with_descendants(roots: Iterable[UUID], groups: Groups) -> frozenset[UUID]:
 
 def _capabilities(role: str, grants: Sequence[GrantFacts]) -> frozenset[str]:
     """Role bundle + direct user allows - direct user denies (spec §5.4 step 1)."""
-    # A corrupt grant fails closed everywhere, not just in _resource_rules.
+    # A corrupt grant drops every capability, as it drops data access in
+    # _resource_rules and manager rights in evaluate().
     if any(_is_malformed(g) for g in grants):
         return frozenset()
     overrides = [
@@ -145,8 +151,8 @@ def _resource_rules(
     deny: list[Rule] = []
     for g in grants:
         origin = _origin(g, groups)
-        # A corrupt grant fails closed: no data and no capabilities; the
-        # reason names the grant.
+        # A corrupt grant fails closed: no data, no capabilities and no
+        # manager rights; the reason names the grant.
         if _is_malformed(g):
             logger.warning(
                 "access.malformed_grant",

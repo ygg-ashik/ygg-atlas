@@ -359,6 +359,13 @@ def test_malformed_grant_drops_admin_capabilities_and_manage_rights() -> None:
     assert not p.can_manage_members(CHILD)
 
 
+def test_malformed_grant_drops_manager_rights() -> None:
+    bad = grant(ROOT, effect="DENY")
+    p = policy(member_of={ROOT: "manager"}, grants=[bad])
+    assert p.managed_group_ids == frozenset()
+    assert not p.can_manage_members(ROOT)
+
+
 def test_manager_over_a_cycle_terminates() -> None:
     a, b = uuid4(), uuid4()
     cyclic = {a: GroupFacts(a, "a", b, "ygg"), b: GroupFacts(b, "b", a, "ygg")}
