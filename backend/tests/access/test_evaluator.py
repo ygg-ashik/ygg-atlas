@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
+from structlog.testing import capture_logs
 
 from app.access.catalog import ADMIN_GROUPS, CHAT_USE, MCP_USE
 from app.access.evaluator import evaluate
@@ -194,16 +195,24 @@ def test_admin_groups_capability_manages_any_group() -> None:
 def test_invalid_stored_deny_pattern_denies_everything() -> None:
     bad_deny = grant(USER, "demo/order", effect="deny")  # 2-segment literal: invalid
     allow_all = grant(USER, "*")
-    p = policy(grants=[allow_all, bad_deny])
+    with capture_logs() as logs:
+        p = policy(grants=[allow_all, bad_deny])
     assert not p.allows(REVENUE)
     assert p.deny_reason(REVENUE) == f"denied by grant {bad_deny.id} (user)"
+    events = [log for log in logs if log["event"] == "access.invalid_deny_pattern"]
+    assert len(events) == 1
+    assert events[0]["grant_id"] == str(bad_deny.id)
 
 
 def test_invalid_stored_allow_pattern_grants_nothing() -> None:
     bad_allow = grant(USER, "Demo/*")  # uppercase segment: invalid
-    p = policy(grants=[bad_allow])
+    with capture_logs() as logs:
+        p = policy(grants=[bad_allow])
     assert not p.allows(REVENUE)
     assert not p.has_data_access
+    events = [log for log in logs if log["event"] == "access.invalid_allow_pattern"]
+    assert len(events) == 1
+    assert events[0]["grant_id"] == str(bad_allow.id)
 
 
 def test_user_resource_deny_beats_group_allow() -> None:
@@ -277,22 +286,61 @@ def test_admin_capability_deny_removes_manage_rights() -> None:
 
 
 def test_evaluation_is_deterministic_regardless_of_grant_order() -> None:
-    grants = [grant(USER, "demo/*"), grant(USER, "demo/order/*", effect="deny")]
-    inputs = PolicyInputs(
-        user=UserFacts(USER, "viewer", "active", "ygg"),
-        groups=GROUPS,
-        memberships={},
-        grants=grants,
-        policy_version=7,
-    )
-    reversed_inputs = PolicyInputs(
-        user=UserFacts(USER, "viewer", "active", "ygg"),
-        groups=GROUPS,
-        memberships={},
-        grants=list(reversed(grants)),
-        policy_version=7,
-    )
-    assert evaluate(inputs, NOW) == evaluate(reversed_inputs, NOW)
+    allow_star = grant(USER, "*")
+    allow_demo = grant(USER, "demo/*")
+    allow_order = grant(USER, "demo/order/*")
+    deny_revenue_1 = grant(USER, REVENUE, effect="deny")
+    deny_revenue_2 = grant(USER, REVENUE, effect="deny")  # same pattern, different id
+    grants = [allow_star, allow_demo, allow_order, deny_revenue_1, deny_revenue_2]
+    fixed_permutation = [
+        deny_revenue_2,
+        allow_order,
+        deny_revenue_1,
+        allow_star,
+        allow_demo,
+    ]
+
+    def build(ordered: list[GrantFacts]) -> PolicyInputs:
+        return PolicyInputs(
+            user=UserFacts(USER, "viewer", "active", "ygg"),
+            groups=GROUPS,
+            memberships={},
+            grants=ordered,
+            policy_version=7,
+        )
+
+    original = evaluate(build(grants), NOW)
+    reversed_order = evaluate(build(list(reversed(grants))), NOW)
+    permuted = evaluate(build(fixed_permutation), NOW)
+    assert original == reversed_order
+    assert original == permuted
+
+
+def test_malformed_effect_on_resource_grant_denies_everything() -> None:
+    allow_all = grant(USER, "*")
+    bad = grant(USER, "demo/order/*", effect="DENY")  # not the literal "deny"
+    with capture_logs() as logs:
+        p = policy(grants=[allow_all, bad])
+    assert not p.allows(REVENUE)
+    assert p.deny_reason(REVENUE) == f"denied by grant {bad.id} (user)"
+    events = [log for log in logs if log["event"] == "access.malformed_grant"]
+    assert len(events) == 1
+    assert events[0]["grant_id"] == str(bad.id)
+    assert events[0]["effect"] == "DENY"
+    assert events[0]["target_kind"] == "resource"
+
+
+def test_malformed_target_kind_on_resource_grant_denies_everything() -> None:
+    allow_all = grant(USER, "*")
+    bad = grant(USER, "demo/order/*", effect="deny", kind="Resource")
+    with capture_logs() as logs:
+        p = policy(grants=[allow_all, bad])
+    assert not p.allows(REVENUE)
+    assert p.deny_reason(REVENUE) == f"denied by grant {bad.id} (user)"
+    events = [log for log in logs if log["event"] == "access.malformed_grant"]
+    assert len(events) == 1
+    assert events[0]["grant_id"] == str(bad.id)
+    assert events[0]["target_kind"] == "Resource"
 
 
 def test_manager_over_a_cycle_terminates() -> None:
@@ -333,3 +381,10 @@ def test_more_specific_allow_rule_is_reported() -> None:
     decision = p.decide(REVENUE)
     assert decision.rule is not None
     assert decision.rule.pattern == "demo/order/*"
+
+
+def test_literal_rule_is_reported_before_same_depth_wildcard() -> None:
+    p = policy(grants=[grant(USER, "demo/*/revenue"), grant(USER, REVENUE)])
+    decision = p.decide(REVENUE)
+    assert decision.rule is not None
+    assert decision.rule.pattern == REVENUE

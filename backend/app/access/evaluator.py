@@ -11,6 +11,7 @@ from app.access.facts import (
     EFFECT_ALLOW,
     EFFECT_DENY,
     KIND_CAPABILITY,
+    KIND_CLEARANCE,
     KIND_RESOURCE,
     STANDING_MANAGER,
     STATUS_ACTIVE,
@@ -26,6 +27,9 @@ from app.access.policy import Policy, Rule
 type Groups = Mapping[UUID, GroupFacts]
 
 logger = structlog.get_logger()
+
+_VALID_EFFECTS = frozenset({EFFECT_ALLOW, EFFECT_DENY})
+_VALID_TARGET_KINDS = frozenset({KIND_RESOURCE, KIND_CAPABILITY, KIND_CLEARANCE})
 
 
 def evaluate(inputs: PolicyInputs, now: datetime) -> Policy:
@@ -107,10 +111,17 @@ def _capabilities(role: str, grants: Sequence[GrantFacts]) -> frozenset[str]:
     return frozenset((role_capabilities(role) | allowed) - denied)
 
 
-def _rule_key(rule: Rule) -> tuple[int, str, str]:
-    """Most specific first: more segments, then pattern, then grant id."""
-    segments = len(rule.pattern.split("/"))
-    return -segments, rule.pattern, str(rule.grant_id)
+def _rule_key(rule: Rule) -> tuple[int, int, str, str]:
+    """Most specific first: more segments, fewer wildcards, then pattern, then id."""
+    segments = rule.pattern.split("/")
+    wildcards = sum(1 for s in segments if s == "*")
+    return -len(segments), wildcards, rule.pattern, str(rule.grant_id)
+
+
+def _origin(grant: GrantFacts, groups: Groups) -> str:
+    if grant.subject_type == SUBJECT_USER:
+        return "user"
+    return f"group:{groups[grant.subject_id].name}"
 
 
 def _resource_rules(
@@ -119,16 +130,18 @@ def _resource_rules(
     allow: list[Rule] = []
     deny: list[Rule] = []
     for g in grants:
-        if g.target_kind != KIND_RESOURCE or g.effect not in (
-            EFFECT_ALLOW,
-            EFFECT_DENY,
-        ):
+        origin = _origin(g, groups)
+        if g.effect not in _VALID_EFFECTS or g.target_kind not in _VALID_TARGET_KINDS:
+            logger.warning(
+                "access.malformed_grant",
+                grant_id=str(g.id),
+                effect=g.effect,
+                target_kind=g.target_kind,
+            )
+            deny.append(Rule("*", g.id, origin))
             continue
-        origin = (
-            "user"
-            if g.subject_type == SUBJECT_USER
-            else f"group:{groups[g.subject_id].name}"
-        )
+        if g.target_kind != KIND_RESOURCE:
+            continue  # valid capability grants go to _capabilities; clearance: D1
         try:
             validate_pattern(g.target)
         except InvalidPatternError:
