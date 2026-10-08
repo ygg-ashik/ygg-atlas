@@ -16,8 +16,9 @@ type _ArtifactBuilder = Callable[[dict[str, Any], int], Block | None]
 CLARIFY_TOOL: dict[str, Any] = {
     "name": "ask_clarification",
     "description": (
-        "Ask the user to choose between 2-4 interpretations when the question is "
-        "ambiguous or matches several governed metrics/periods, instead of guessing. "
+        "ALWAYS use this (never a plain-text question) to ask the user to choose "
+        "between 2-4 interpretations when the question is ambiguous or matches "
+        "several governed metrics/periods, instead of guessing. "
         "Use plain business labels (never internal ids as labels). After calling it, "
         "end your turn with ONE short sentence restating what you need; do not "
         "answer with numbers in the same turn."

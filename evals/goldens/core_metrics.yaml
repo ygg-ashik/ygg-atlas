@@ -77,7 +77,7 @@
 - id: out-of-registry-honesty
   question: "What is our customer churn rate?"
   expect_no_numbers: true
-  expect_any: ["not in the atlas", "don't have", "do not have", "no metric", "no governed metric", "isn't in the atlas", "in the atlas yet", "not available", "clarify", "not tracked", "not currently", "doesn't include", "does not include", "unable to"]
+  expect_any: ["not in the atlas", "don't have", "do not have", "does not have", "no metric", "no governed metric", "isn't in the atlas", "in the atlas yet", "not available", "clarify", "not tracked", "not currently", "doesn't include", "does not include", "not directly include", "does not track", "doesn't track", "unable to"]
 
 - id: capability-discovery
   question: "What kinds of questions can you answer?"
