@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas · Hybrid Glass reference</title>
+<!-- Reference mockup for DESIGN.md. Mode ① Hybrid is the canonical standard; other modes are kept
+     only to show where each element originates. Colors match DESIGN.md (clay #b45536);
+     DESIGN.md stays authoritative. Not production code. -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300..700&family=Source+Serif+4:opsz,wght@8..60,400..600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═════════ FOUNDATION · Apple clean glass ═════════ */
+body{
+  --canvas:#f5f5f7;--card:#fff;--card-2:#f5f5f7;--ink:#1d1d1f;--body:#424245;--muted:#6e6e73;--muted-2:#86868b;
+  --hair:rgba(0,0,0,.08);--hair-2:rgba(0,0,0,.05);--accent:#0071e3;--accent-soft:rgba(0,113,227,.12);--on-accent:#fff;
+  --pos:#248a3d;--neg:#d70015;--warn:#b25000;
+  --wash:radial-gradient(55% 45% at 10% -5%,rgba(0,113,227,.07),transparent 70%),radial-gradient(45% 40% at 100% 0%,rgba(120,120,140,.10),transparent 70%);
+  --glass:rgba(255,255,255,.62);--glass-heavy:rgba(255,255,255,.72);--glass-edge:rgba(255,255,255,.8);
+  --glass-shadow:0 1px 1px rgba(0,0,0,.04),0 10px 30px rgba(0,0,0,.08);--glass-spec:inset 0 1px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(0,0,0,.03);
+  --blur:saturate(180%) blur(22px);
+  --sans:Inter,-apple-system,BlinkMacSystemFont,system-ui,sans-serif;--serif:"Source Serif 4",Georgia,serif;--mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  --head:var(--sans);--head-w:600;--head-track:-.02em;
+  --ease:cubic-bezier(.22,1,.36,1);--sheet:cubic-bezier(.32,.72,0,1);
+}
+body[data-theme=dark]{--canvas:#0f0f11;--card:#1c1c1e;--card-2:#26262a;--ink:#f5f5f7;--body:#d1d1d6;--muted:#98989d;--muted-2:#7c7c80;
+  --hair:rgba(255,255,255,.09);--hair-2:rgba(255,255,255,.05);--accent:#0a84ff;--accent-soft:rgba(10,132,255,.18);--pos:#30d158;--neg:#ff453a;--warn:#ff9f0a;
+  --wash:radial-gradient(55% 45% at 10% -5%,rgba(10,132,255,.10),transparent 70%),radial-gradient(45% 40% at 100% 0%,rgba(140,140,170,.08),transparent 70%);
+  --glass:rgba(38,38,42,.55);--glass-heavy:rgba(34,34,38,.68);--glass-edge:rgba(255,255,255,.10);
+  --glass-shadow:0 1px 1px rgba(0,0,0,.3),0 12px 36px rgba(0,0,0,.5);--glass-spec:inset 0 1px 0 rgba(255,255,255,.12),inset 0 -1px 0 rgba(0,0,0,.2)}
+/* ═════════ LAYER · Claude warmth (palette + serif voice) ═════════ */
+body.L-warm{--canvas:#faf9f5;--card-2:#f7f3ec;--ink:#141413;--body:#3d3d3a;--muted:#6c6a64;--muted-2:#8e8b82;--hair:rgba(20,20,19,.08);--hair-2:rgba(20,20,19,.05);
+  --accent:#b45536;--accent-soft:rgba(180,85,54,.12);--pos:#3f7d4e;--neg:#b4452f;--warn:#b7791f;
+  --wash:radial-gradient(60% 50% at 15% -10%,rgba(232,165,90,.16),transparent 70%),radial-gradient(50% 40% at 95% 0%,rgba(180,85,54,.10),transparent 70%);
+  --head:var(--serif);--head-w:400;--head-track:-.01em}
+body[data-theme=dark].L-warm{--canvas:#1a1917;--card:#252320;--card-2:#2b2925;--ink:#f3f0ea;--body:#d6d2ca;--muted:#a09d96;--muted-2:#7d7a73;--hair:rgba(255,255,255,.08);--hair-2:rgba(255,255,255,.05);
+  --accent-soft:rgba(180,85,54,.2);--pos:#7cc28c;--neg:#e48a72;--glass:rgba(40,38,34,.55);--glass-heavy:rgba(36,34,31,.7);
+  --wash:radial-gradient(60% 50% at 15% -10%,rgba(232,165,90,.09),transparent 70%),radial-gradient(50% 40% at 95% 0%,rgba(180,85,54,.07),transparent 70%)}
+
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{font-family:var(--sans);background:var(--wash),var(--canvas);color:var(--ink);-webkit-font-smoothing:antialiased;font-size:15px;transition:background-color .45s var(--ease),color .45s var(--ease)}
+.num{font-variant-numeric:tabular-nums}.mono{font-family:var(--mono);font-size:.85em}
+h1,h2,h3,.head{font-family:var(--head);font-weight:var(--head-w);letter-spacing:var(--head-track)}
+.glass{background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-edge);box-shadow:var(--glass-shadow),var(--glass-spec)}
+.spec::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(180px 100px at var(--x,50%) var(--y,-30%),rgba(255,255,255,.55),transparent 65%);mix-blend-mode:soft-light}
+@media (prefers-reduced-transparency:reduce){.glass{background:var(--card);backdrop-filter:none}.spec::after{display:none}}
+.card{background:var(--card);border-radius:18px;box-shadow:0 0 0 1px var(--hair-2),0 1px 2px rgba(0,0,0,.04)}
+.pill{font:inherit;font-size:13px;border:1px solid var(--hair);background:var(--card);color:var(--body);padding:7px 13px;border-radius:99px;cursor:pointer;transition:transform .1s ease-out,background .2s,border-color .2s,color .2s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.pill:hover{border-color:var(--accent);color:var(--ink)}.pill:active{transform:scale(.96)}
+.pill.sel{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn{font:inherit;font-size:13.5px;border:0;border-radius:99px;padding:8px 16px;background:var(--accent);color:var(--on-accent);cursor:pointer;transition:transform .1s ease-out,filter .2s}.btn:active{transform:scale(.96)}.btn:hover{filter:brightness(1.05)}
+.btn.ghost{background:transparent;color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.ibtn{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;border:0;background:transparent;color:var(--ink);cursor:pointer;transition:transform .1s ease-out,background .2s;font-size:16px}
+.ibtn:hover{background:var(--hair)}.ibtn:active{transform:scale(.92)}
+.prov{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);padding:3px 10px;border-radius:99px;background:var(--card-2);border:1px solid var(--hair-2);white-space:nowrap}
+.fresh{width:6px;height:6px;border-radius:50%;background:var(--pos)}.fresh.stale{background:var(--warn)}
+
+/* ═════════ ORIGIN OVERLAY ═════════ */
+body.show-o [data-o]{outline:1.5px dashed var(--oc);outline-offset:3px}
+body.show-o [data-o]:not(.pos){position:relative}
+body.show-o [data-o]::before{content:attr(data-o-label);position:absolute;top:-10px;left:10px;z-index:40;font:600 9.5px/1 var(--sans);letter-spacing:.05em;text-transform:uppercase;color:#fff;background:var(--oc);padding:3px 6px;border-radius:5px;white-space:nowrap;pointer-events:none}
+[data-o=apple]{--oc:#2f6fdb}[data-o=claude]{--oc:#c2552f}[data-o=codex]{--oc:#3a3a3c}[data-o=hf]{--oc:#5f8f12}[data-o=atlas]{--oc:#7d4cdb}
+
+/* ═════════ SHELL ═════════ */
+.app{display:flex;height:100vh;padding:10px;gap:10px}
+.side{width:236px;flex-shrink:0;border-radius:22px;padding:14px 10px;display:flex;flex-direction:column;gap:2px;position:relative;background:var(--glass-heavy)}
+.brand{font-size:21px;padding:4px 10px 14px;display:flex;align-items:center;gap:9px}.brand i{width:10px;height:10px;border-radius:3px;background:var(--accent);transform:rotate(45deg);transition:background .4s}
+.nav{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:11px;color:var(--body);font-size:14px;cursor:pointer;transition:background .2s,transform .1s ease-out}
+.nav:hover{background:var(--hair-2)}.nav:active{transform:scale(.97)}.nav.on{background:var(--card);color:var(--ink);box-shadow:0 0 0 1px var(--hair-2),0 1px 3px rgba(0,0,0,.06)}
+.sec{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-2);padding:16px 10px 6px;display:flex;align-items:center}
+.thread{font-size:13px;color:var(--muted);padding:6px 10px;border-radius:9px;display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden}
+.thread .st{width:7px;height:7px;border-radius:50%;background:var(--muted-2);opacity:.45;flex-shrink:0;display:none}
+.L-codex .thread .st{display:block}.thread .st.run{background:var(--accent);opacity:1;animation:pulse 1.2s ease-in-out infinite}
+.thread .tm{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--muted-2);display:none}.L-codex .thread .tm{display:block}
+@keyframes pulse{50%{transform:scale(.6);opacity:.5}}
+.main{flex:1;position:relative;overflow:hidden;border-radius:22px;display:flex;min-width:0}
+.pane{flex:1;position:relative;overflow:hidden;min-width:0}
+.scroller{position:absolute;inset:0;overflow-y:auto}
+.topbar{position:absolute;top:10px;left:14px;right:14px;height:52px;border-radius:26px;z-index:10;display:flex;align-items:center;gap:8px;padding:0 8px 0 18px}
+.topbar h1{font-size:18px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.edge-top{position:absolute;top:0;left:0;right:0;height:80px;z-index:5;pointer-events:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);mask-image:linear-gradient(#000 30%,transparent);-webkit-mask-image:linear-gradient(#000 30%,transparent)}
+.edge-bot{position:absolute;bottom:0;left:0;right:0;height:130px;z-index:5;pointer-events:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);mask-image:linear-gradient(to top,#000 35%,transparent);-webkit-mask-image:linear-gradient(to top,#000 35%,transparent)}
+.jobsbtn{display:none}.L-codex .jobsbtn{display:inline-flex}
+.jobs{position:absolute;top:68px;right:20px;width:340px;border-radius:20px;padding:10px;z-index:30;transform-origin:calc(100% - 60px) -10px;opacity:0;transform:scale(.92) translateY(-4px);filter:blur(6px);pointer-events:none;transition:opacity .28s var(--ease),transform .35s var(--ease),filter .3s var(--ease)}
+.jobs.open{opacity:1;transform:none;filter:none;pointer-events:auto}
+.job{padding:10px;border-radius:12px;display:grid;gap:6px}.job:hover{background:var(--hair-2)}
+.job .jt{display:flex;align-items:center;gap:8px;font-size:13px}.job .jt .tm{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.prog{height:4px;border-radius:2px;background:var(--hair);overflow:hidden}.prog i{display:block;height:100%;width:30%;background:var(--accent);border-radius:2px;transition:width .6s var(--ease)}
+.prog.ind i{width:35%;animation:ind 1.3s var(--ease) infinite}@keyframes ind{from{transform:translateX(-100%)}to{transform:translateX(300%)}}
+
+/* ═════════ CONTENT ═════════ */
+.page{max-width:1080px;margin:0 auto;padding:84px 28px 80px}
+.chat{max-width:740px;margin:0 auto;padding:88px 24px 190px}
+.hello{font-size:31px;margin:6px 0 2px}.sub{color:var(--muted);margin:0 0 18px}
+.brief{padding:18px 20px;border-radius:24px;line-height:1.6;color:var(--body);margin-bottom:14px;position:relative}.brief b{color:var(--ink)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.kpi{padding:14px 16px}.kpi .l{font-size:12.5px;color:var(--muted)}.kpi .v{font-size:27px;font-weight:600;letter-spacing:-.7px;margin:6px 0 8px}
+.delta{font-size:11.5px;font-weight:600;padding:2px 7px;border-radius:99px}.delta.up{color:var(--pos);background:color-mix(in srgb,var(--pos) 12%,transparent)}.delta.dn{color:var(--neg);background:color-mix(in srgb,var(--neg) 12%,transparent)}
+.row2{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;margin-top:12px}
+.panel{padding:16px 18px}.panel .ph{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap}.panel h3{margin:0;font-size:18px}
+.chart{width:100%;height:200px;display:block}
+.chart .line{fill:none;stroke:var(--accent);stroke-width:2.2;stroke-linecap:round;stroke-dasharray:1400;stroke-dashoffset:1400;animation:draw 1.3s var(--ease) .15s forwards}
+.chart .area{fill:var(--accent);opacity:0;animation:fadeA .8s var(--ease) .8s forwards}@keyframes draw{to{stroke-dashoffset:0}}@keyframes fadeA{to{opacity:.09}}
+table{width:100%;border-collapse:collapse;font-size:13.5px}td,th{padding:8px 4px;text-align:left;border-bottom:1px solid var(--hair-2)}th{font-weight:500;color:var(--muted);font-size:12px}.r{text-align:right}
+.bar{height:6px;border-radius:3px;background:var(--accent-soft);overflow:hidden}.bar i{display:block;height:100%;background:var(--accent);transform-origin:left;transform:scaleX(0);animation:grow .9s var(--ease) forwards}@keyframes grow{to{transform:scaleX(1)}}
+h3.sh{font-size:20px;margin:26px 0 4px}.shs{color:var(--muted);font-size:13px;margin:0 0 12px}
+.presets{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.preset{border-radius:24px;overflow:hidden;cursor:pointer;background:var(--card);box-shadow:0 0 0 1px var(--hair-2);transition:transform .35s var(--ease),box-shadow .35s var(--ease)}
+.preset:hover{transform:translateY(-3px);box-shadow:0 0 0 1px var(--hair),0 14px 34px rgba(0,0,0,.10)}.preset:active{transform:scale(.98)}
+.preset .pv{height:108px;position:relative;background:var(--card-2);overflow:hidden}.preset .pv svg{position:absolute;inset:0;width:100%;height:100%}
+.preset .pv .l{fill:none;stroke:var(--accent);stroke-width:2.2;stroke-linecap:round;stroke-dasharray:420;stroke-dashoffset:420;transition:stroke-dashoffset 1.1s var(--ease)}.preset:hover .pv .l{stroke-dashoffset:0}
+.preset .pv rect{fill:var(--accent);transform-box:fill-box;transform-origin:bottom;transform:scaleY(.25);transition:transform .7s var(--ease)}.preset:hover .pv rect{transform:scaleY(1)}
+.preset .pv rect.h{transform-origin:left;transform:scaleX(.25)}.preset:hover .pv rect.h{transform:scaleX(1)}
+.preset .pb{padding:12px 14px 14px}.preset .pb b{font-size:14px;display:block}.preset .pb span{font-size:12px;color:var(--muted)}
+.suggest{display:flex;gap:8px;flex-wrap:wrap}
+
+/* chat */
+.u{display:flex;justify-content:flex-end;margin:6px 0 20px}.u div{background:var(--card);box-shadow:0 0 0 1px var(--hair-2);padding:10px 15px;border-radius:20px 20px 6px 20px;max-width:80%;line-height:1.5}
+.L-warm .u div{background:var(--card-2)}
+.ans{line-height:1.65;color:var(--body);font-size:15.5px}.ans h2{font-size:23px;color:var(--ink);margin:6px 0 10px}.ans p{margin:0 0 12px}.ans strong{color:var(--ink)}
+.think{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin-bottom:12px}
+.spin{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--hair);border-top-color:var(--accent);animation:spin .8s linear infinite;flex-shrink:0}@keyframes spin{to{transform:rotate(360deg)}}
+.shim{background:linear-gradient(90deg,var(--muted) 0%,var(--ink) 45%,var(--muted) 60%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:sh 1.6s linear infinite}@keyframes sh{from{background-position:120% 0}to{background-position:-80% 0}}
+.plan{border-radius:16px;padding:12px 14px;margin-bottom:14px;background:var(--card);box-shadow:0 0 0 1px var(--hair-2)}
+.plan .phd{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none}.plan .chev{transition:transform .35s var(--ease);display:inline-block}.plan.open .chev{transform:rotate(90deg)}
+.plan .pbody{overflow:hidden;transition:height .45s var(--ease)}
+.todo{display:flex;align-items:center;gap:9px;font-size:13px;padding:6px 0 0;color:var(--muted)}
+.todo .bx{width:15px;height:15px;border-radius:5px;border:1.5px solid var(--hair);display:grid;place-items:center;flex-shrink:0;font-size:10px;transition:all .3s var(--ease)}
+.todo.run .bx{border-color:var(--accent);border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite}.todo.done .bx{background:var(--pos);border-color:var(--pos);color:#fff}.todo.done .t{color:var(--body)}
+.todo .tool{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted-2)}
+.tok{opacity:0;animation:fade .3s ease-out forwards}@keyframes fade{to{opacity:1}}
+.L-claude .tok{filter:blur(3px);animation:tokb .42s var(--ease) forwards}@keyframes tokb{to{opacity:1;filter:none}}
+.caret{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-left:4px;vertical-align:middle;animation:pulse 1s ease-in-out infinite}
+.appear{opacity:0;transform:translateY(6px) scale(.985);transition:opacity .45s var(--ease),transform .5s var(--ease)}.appear.in{opacity:1;transform:none}
+.mcard{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding:14px 16px;margin:4px 0 14px}.mcard .big{font-size:32px;font-weight:600;letter-spacing:-1px;color:var(--ink)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 6px}
+.chips .prov{opacity:0;transform:scale(.92);transition:all .45s var(--ease)}.L-claude .chips .prov{filter:blur(4px)}.chips .prov.in{opacity:1;transform:none;filter:none}
+.artifact{display:flex;align-items:center;gap:12px;padding:12px 14px;margin:10px 0 6px;cursor:pointer}.artifact:hover{box-shadow:0 0 0 1px var(--hair),0 8px 24px rgba(0,0,0,.08)}
+.artifact .ic{width:40px;height:40px;border-radius:11px;background:var(--accent-soft);display:grid;place-items:center;color:var(--accent);font-size:18px}
+.review{margin:14px 0 4px;padding:14px 16px;border-radius:18px;background:var(--card);box-shadow:0 0 0 1px var(--hair),0 6px 20px rgba(0,0,0,.06)}
+.review .rh{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin-bottom:8px}
+.diff{font-family:var(--mono);font-size:12px;border-radius:10px;background:var(--card-2);padding:8px 10px;line-height:1.75}.diff .a{color:var(--pos)}.diff .rm{color:var(--neg);text-decoration:line-through;opacity:.7}
+.notice{display:flex;gap:12px;padding:14px 16px;border-radius:18px;margin:4px 0 12px;align-items:flex-start}
+.notice .ni{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;font-size:14px}
+.notice.warn{background:color-mix(in srgb,var(--warn) 9%,var(--card));box-shadow:0 0 0 1px color-mix(in srgb,var(--warn) 25%,transparent)}.notice.warn .ni{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.notice.deny{background:var(--card);box-shadow:0 0 0 1px var(--hair)}.notice.deny .ni{background:var(--hair);color:var(--ink)}
+.morph{position:relative;display:inline-grid;place-items:center}.morph>*{grid-area:1/1;transition:all .3s var(--ease)}.morph .b{opacity:0;transform:scale(.5);filter:blur(3px)}.morph.done .a{opacity:0;transform:scale(.5);filter:blur(3px)}.morph.done .b{opacity:1;transform:none;filter:none}
+/* composer */
+.composer-wrap{position:absolute;left:0;right:0;bottom:16px;z-index:10;display:flex;justify-content:center;padding:0 24px;pointer-events:none;transition:bottom .65s var(--sheet)}
+.composer-wrap.center{bottom:calc(50% - 130px)}
+.composer{pointer-events:auto;width:100%;max-width:740px;border-radius:26px;padding:12px 12px 10px 18px;position:relative;transition:box-shadow .3s}
+.composer textarea{width:100%;border:0;outline:0;resize:none;background:transparent;font:inherit;font-size:15.5px;color:var(--ink);height:26px}.composer textarea::placeholder{color:var(--muted-2)}
+.composer .row{display:flex;align-items:center;gap:6px;margin-top:6px}.composer:focus-within{box-shadow:var(--glass-shadow),var(--glass-spec),0 0 0 4px var(--accent-soft)}
+.composer .pill{background:transparent}
+.send{margin-left:auto;width:36px;height:36px;border-radius:50%;border:0;background:var(--accent);color:#fff;display:grid;place-items:center;cursor:pointer;position:relative;transition:transform .1s ease-out,background .4s}
+.send:active{transform:scale(.9)}.send .arrow{transition:opacity .2s}.send .stop{position:absolute;width:11px;height:11px;border-radius:3px;background:#fff;transform:scale(0);transition:transform .35s var(--ease)}
+.L-codex .send.streaming .arrow{opacity:0}.L-codex .send.streaming .stop{transform:scale(1)}
+.send .ring{position:absolute;inset:-4px;border-radius:50%;border:2px solid transparent;border-top-color:var(--accent);opacity:0;animation:spin 1s linear infinite;transition:opacity .3s}.L-codex .send.streaming .ring{opacity:1}
+.elapsed{font-size:12px;color:var(--muted);font-family:var(--mono);margin-right:6px;opacity:0;transition:opacity .3s;display:none}.L-codex .elapsed{display:inline}.elapsed.on{opacity:1}
+/* artifact side panel */
+.sp{width:0;flex-shrink:0;overflow:hidden;transition:width .55s var(--sheet);position:relative}
+.sp.open{width:min(44vw,540px)}
+.sp-in{position:absolute;top:10px;right:10px;bottom:10px;width:calc(min(44vw,540px) - 10px);border-radius:22px;background:var(--card);box-shadow:0 0 0 1px var(--hair),0 20px 60px rgba(0,0,0,.14);padding:18px 20px;overflow:auto}
+.sp-in h3{margin:0;font-size:21px;flex:1}
+/* metrics catalog: Apple inset grouped list */
+.group{margin:0 0 20px}.group .gh{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);padding:0 16px 6px}
+.L-warm .group .gh{font-family:var(--serif);text-transform:none;letter-spacing:0;font-size:18px;color:var(--ink)}
+.list{background:var(--card);border-radius:16px;box-shadow:0 0 0 1px var(--hair-2);overflow:hidden}
+.li{padding:12px 16px;border-bottom:1px solid var(--hair-2);cursor:pointer;transition:background .2s}.li:last-child{border:0}.li:hover{background:var(--hair-2)}
+.li .lt{display:flex;align-items:center;gap:10px}.li .lt b{font-weight:500;font-size:14.5px}.li .lt .chev{margin-left:auto;color:var(--muted-2);transition:transform .35s var(--ease)}.li.open .chev{transform:rotate(90deg)}
+.li .mid{font-family:var(--mono);font-size:11px;color:var(--muted-2);display:none}.L-codex .li .mid{display:inline}
+.li .ld{overflow:hidden;height:0;transition:height .4s var(--ease);color:var(--body);font-size:13px;line-height:1.55}
+/* cmdk */
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.18);z-index:25;opacity:0;transition:opacity .3s;pointer-events:none}.scrim.on{opacity:1;pointer-events:auto}
+.cmdk{position:absolute;top:18%;left:50%;width:560px;margin-left:-280px;border-radius:22px;padding:10px;z-index:30;opacity:0;transform:scale(.96);filter:blur(8px);transition:opacity .3s var(--ease),transform .35s var(--ease),filter .3s var(--ease);pointer-events:none}
+.cmdk.on{opacity:1;transform:none;filter:none;pointer-events:auto}
+.cmdk input{width:100%;border:0;outline:0;background:transparent;font:inherit;font-size:17px;padding:8px 10px 12px;color:var(--ink);border-bottom:1px solid var(--hair)}
+.ck{padding:9px 10px;border-radius:12px;font-size:14px;display:flex;gap:10px;align-items:center;cursor:pointer}.ck.on,.ck:hover{background:var(--accent-soft)}.ck .k{margin-left:auto;font-size:11px;color:var(--muted)}
+/* toast */
+.toasts{position:absolute;bottom:22px;right:22px;width:300px;height:60px;z-index:40;pointer-events:none}
+.toast{position:absolute;left:0;right:0;bottom:0;border-radius:16px;padding:12px 14px;font-size:13.5px;display:flex;gap:10px;align-items:center;opacity:0;transform:translateY(16px) scale(.96);transition:all .4s var(--ease)}
+/* welcome */
+.welcome{max-width:740px;margin:0 auto;padding:22vh 24px 0;text-align:center}
+.welcome h2{font-size:34px;margin:0 0 6px}.welcome p{color:var(--muted);margin:0}
+.welcome .under{margin-top:150px}
+
+/* ═════════ REVIEW DOCK (not part of design) ═════════ */
+.dock{position:fixed;left:18px;bottom:18px;z-index:60;width:236px;border-radius:18px;padding:12px;font-size:12px;display:grid;gap:10px}
+.dock .lbl{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.dock .modes{display:grid;gap:4px}
+.dock .mode{text-align:left;font:inherit;font-size:12.5px;border:0;background:transparent;color:var(--ink);padding:6px 8px;border-radius:9px;cursor:pointer}.dock .mode:hover{background:var(--hair-2)}.dock .mode.on{background:var(--accent);color:var(--on-accent)}
+.dock .layers{display:flex;flex-wrap:wrap;gap:4px}
+.dock .lay{font:inherit;font-size:11.5px;border:1px solid var(--hair);background:transparent;color:var(--muted);padding:4px 8px;border-radius:99px;cursor:pointer}.dock .lay.on{color:var(--ink);border-color:var(--ink)}
+.dock select{font:inherit;font-size:12.5px;width:100%;padding:6px 8px;border-radius:9px;border:1px solid var(--hair);background:var(--card);color:var(--ink)}
+.dock .row{display:flex;gap:4px}.dock .row button{flex:1}
+.legend{display:flex;flex-wrap:wrap;gap:4px}.legend span{font:600 9.5px/1 var(--sans);letter-spacing:.05em;text-transform:uppercase;color:#fff;padding:3px 6px;border-radius:5px}
+.dock .min{position:absolute;top:8px;right:8px;border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:14px}
+.dock.collapsed>*:not(.min):not(.title){display:none}
+@media (prefers-reduced-motion:reduce){*{animation-duration:1ms!important;animation-iteration-count:1!important;transition-duration:1ms!important}.tok{filter:none!important}}
+@media (max-width:1000px){.kpis,.presets{grid-template-columns:repeat(2,1fr)}.row2{grid-template-columns:1fr}.side{display:none}}
+</style>
+</head>
+<body data-theme="light" class="L-claude L-warm L-codex L-hf">
+
+<div class="app">
+  <aside class="side glass spec pos" data-o="apple" data-o-label="Apple · floating glass sidebar">
+    <div class="brand head"><i></i>Atlas</div>
+    <div class="nav" data-scene="overview">▦&nbsp; Overview</div>
+    <div class="nav" data-scene="welcome">◌&nbsp; Ask Atlas</div>
+    <div class="nav" data-scene="catalog">⌁&nbsp; Metrics</div>
+    <div class="sec">Threads</div>
+    <div data-o="codex" data-o-label="Codex · thread status">
+      <div class="thread"><span class="st run"></span>Q3 revenue review<span class="tm">0:12</span></div>
+      <div class="thread"><span class="st run"></span>Weekly ROAS report<span class="tm">queued</span></div>
+      <div class="thread"><span class="st"></span>Churn-risk accounts<span class="tm">9:12</span></div>
+      <div class="thread"><span class="st"></span>Redemption funnel<span class="tm">Mon</span></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="pane">
+      <div class="edge-top pos" data-o="apple" data-o-label="Apple · scroll-edge blur"></div>
+      <div class="topbar glass spec pos" data-o="apple" data-o-label="Apple · floating glass toolbar">
+        <h1 id="title">Overview</h1>
+        <button class="pill jobsbtn" id="jobsBtn" data-o="codex" data-o-label="Codex · background jobs">◷ 2 running</button>
+        <button class="ibtn" id="cmdkBtn" title="Search ⌘K">⌕</button>
+      </div>
+      <div class="jobs glass" id="jobs">
+        <div style="font-size:12px;color:var(--muted);padding:4px 10px 6px">Background jobs</div>
+        <div class="job"><div class="jt">Q3 corporate revenue review<span class="tm" id="j1t">0:04</span></div><div class="prog"><i id="j1"></i></div></div>
+        <div class="job"><div class="jt">Weekly ROAS report<span class="tm">queued</span></div><div class="prog ind"><i></i></div></div>
+        <div class="job" style="opacity:.6"><div class="jt">Churn-risk accounts<span class="tm">done · 9:12</span></div></div>
+      </div>
+      <div class="scroller" id="sc"><div id="stage"></div></div>
+      <div class="edge-bot" id="eb"></div>
+      <div class="composer-wrap" id="cw">
+        <div class="composer glass spec pos" data-o="apple" data-o-label="Apple · glass composer">
+          <textarea id="ta" placeholder="Ask Atlas about revenue, campaigns, accounts…"></textarea>
+          <div class="row"><button class="pill">＋ Source</button><button class="pill" id="replay">↻ Replay</button>
+            <span class="elapsed" id="el" data-o="codex" data-o-label="Codex · elapsed">0s</span>
+            <button class="send" id="send" data-o="codex" data-o-label="Codex · send⇄stop"><span class="ring"></span><svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4"><path d="M12 19V5M5 12l7-7 7 7"/></svg><span class="stop"></span></button></div>
+        </div>
+      </div>
+      <div class="scrim" id="scrim"></div>
+      <div class="cmdk glass" id="cmdk" data-o="apple" data-o-label="Apple · Spotlight-style palette">
+        <input placeholder="Search metrics, ask, jump to…" value="rev">
+        <div style="padding-top:6px">
+          <div class="ck on">↗ Corporate revenue <span class="k">Metric</span></div>
+          <div class="ck">↗ Revenue by country <span class="k">Artifact</span></div>
+          <div class="ck">◌ Ask: "Why did revenue rise in Q3?" <span class="k">↵ Ask</span></div>
+          <div class="ck">◷ Q3 corporate revenue review <span class="k">Thread</span></div>
+        </div>
+      </div>
+      <div class="toasts" id="toasts"></div>
+    </div>
+    <aside class="sp" id="sp"><div class="sp-in" data-o="claude" data-o-label="Claude · artifact panel">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><h3 class="head">Q3 revenue by country</h3><button class="ibtn" id="spClose">✕</button></div>
+      <span class="prov" data-o="atlas" data-o-label="Atlas · provenance"><span class="fresh"></span>corporate_revenue · EMAPI · 2h ago</span>
+      <svg viewBox="0 0 500 150" style="width:100%;height:150px;margin:12px 0"><rect x="20" y="15" width="80" height="130" rx="8" fill="var(--accent)" opacity=".85"/><rect x="130" y="50" width="80" height="95" rx="8" fill="var(--accent)" opacity=".65"/><rect x="240" y="90" width="80" height="55" rx="8" fill="var(--accent)" opacity=".45"/><rect x="350" y="115" width="80" height="30" rx="8" fill="var(--accent)" opacity=".3"/></svg>
+      <table class="num"><thead><tr><th>Country</th><th class="r">Q3</th><th class="r">vs Q2</th></tr></thead><tbody>
+        <tr><td>Saudi Arabia</td><td class="r">AED 2.14M</td><td class="r" style="color:var(--pos)">+24.1%</td></tr><tr><td>UAE</td><td class="r">AED 1.61M</td><td class="r" style="color:var(--neg)">−3.2%</td></tr>
+        <tr><td>Qatar</td><td class="r">AED 0.66M</td><td class="r" style="color:var(--pos)">+8.7%</td></tr><tr><td>Kuwait</td><td class="r">AED 0.41M</td><td class="r" style="color:var(--pos)">+2.0%</td></tr></tbody></table>
+      <div style="display:flex;gap:6px;margin-top:14px"><button class="pill">⇩ Export CSV</button><button class="pill">＋ Save to dashboard</button></div>
+    </div></aside>
+  </main>
+</div>
+
+<!-- REVIEW DOCK -->
+<div class="dock glass" id="dock">
+  <button class="min" id="dmin">–</button>
+  <div class="lbl title">Mode</div>
+  <div class="modes" id="modes">
+    <button class="mode on" data-m="hybrid">① Hybrid: everything</button>
+    <button class="mode" data-m="claude">② Glass + Claude</button>
+    <button class="mode" data-m="codex">③ Glass + Codex</button>
+    <button class="mode" data-m="hf">④ Glass + Higgsfield</button>
+    <button class="mode" data-m="pure">⑤ Pure Apple glass</button>
+  </div>
+  <div class="lbl">Layers (fine-tune)</div>
+  <div class="layers" id="layers">
+    <button class="lay on" data-l="L-warm">Claude palette</button><button class="lay on" data-l="L-claude">Claude motion</button>
+    <button class="lay on" data-l="L-codex">Codex</button><button class="lay on" data-l="L-hf">Higgsfield</button>
+  </div>
+  <div class="lbl">Case</div>
+  <select id="scene">
+    <option value="overview">1 · Overview dashboard</option>
+    <option value="welcome">2 · New chat (empty state)</option>
+    <option value="ask">3 · Streaming answer</option>
+    <option value="clarify">4 · Clarifying question (no metric)</option>
+    <option value="approve">5 · Agent action needs approval</option>
+    <option value="denied">6 · Access denied (scope)</option>
+    <option value="stale">7 · Stale data warning</option>
+    <option value="catalog">8 · Metrics catalog</option>
+    <option value="cmdk">9 · ⌘K command palette</option>
+  </select>
+  <div class="row"><button class="lay" id="org">⌗ Show origins</button><button class="lay" id="th">◐ Theme</button></div>
+  <div class="legend"><span style="background:#2f6fdb">Apple</span><span style="background:#c2552f">Claude</span><span style="background:#3a3a3c">Codex</span><span style="background:#5f8f12">Higgsfield</span><span style="background:#7d4cdb">Atlas</span></div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];const B=document.body;
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;const wait=ms=>new Promise(r=>setTimeout(r,reduce?0:ms));
+const has=l=>B.classList.contains(l);
+let scene='overview',run=0,timer;
+
+/* ───── dock ───── */
+const MODES={hybrid:['L-warm','L-claude','L-codex','L-hf'],claude:['L-warm','L-claude'],codex:['L-codex'],hf:['L-hf'],pure:[]};
+function setLayers(ls){['L-warm','L-claude','L-codex','L-hf'].forEach(l=>B.classList.toggle(l,ls.includes(l)));$$('.lay[data-l]').forEach(b=>b.classList.toggle('on',has(b.dataset.l)));render()}
+$$('.mode').forEach(b=>b.addEventListener('click',()=>{$$('.mode').forEach(x=>x.classList.remove('on'));b.classList.add('on');setLayers(MODES[b.dataset.m])}));
+$$('.lay[data-l]').forEach(b=>b.addEventListener('click',()=>{B.classList.toggle(b.dataset.l);$$('.mode').forEach(x=>x.classList.remove('on'));setLayers(['L-warm','L-claude','L-codex','L-hf'].filter(has))}));
+$('#scene').addEventListener('change',e=>go(e.target.value));
+$('#org').addEventListener('click',e=>{B.classList.toggle('show-o');e.target.classList.toggle('on')});
+$('#th').addEventListener('click',()=>{B.dataset.theme=B.dataset.theme==='dark'?'light':'dark'});
+$('#dmin').addEventListener('click',()=>{$('#dock').classList.toggle('collapsed');$('#dmin').textContent=$('#dock').classList.contains('collapsed')?'+':'–'});
+$$('.nav').forEach(n=>n.addEventListener('click',()=>go(n.dataset.scene)));
+
+/* ───── shell behaviors ───── */
+$$('.spec').forEach(g=>g.addEventListener('pointermove',e=>{const r=g.getBoundingClientRect();g.style.setProperty('--x',(e.clientX-r.left)+'px');g.style.setProperty('--y',(e.clientY-r.top)+'px')}));
+$('#jobsBtn').addEventListener('click',e=>{e.stopPropagation();$('#jobs').classList.toggle('open')});
+document.addEventListener('click',e=>{if(!e.target.closest('#jobs'))$('#jobs').classList.remove('open')});
+let jp=30,js=4;setInterval(()=>{jp=jp>=95?30:jp+7;js++;$('#j1').style.width=jp+'%';$('#j1t').textContent='0:'+String(js%60).padStart(2,'0')},900);
+$('#spClose').addEventListener('click',()=>$('#sp').classList.remove('open'));
+$('#cmdkBtn').addEventListener('click',()=>go('cmdk'));
+$('#scrim').addEventListener('click',()=>go('overview'));
+document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();go('cmdk')}if(e.key==='Escape'&&scene==='cmdk')go('overview')});
+$('#replay').addEventListener('click',()=>render());
+$('#send').addEventListener('click',()=>{if(scene==='welcome')go('ask')});
+
+function toast(msg){const z=$('#toasts');const t=document.createElement('div');t.className='toast glass';t.dataset.o='apple';t.dataset.oLabel='Apple · toast';t.classList.add('pos');
+  t.innerHTML=`<span style="color:var(--pos)">✓</span>${msg}`;z.appendChild(t);
+  requestAnimationFrame(()=>[...z.children].reverse().forEach((c,i)=>{c.style.opacity=i>2?0:1-i*.15;c.style.transform=`translateY(${-i*10}px) scale(${1-i*.05})`;c.style.zIndex=10-i}));
+  setTimeout(()=>{t.style.opacity=0;t.style.transform='translateY(10px) scale(.94)';setTimeout(()=>t.remove(),400)},3200)}
+
+/* ───── helpers ───── */
+const TITLES={overview:'Overview',welcome:'New chat',ask:'Q3 corporate revenue review',clarify:'Revenue question',approve:'Exec weekly dashboard',denied:'Payroll question',stale:'Account health',catalog:'Metrics',cmdk:'Overview'};
+function go(s){scene=s;$('#scene').value=s;render()}
+function chatMode(on,center){$('#cw').style.display=on?'flex':'none';$('#eb').style.display=on?'block':'none';$('#cw').classList.toggle('center',!!center)}
+function streaming(on){const s=$('#send'),el=$('#el');s.classList.toggle('streaming',on);clearInterval(timer);
+  if(on){let t=0;el.textContent='0s';el.classList.add('on');timer=setInterval(()=>{t++;el.textContent=t+'s'},1000)}else{setTimeout(()=>el.classList.remove('on'),1800)}}
+async function type(el,md,id){const c=document.createElement('span');c.className='caret';el.appendChild(c);const w=md.split(/(\s+)/);let b=false;
+  for(let i=0;i<w.length;i+=3){if(id!==run){c.remove();return}w.slice(i,i+3).join('').split('**').forEach((t,k)=>{if(k>0)b=!b;if(!t)return;const s=document.createElement(b?'strong':'span');s.className='tok';s.textContent=t;el.insertBefore(s,c)});
+    await wait(45);const sc=$('#sc');if(sc.scrollHeight-sc.scrollTop-sc.clientHeight<260)sc.scrollTop=sc.scrollHeight}c.remove()}
+function rollTo(el,to,pre,suf,dec){const t0=performance.now();(function f(t){const p=Math.min(1,(t-t0)/1000),e=1-Math.pow(1-p,4);el.textContent=pre+(to*e).toLocaleString('en-US',{minimumFractionDigits:dec,maximumFractionDigits:dec})+suf;if(p<1)requestAnimationFrame(f)})(t0)}
+const inn=el=>requestAnimationFrame(()=>requestAnimationFrame(()=>el.classList.add('in')));
+const user=t=>`<div class="u"><div>${t}</div></div>`;
+const prov=(t,stale)=>`<span class="prov" data-o="atlas" data-o-label="Atlas · provenance"><span class="fresh${stale?' stale':''}"></span>${t}</span>`;
+
+/* "thinking" block varies by layer: Codex plan / Claude steps-collapse / plain */
+async function thinking(A,steps,id){
+  const codex=has('L-codex'),claude=has('L-claude');
+  if(!codex&&!claude){A.insertAdjacentHTML('beforeend',`<div class="think" data-o="apple" data-o-label="Apple · status"><span class="spin"></span><span class="shim">Thinking</span></div>`);const t=A.lastElementChild;await wait(1600);t.remove();return}
+  const label=codex?'Codex · live plan':'Claude · steps';
+  A.insertAdjacentHTML('beforeend',`<div class="plan open" data-o="${codex?'codex':'claude'}" data-o-label="${label}${claude?' → Claude collapse':''}"><div class="phd"><span class="chev">▸</span><span class="shim ptitle">${codex?'Plan · '+steps.length+' steps':'Working'}</span></div><div class="pbody"><div class="todos"></div></div></div>`);
+  const plan=A.lastElementChild,pb=plan.querySelector('.pbody'),T=plan.querySelector('.todos');
+  steps.forEach(([t,tool])=>T.insertAdjacentHTML('beforeend',`<div class="todo"><span class="bx"></span><span class="t">${t}</span>${codex?`<span class="tool">${tool}</span>`:''}</div>`));
+  pb.style.height=pb.scrollHeight+'px';const t0=Date.now();
+  for(const it of plan.querySelectorAll('.todo')){if(id!==run)return;it.classList.add('run');await wait(560);it.classList.remove('run');it.classList.add('done');it.querySelector('.bx').textContent='✓'}
+  const secs=Math.max(1,Math.round((Date.now()-t0)/1000));const pt=plan.querySelector('.ptitle');pt.classList.remove('shim');
+  if(claude){pt.textContent=`Worked for ${secs}s · ${steps.length} steps`;plan.classList.remove('open');pb.style.height='0px'}else{pt.textContent=`Plan · ${steps.length}/${steps.length} done · ${secs}s`}
+  plan.querySelector('.phd').onclick=()=>{const o=plan.classList.toggle('open');pb.style.height=o?pb.scrollHeight+'px':'0px'};
+}
+
+/* ───── scenes ───── */
+const S={};
+S.overview=()=>{chatMode(false);const claude=has('L-claude')||has('L-warm'),hf=has('L-hf');return `<div class="page">
+  <h2 class="hello">Good afternoon, Ashik</h2><p class="sub">Last 30 days across all connected sources.</p>
+  ${claude?`<div class="brief glass spec" data-o="claude" data-o-label="Claude · editorial briefing (on Apple glass)"><div class="head" style="font-size:17px;color:var(--ink);margin-bottom:4px">Today's briefing</div>
+    Revenue is <b>up 12.4%</b>, led by KSA corporate orders. <b>AOV slipped 2.3%</b>, a mix shift toward small cards rather than a pricing issue. <b>3 accounts</b> are flagged at churn risk. <span style="color:var(--accent);cursor:pointer" onclick="go('ask')">Ask why →</span></div>`:''}
+  <div class="kpis" data-o="apple" data-o-label="Apple · solid data cards + digit roll">
+    <div class="card kpi"><div class="l">Revenue <span class="delta up">▲ 12.4%</span></div><div class="v num" data-roll="4.82|AED |M|2">–</div>${prov('EMAPI · 2h')}</div>
+    <div class="card kpi"><div class="l">Orders <span class="delta up">▲ 6.1%</span></div><div class="v num" data-roll="38214|||0">–</div>${prov('EMAPI · 2h')}</div>
+    <div class="card kpi"><div class="l">Avg order value <span class="delta dn">▼ 2.3%</span></div><div class="v num" data-roll="126.1|AED ||1">–</div>${prov('EMAPI · 2h')}</div>
+    <div class="card kpi"><div class="l">At-risk accounts</div><div class="v num" data-roll="3|||0">–</div>${prov('DeepSales · 26h',true)}</div></div>
+  <div class="row2">
+    <div class="card panel" data-o="apple" data-o-label="Apple · chart draw-in"><div class="ph"><h3>Daily revenue</h3>${prov('corporate_revenue · EMAPI')}</div>
+      <svg class="chart" viewBox="0 0 700 200" preserveAspectRatio="none"><path class="area" d="M0 150 C40 140,70 130,100 135 S160 100,200 108 S260 120,300 90 S360 70,400 80 S460 50,500 56 S570 30,610 38 L700 26 L700 200 L0 200Z"/><path class="line" d="M0 150 C40 140,70 130,100 135 S160 100,200 108 S260 120,300 90 S360 70,400 80 S460 50,500 56 S570 30,610 38 L700 26"/></svg></div>
+    <div class="card panel"><div class="ph"><h3>Top accounts</h3></div><table class="num"><tbody>
+      ${[['Emirates NBD',612,100],['Majid Al Futtaim',488,80],['Aramco Services',402,66],['du Telecom',271,44],['Careem',198,32]].map(([n,v,w],i)=>`<tr><td>${n}</td><td class="r">${v}k</td><td style="width:36%"><div class="bar"><i style="width:${w}%;animation-delay:${.1+i*.06}s"></i></div></td></tr>`).join('')}</tbody></table></div></div>
+  <h3 class="sh">Start an analysis</h3><p class="shs">${hf?'Presets for common questions. Hover a card to preview what you\'ll get.':'Common questions to start from.'}</p>
+  ${hf?`<div class="presets" data-o="hf" data-o-label="Higgsfield · preset gallery + hover preview">
+    <div class="preset" onclick="go('ask')"><div class="pv"><svg viewBox="0 0 200 108" preserveAspectRatio="none"><path class="l" d="M10 88 C40 78,60 58,90 64 S140 28,190 22"/></svg></div><div class="pb"><b>Revenue review</b><span>Trend, drivers, top accounts</span></div></div>
+    <div class="preset"><div class="pv"><svg viewBox="0 0 200 108"><rect x="25" y="40" width="22" height="58" rx="5" opacity=".75"/><rect x="65" y="24" width="22" height="74" rx="5" opacity=".75"/><rect x="105" y="54" width="22" height="44" rx="5" opacity=".75"/><rect x="145" y="34" width="22" height="64" rx="5" opacity=".75"/></svg></div><div class="pb"><b>Campaign ROAS</b><span>By channel and creative</span></div></div>
+    <div class="preset"><div class="pv"><svg viewBox="0 0 200 108"><rect class="h" x="20" y="20" width="160" height="16" rx="5" opacity=".85"/><rect class="h" x="20" y="45" width="118" height="16" rx="5" opacity=".6"/><rect class="h" x="20" y="70" width="62" height="16" rx="5" opacity=".4"/></svg></div><div class="pb"><b>Redemption funnel</b><span>Where gift cards drop off</span></div></div>
+    <div class="preset"><div class="pv"><svg viewBox="0 0 200 108" preserveAspectRatio="none"><path class="l" d="M10 28 C50 32,80 48,110 58 S160 82,190 88"/></svg></div><div class="pb"><b>Account health</b><span>Churn risk and CSM load</span></div></div></div>`
+  :`<div class="suggest" data-o="apple" data-o-label="Apple · suggestion pills"><button class="pill" onclick="go('ask')">Revenue review</button><button class="pill">Campaign ROAS</button><button class="pill">Redemption funnel</button><button class="pill">Account health</button></div>`}
+</div>`};
+S.overview.after=()=>$$('[data-roll]').forEach(el=>{const [to,pre,suf,dec]=el.dataset.roll.split('|');rollTo(el,+to,pre,suf,+dec)});
+
+S.welcome=()=>{chatMode(true,true);const hf=has('L-hf');return `<div class="welcome">
+  <h2 class="head" data-o="${has('L-warm')?'claude':'apple'}" data-o-label="${has('L-warm')?'Claude · serif greeting':'Apple · display type'}">What would you like to know?</h2>
+  <p>Ask about revenue, campaigns, accounts or funnels. Every number comes from a governed metric.</p>
+  <div class="under">${hf?`<div class="presets" style="text-align:left" data-o="hf" data-o-label="Higgsfield · presets">
+    <div class="preset" onclick="go('ask')"><div class="pv" style="height:80px"><svg viewBox="0 0 200 80" preserveAspectRatio="none"><path class="l" d="M10 66 C40 58,60 42,90 46 S140 20,190 14"/></svg></div><div class="pb"><b>Revenue review</b></div></div>
+    <div class="preset"><div class="pv" style="height:80px"><svg viewBox="0 0 200 80"><rect x="30" y="30" width="22" height="44" rx="5" opacity=".75"/><rect x="70" y="16" width="22" height="58" rx="5" opacity=".75"/><rect x="110" y="40" width="22" height="34" rx="5" opacity=".75"/><rect x="150" y="24" width="22" height="50" rx="5" opacity=".75"/></svg></div><div class="pb"><b>Campaign ROAS</b></div></div>
+    <div class="preset"><div class="pv" style="height:80px"><svg viewBox="0 0 200 80"><rect class="h" x="20" y="14" width="160" height="14" rx="5" opacity=".85"/><rect class="h" x="20" y="34" width="118" height="14" rx="5" opacity=".6"/><rect class="h" x="20" y="54" width="62" height="14" rx="5" opacity=".4"/></svg></div><div class="pb"><b>Redemption funnel</b></div></div>
+    <div class="preset"><div class="pv" style="height:80px"><svg viewBox="0 0 200 80" preserveAspectRatio="none"><path class="l" d="M10 20 C50 24,80 36,110 44 S160 62,190 66"/></svg></div><div class="pb"><b>Account health</b></div></div></div>`
+  :`<div class="suggest" style="justify-content:center" data-o="apple" data-o-label="Apple · suggestion pills"><button class="pill" onclick="go('ask')">Q3 revenue drivers</button><button class="pill">ROAS by channel</button><button class="pill">Redemption drop-off</button></div>`}
+  <p style="margin-top:18px;font-size:12.5px">Press send ↑ to watch the composer glide down into the conversation.</p></div></div>`};
+
+S.ask=async(A,id)=>{chatMode(true);
+  A.innerHTML=`<div class="chat">${user('What was corporate revenue last quarter, and what drove it?')}<div class="ans" id="ans"></div></div>`;const X=$('#ans');streaming(true);
+  await thinking(X,[['Find the governed metric','search_atlas'],['Query Q3 revenue','query_metric'],['Compare with Q2','compare_periods'],['Break down by country','metric_breakdown']],id);if(id!==run)return;
+  X.insertAdjacentHTML('beforeend','<h2 class="head"></h2>');await type(X.lastElementChild,'Corporate revenue was up 12.4% in Q3',id);
+  X.insertAdjacentHTML('beforeend',`<div class="card mcard appear" data-o="apple" data-o-label="Apple · solid card + digit roll"><div><div style="font-size:13px;color:var(--muted)">Corporate revenue · Q3 2026</div><div class="big num" id="big">AED 0.00M</div></div><span class="delta up" style="font-size:13px">▲ 12.4% vs Q2</span></div>`);
+  inn(X.lastElementChild);rollTo($('#big'),4.82,'AED ','M',2);
+  X.insertAdjacentHTML('beforeend','<p></p>');await type(X.lastElementChild,'Growth came mainly from **Ramadan bulk orders in KSA (+24%)**, which more than offset a **3% dip in the UAE**. The top three accounts made up 38% of the quarter.',id);if(id!==run)return;
+  if(has('L-claude'))X.insertAdjacentHTML('beforeend',`<div class="card artifact appear" id="art" data-o="claude" data-o-label="Claude · artifact card → side panel"><div class="ic">▥</div><div style="flex:1"><b style="font-size:14px">Q3 revenue by country</b><div style="font-size:12px;color:var(--muted)">Chart + table · opens in side panel</div></div><span style="color:var(--muted)">→</span></div>`);
+  else X.insertAdjacentHTML('beforeend',`<div class="card panel appear" data-o="apple" data-o-label="Apple · inline chart card"><div class="ph"><h3 style="font-size:16px">Q3 revenue by country</h3></div><table class="num"><tbody><tr><td>Saudi Arabia</td><td class="r">AED 2.14M</td><td class="r" style="color:var(--pos)">+24.1%</td></tr><tr><td>UAE</td><td class="r">AED 1.61M</td><td class="r" style="color:var(--neg)">−3.2%</td></tr><tr><td>Qatar</td><td class="r">AED 0.66M</td><td class="r" style="color:var(--pos)">+8.7%</td></tr></tbody></table></div>`);
+  inn(X.lastElementChild);if($('#art'))$('#art').onclick=()=>$('#sp').classList.add('open');
+  X.insertAdjacentHTML('beforeend',`<div class="chips">${prov('metric · corporate_revenue')}${prov('source · EMAPI (read-only)')}${prov('fresh · 2h ago')}</div>`);
+  $$('#ans .chips .prov').forEach((c,i)=>setTimeout(()=>c.classList.add('in'),i*90));streaming(false)};
+
+S.clarify=async(A,id)=>{chatMode(true);
+  A.innerHTML=`<div class="chat">${user('How did revenue do?')}<div class="ans" id="ans"></div></div>`;const X=$('#ans');streaming(true);
+  await thinking(X,[['Search metrics for "revenue"','search_atlas']],id);if(id!==run)return;
+  X.insertAdjacentHTML('beforeend','<p></p>');await type(X.lastElementChild,'A few governed metrics match **"revenue"**. Which one do you mean? I won\'t guess, because each one is counted differently.',id);
+  X.insertAdjacentHTML('beforeend',`<div class="appear" data-o="atlas" data-o-label="Atlas · clarify instead of guessing (guardrail #1)" style="display:grid;gap:10px;margin:6px 0 10px">
+    <div class="suggest" data-o="apple" data-o-label="Apple · choice pills"><button class="pill cq">Corporate revenue</button><button class="pill cq">Consumer revenue</button><button class="pill cq">Net revenue (after refunds)</button></div>
+    <div class="suggest"><button class="pill cp">Last 30 days</button><button class="pill cp sel">Last quarter</button><button class="pill cp">Year to date</button></div></div>`);
+  inn(X.lastElementChild);streaming(false);
+  $$('.cq').forEach(b=>b.onclick=async()=>{$$('.cq').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');const myId=++run;X.insertAdjacentHTML('beforeend','<p></p>');
+    await type(X.lastElementChild,`**${b.textContent}** for last quarter was **AED ${(Math.random()*3+3).toFixed(2)}M**.`,myId);
+    X.insertAdjacentHTML('beforeend',`<div class="chips">${prov('metric · '+b.textContent.toLowerCase().replace(/[^a-z]+/g,'_'))}${prov('fresh · 2h ago')}</div>`);$$('#ans .chips .prov').forEach(c=>c.classList.add('in'))});
+  $$('.cp').forEach(b=>b.onclick=()=>{$$('.cp').forEach(x=>x.classList.remove('sel'));b.classList.add('sel')})};
+
+S.approve=async(A,id)=>{chatMode(true);
+  A.innerHTML=`<div class="chat">${user('Add the Q3 country breakdown to the Exec weekly dashboard and send it every Monday.')}<div class="ans" id="ans"></div></div>`;const X=$('#ans');streaming(true);
+  await thinking(X,[['Load dashboard "Exec weekly"','describe_entity'],['Prepare tile change','propose_change'],['Prepare schedule','propose_schedule']],id);if(id!==run)return;
+  X.insertAdjacentHTML('beforeend','<p></p>');await type(X.lastElementChild,'Here\'s what I\'d change. Nothing happens until you approve it.',id);
+  const codex=has('L-codex');
+  X.insertAdjacentHTML('beforeend',codex?`<div class="review appear" id="rv" data-o="codex" data-o-label="Codex · review diff before apply"><div class="rh">◇ Proposed change · needs your approval</div>
+      <div class="diff">dashboard: exec_weekly<br><span class="rm">− tile  revenue_30d</span><br><span class="a">+ tile  revenue_by_country (QTD)</span><br><span class="a">+ schedule  Mon 08:00 → #exec-metrics</span></div>
+      <div style="display:flex;gap:8px;margin-top:10px;align-items:center"><button class="btn" id="ok"><span class="morph" id="okm"><span class="a">Approve</span><span class="b">✓ Approved</span></span></button><button class="pill">Edit</button><button class="pill">Dismiss</button></div></div>`
+    :`<div class="review appear" id="rv" data-o="apple" data-o-label="Apple · simple confirmation"><div style="font-weight:600;margin-bottom:4px">Update "Exec weekly"?</div><div style="color:var(--body);font-size:14px">Replace the 30-day revenue tile with Q3 revenue by country, and send the dashboard every Monday at 08:00.</div>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end"><button class="pill">Cancel</button><button class="btn" id="ok"><span class="morph" id="okm"><span class="a">Update</span><span class="b">✓ Updated</span></span></button></div></div>`);
+  inn(X.lastElementChild);streaming(false);
+  $('#ok').onclick=()=>{$('#okm').classList.add('done');toast('Exec weekly updated · first send Monday 08:00')}};
+
+S.denied=async(A,id)=>{chatMode(true);
+  A.innerHTML=`<div class="chat">${user('Show me salaries by team for last month.')}<div class="ans" id="ans"></div></div>`;const X=$('#ans');streaming(true);
+  await thinking(X,[['Check your access','scope_check']],id);if(id!==run)return;
+  X.insertAdjacentHTML('beforeend',`<div class="notice deny appear" data-o="atlas" data-o-label="Atlas · denial stated as a fact (guardrail #4)"><div class="ni">🔒</div><div>
+    <div style="font-weight:600;margin-bottom:2px">Payroll data isn't available to your role</div>
+    <div style="font-size:14px;color:var(--body);line-height:1.55">Access comes from your sign-in, not from the question, so I can't widen it here. If you need this, ask a Finance admin to grant <span class="mono">finance.restricted</span>.</div>
+    <div class="chips" style="margin-top:8px">${prov('scope · from your Google sign-in')}</div></div></div>`);
+  inn(X.lastElementChild);X.querySelectorAll('.chips .prov').forEach(c=>c.classList.add('in'));
+  X.insertAdjacentHTML('beforeend','<p></p>');await type(X.lastElementChild,'I can show **headcount by team** or **CSM workload** instead. Both are in your scope.',id);
+  X.insertAdjacentHTML('beforeend',`<div class="suggest appear" data-o="apple" data-o-label="Apple · next-step pills"><button class="pill">Headcount by team</button><button class="pill">CSM workload</button></div>`);inn(X.lastElementChild);streaming(false)};
+
+S.stale=async(A,id)=>{chatMode(true);
+  A.innerHTML=`<div class="chat">${user('Which accounts are at churn risk right now?')}<div class="ans" id="ans"></div></div>`;const X=$('#ans');streaming(true);
+  await thinking(X,[['Query account health','query_metric · DeepSales'],['Check data freshness','freshness']],id);if(id!==run)return;
+  X.insertAdjacentHTML('beforeend',`<div class="notice warn appear" data-o="atlas" data-o-label="Atlas · freshness warning (guardrail #2)"><div class="ni">!</div><div style="flex:1">
+    <div style="font-weight:600;margin-bottom:2px">DeepSales last synced 26 hours ago</div><div style="font-size:14px;color:var(--body)">Today's CSM updates may be missing from these numbers.</div></div>
+    <button class="pill" id="rf" data-o="apple" data-o-label="Apple · icon morph feedback"><span class="morph" id="rfm"><span class="a">↻ Refresh source</span><span class="b">✓ Synced just now</span></span></button></div>`);
+  inn(X.lastElementChild);$('#rf').onclick=async()=>{$('#rf').querySelector('.a').textContent='Syncing…';await wait(1200);$('#rfm').classList.add('done')};
+  X.insertAdjacentHTML('beforeend','<p></p>');await type(X.lastElementChild,'**3 accounts** are flagged at churn risk, two of them with no CSM touch in over 30 days.',id);
+  X.insertAdjacentHTML('beforeend',`<div class="card panel appear"><table class="num"><thead><tr><th>Account</th><th>Health</th><th class="r">Last touch</th></tr></thead><tbody>
+    <tr><td>Gulf Retail Co.</td><td style="color:var(--neg)">At risk</td><td class="r">41 days</td></tr><tr><td>Noon Logistics</td><td style="color:var(--neg)">At risk</td><td class="r">33 days</td></tr><tr><td>Dar Hospitality</td><td style="color:var(--warn)">Watch</td><td class="r">12 days</td></tr></tbody></table></div>`);
+  inn(X.lastElementChild);X.insertAdjacentHTML('beforeend',`<div class="chips">${prov('metric · account_health_band')}${prov('fresh · 26h ago',true)}</div>`);$$('#ans .chips .prov').forEach(c=>c.classList.add('in'));streaming(false)};
+
+S.catalog=()=>{chatMode(false);const G=[['Revenue',[['Corporate revenue','corporate_revenue','Sum of paid B2B order totals, excluding refunds. Owner: Finance. Source: EMAPI orders. Range metric (needs dates).'],['Consumer revenue','consumer_revenue','Sum of paid B2C orders, excluding refunds and promotional credit.'],['Net revenue','net_revenue','Gross revenue minus refunds and chargebacks, booked on settlement date.']]],
+  ['Campaigns',[['ROAS','roas','Attributed revenue ÷ ad spend, last-click 7-day window. Source: Ads.'],['Cost per acquisition','cpa','Ad spend ÷ first-time purchasers in the window.']]],
+  ['Accounts',[['Account health band','account_health_band','Healthy / Watch / At risk, from CSM activity and order trend. Source: DeepSales.']]]];
+  return `<div class="page" style="max-width:760px"><h2 class="hello">Metrics</h2><p class="sub">Every governed metric Atlas can answer with. Click one to see its definition.</p>
+  <div data-o="apple" data-o-label="Apple · inset grouped list">${G.map(([g,items])=>`<div class="group"><div class="gh">${g}</div><div class="list">${items.map(([n,id,d])=>`<div class="li"><div class="lt"><b>${n}</b><span class="mid" data-o="codex" data-o-label="Codex · mono ids">${id}</span><span class="chev">›</span></div><div class="ld"><div style="padding-top:8px">${d}</div><div style="margin-top:8px">${prov('fresh · 2h ago')}</div></div></div>`).join('')}</div></div>`).join('')}</div></div>`};
+S.catalog.after=()=>$$('.li').forEach(li=>li.onclick=()=>{const o=li.classList.toggle('open');const d=li.querySelector('.ld');d.style.height=o?d.scrollHeight+'px':'0px'});
+
+S.cmdk=()=>{const h=S.overview();setTimeout(()=>{$('#scrim').classList.add('on');$('#cmdk').classList.add('on')},60);return h};
+S.cmdk.after=()=>S.overview.after();
+
+async function render(){
+  const id=++run;$('#title').textContent=TITLES[scene];$$('.nav').forEach(n=>n.classList.toggle('on',n.dataset.scene===scene||(scene==='ask'&&n.dataset.scene==='welcome')));
+  $('#scrim').classList.remove('on');$('#cmdk').classList.remove('on');$('#sp').classList.remove('open');streaming(false);
+  const A=$('#stage');const f=S[scene];
+  if(f.constructor.name==='AsyncFunction'){A.innerHTML='';$('#sc').scrollTop=0;await f(A,id)}
+  else{A.innerHTML=f();$('#sc').scrollTop=0;f.after&&f.after()}
+}
+render();
+</script>
+</body>
+</html>

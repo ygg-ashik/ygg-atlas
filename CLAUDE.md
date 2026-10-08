@@ -44,6 +44,25 @@ Every module is self-contained and enterprise-grade:
 - Each unit testable in isolation.
 - No legacy silos — refactor in place, keep the tree clean.
 
+## Design standard (applies to ALL UI work)
+
+**`DESIGN.md` (repo root) is the single source of truth for every screen, component, and visual change.**
+The standard is "Atlas Hybrid Glass": Apple glass foundation + Claude voice + Codex agent transparency +
+Higgsfield presets + Atlas provenance UI.
+
+- **Read `DESIGN.md` before any frontend/UI task.** Live reference: `docs/design/reference/atlas-hybrid-glass.html` (Mode ①).
+- **Tokens only.** Colors, type, radii, spacing, motion come from DESIGN.md via the CSS variables in
+  `frontend/src/index.css`. No hard-coded hex, ad-hoc durations, or one-off font sizes in components.
+- **New component or token → add it to DESIGN.md first**, in the same PR, then build it.
+- **Technique** (springs, interruptible motion, glass materials, reduced-motion) follows the vendored
+  `apple-design` skill (`.claude/skills/apple-design/`). If it conflicts with DESIGN.md, **DESIGN.md wins.**
+- **Non-negotiables:** glass only on floating chrome, never under data; provenance chip on every number;
+  every agent write/schedule/send goes through a review card; respect `prefers-reduced-motion` and
+  `prefers-reduced-transparency`.
+- **Approved UI libraries:** `motion`, `streamdown`, `@number-flow/react`, `sonner`, `cmdk`, Radix primitives,
+  self-hosted `@fontsource-variable/*` fonts. Adding another UI/animation library needs explicit approval.
+- After editing DESIGN.md: `npx @google/design.md lint DESIGN.md` (0 errors required).
+
 ## Datetime/Timezone rules
 
 All datetimes are UTC end-to-end. Every SQLModel `datetime` field MUST declare
@@ -90,6 +109,7 @@ pre-commit hooks.
 - All tests pass; coverage >80% for new code
 - No lint or type errors
 - Follows the component standard above
+- UI changes follow `DESIGN.md`, checked in light, dark, reduced-motion and reduced-transparency
 - No security issues (secrets, PII leaks, scope bypass)
 - Docs updated if behavior changed
 
