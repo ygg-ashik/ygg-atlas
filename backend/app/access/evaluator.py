@@ -66,9 +66,18 @@ def _live(grant: GrantFacts, now: datetime) -> bool:
 
 
 def _applies(grant: GrantFacts, user_id: UUID, reach: frozenset[UUID]) -> bool:
+    # subject_type is constrained by a CHECK in the database (migration 0003);
+    # an unknown type applies to nobody.
     if grant.subject_type == SUBJECT_USER:
         return grant.subject_id == user_id
     return grant.subject_type == SUBJECT_GROUP and grant.subject_id in reach
+
+
+def _is_malformed(grant: GrantFacts) -> bool:
+    return (
+        grant.effect not in _VALID_EFFECTS
+        or grant.target_kind not in _VALID_TARGET_KINDS
+    )
 
 
 def _with_ancestors(start: Iterable[UUID], groups: Groups) -> frozenset[UUID]:
@@ -99,11 +108,16 @@ def _with_descendants(roots: Iterable[UUID], groups: Groups) -> frozenset[UUID]:
 
 def _capabilities(role: str, grants: Sequence[GrantFacts]) -> frozenset[str]:
     """Role bundle + direct user allows - direct user denies (spec §5.4 step 1)."""
+    # A corrupt grant fails closed everywhere, not just in _resource_rules.
+    if any(_is_malformed(g) for g in grants):
+        return frozenset()
     overrides = [
         g
         for g in grants
         if g.subject_type == SUBJECT_USER
         and g.target_kind == KIND_CAPABILITY
+        # Retired capabilities are ignored (spec §5.1); Task 8 rejects unknown
+        # targets on write.
         and g.target in CAPABILITIES
     ]
     allowed = {g.target for g in overrides if g.effect == EFFECT_ALLOW}
@@ -131,7 +145,9 @@ def _resource_rules(
     deny: list[Rule] = []
     for g in grants:
         origin = _origin(g, groups)
-        if g.effect not in _VALID_EFFECTS or g.target_kind not in _VALID_TARGET_KINDS:
+        # A corrupt grant fails closed: no data and no capabilities; the
+        # reason names the grant.
+        if _is_malformed(g):
             logger.warning(
                 "access.malformed_grant",
                 grant_id=str(g.id),

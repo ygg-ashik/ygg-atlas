@@ -343,6 +343,22 @@ def test_malformed_target_kind_on_resource_grant_denies_everything() -> None:
     assert events[0]["target_kind"] == "Resource"
 
 
+def test_malformed_capability_grant_drops_all_capabilities() -> None:
+    bad = grant(USER, MCP_USE, kind="capability", effect="DENY")
+    p = policy(role="analyst", grants=[bad])
+    assert p.capabilities == frozenset()
+    assert not p.has(MCP_USE)
+    assert not p.has(CHAT_USE)
+
+
+def test_malformed_grant_drops_admin_capabilities_and_manage_rights() -> None:
+    bad = grant(USER, "whatever", effect="nope")
+    p = policy(role="admin", grants=[bad])
+    assert p.capabilities == frozenset()
+    assert not p.has(ADMIN_GROUPS)
+    assert not p.can_manage_members(CHILD)
+
+
 def test_manager_over_a_cycle_terminates() -> None:
     a, b = uuid4(), uuid4()
     cyclic = {a: GroupFacts(a, "a", b, "ygg"), b: GroupFacts(b, "b", a, "ygg")}
