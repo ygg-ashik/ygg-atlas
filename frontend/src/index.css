@@ -140,6 +140,12 @@
       transparent 65%
     );
     mix-blend-mode: soft-light;
+    /* Light response only while the pointer is over the glass (no resting smudge). */
+    opacity: 0;
+    transition: opacity 300ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .glass-specular:hover::after {
+    opacity: 1;
   }
   /* Scroll-edge effect: soft blur where content meets floating chrome (no hard dividers). */
   .scroll-edge-top,
