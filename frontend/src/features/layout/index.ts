@@ -1,2 +1,2 @@
 // Public interface of the layout feature.
-export { default as Shell } from './shell';
+export { default as Shell, type NavItem } from './shell';

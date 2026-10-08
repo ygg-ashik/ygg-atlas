@@ -1,15 +1,24 @@
-import { LogOut, Monitor, Moon, Orbit, Sun } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { LogOut, Monitor, Moon, Sun } from 'lucide-react';
+import { NavLink } from 'react-router-dom';
 import {
   Button,
+  cn,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  Separator,
+  Glass,
 } from '@/ui';
 import { useTheme } from '@/lib/theme-provider';
+
+export interface NavItem {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+}
 
 interface ShellUser {
   name: string;
@@ -20,35 +29,56 @@ interface ShellUser {
 interface ShellProps {
   user: ShellUser | null;
   onSignOut: () => void;
+  nav: NavItem[];
+  /** Feature-provided sidebar content (e.g. chat threads), composed in App.tsx. */
+  threads?: React.ReactNode;
   children: React.ReactNode;
 }
 
-/** App frame: brand header with theme toggle + user menu, content below.
- * Receives the user via props so layout stays decoupled from the auth feature. */
-export default function Shell({ user, onSignOut, children }: ShellProps) {
+/** App frame (DESIGN.md › Layout): 10px inset, floating heavy-glass sidebar,
+ * rounded main pane. Features plug in via props so layout stays decoupled. */
+export default function Shell({ user, onSignOut, nav, threads, children }: ShellProps) {
   return (
-    <div className="flex h-screen flex-col bg-background">
-      <header className="flex h-14 shrink-0 items-center justify-between border-b px-4">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Orbit className="h-5 w-5" />
-          </div>
-          <div className="leading-tight">
-            <span className="block text-sm font-semibold tracking-tight">Atlas</span>
-            <span className="block text-[10px] text-muted-foreground">
-              YouGotAGift data intelligence
-            </span>
-          </div>
+    <div className="flex h-screen gap-2.5 p-2.5">
+      <Glass
+        as="aside"
+        variant="heavy"
+        specular
+        className="flex w-[236px] shrink-0 flex-col rounded-shell px-2.5 py-3.5 max-[999px]:hidden"
+      >
+        <div className="flex items-center gap-2.5 px-2.5 pb-3.5 pt-1">
+          <span aria-hidden className="h-2.5 w-2.5 rotate-45 rounded-[3px] bg-primary" />
+          <span className="font-serif text-[21px] leading-none text-ink">Atlas</span>
         </div>
-
-        <div className="flex items-center gap-1">
-          <ThemeToggle />
-          <Separator orientation="vertical" className="mx-1 h-6" />
+        <nav className="space-y-0.5" aria-label="Primary">
+          {nav.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-[background-color,transform] duration-200 active:scale-[.97]',
+                  isActive
+                    ? 'bg-card text-ink shadow-[0_0_0_1px_hsl(var(--border)),0_1px_3px_rgba(0,0,0,0.06)]'
+                    : 'text-body hover:bg-foreground/5',
+                )
+              }
+            >
+              <Icon className="h-4 w-4 opacity-75" />
+              {label}
+            </NavLink>
+          ))}
+        </nav>
+        {threads}
+        <div className="mt-auto flex items-center gap-1 border-t border-border/60 px-1 pt-2.5">
           <UserMenu user={user} onSignOut={onSignOut} />
+          <span className="min-w-0 flex-1 truncate text-label text-muted-foreground">
+            {user?.name}
+          </span>
+          <ThemeToggle />
         </div>
-      </header>
-
-      <main className="min-h-0 flex-1">{children}</main>
+      </Glass>
+      <main className="relative min-w-0 flex-1 overflow-hidden rounded-shell">{children}</main>
     </div>
   );
 }
@@ -88,10 +118,7 @@ function DropdownMenuCheckItem({
   children: React.ReactNode;
 }) {
   return (
-    <DropdownMenuItem
-      onSelect={onSelect}
-      className={active ? 'bg-accent text-accent-foreground' : ''}
-    >
+    <DropdownMenuItem onSelect={onSelect} className={active ? 'bg-primary/10 text-ink' : ''}>
       {children}
     </DropdownMenuItem>
   );
@@ -106,7 +133,7 @@ function UserMenu({ user, onSignOut }: { user: ShellUser | null; onSignOut: () =
         <button
           type="button"
           aria-label="Account menu"
-          className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border bg-muted text-xs font-medium transition-opacity hover:opacity-80"
+          className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border bg-card-2 text-caption font-medium transition-transform active:scale-95"
         >
           {user.avatar ? (
             <img
