@@ -305,6 +305,10 @@ never happen in the browser.
 ## 11. Migration
 
 1. Introduce **Alembic** with a baseline of the current schema (today the app uses `create_all`).
+   The baseline must include `chat_messages.blocks` (nullable JSON), added by the Hybrid Glass
+   Track C branch through a temporary startup ALTER. In the same change, delete
+   `ensure_blocks_column()` in `app/models/migrations.py` and its call in the `app/main.py`
+   lifespan, and remove the matching known-debt row in `ARCHITECTURE.md` §6.
 2. Create the §7 tables. Seed the capabilities, the label-class defaults and the starter groups
    (`atlas-admins`, `leadership`, `marketing`, `csm`, `risk-ops`, `engineering`; all empty).
 3. Backfill: one `users` row per distinct existing `chat_sessions.user_uid`, then set `user_id` on
