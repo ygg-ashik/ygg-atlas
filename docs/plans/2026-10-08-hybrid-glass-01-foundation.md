@@ -1,6 +1,6 @@
 # Hybrid Glass Track A: Frontend Foundation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Follow the `engineering-standards` skill before writing code and the `production-code-review` skill before calling the track done. Gate: `make check` from the repo root (run `make format` first: the code below predates prettier/ruff formatting).
 
 **Goal:** Put DESIGN.md tokens, fonts, glass/motion primitives, and the floating glass shell with URL-based chat routing into the frontend so every other track builds on them.
 
@@ -37,6 +37,45 @@
 | `src/App.tsx` | Rewrite | Layout route with Shell + Outlet, `/ask/:sessionId?`, Toaster |
 | `src/ui/preset-card.tsx` (+ test) | Create | Preset gallery card with hover-play preview (Task 12) |
 | `src/lib/freshness.ts` (+ test) | Create | Shared provenance freshness helpers (Task 13) |
+
+---
+
+### Task 0: Restructure the chat feature (ARCHITECTURE.md §3.2)
+
+The chat feature is past ~8 files and will grow. Move it into `components/` and `hooks/` **before** any
+other change, as a pure move (no behavior change), so every later task and track uses the final layout.
+
+**Files:** Move within `src/features/chat/`
+
+- [ ] **Step 1: Move files**
+
+```bash
+cd src/features/chat
+mkdir -p components hooks
+git mv chat-panel.tsx markdown-message.tsx message-feedback.tsx provenance-chips.tsx provenance-chips.test.tsx components/
+git mv use-chat-turn.ts use-chat-turn.test.tsx hooks/
+```
+`index.tsx`, `chat-suggestions.ts`, `markdown-stream.ts` (+ test) stay at the root.
+
+- [ ] **Step 2: Fix relative imports**
+
+Update every moved file's imports (`./use-chat-turn` → `../hooks/use-chat-turn`, `./chat-suggestions` →
+`../chat-suggestions`, `./markdown-stream` → `../markdown-stream`, `./chat-panel` → `./components/chat-panel`
+in `index.tsx`, and so on). If the standards change already split `chat-panel.tsx` into several
+components inside one file, extract each into its own file under `components/` now (`empty-state.tsx`,
+`stored-message.tsx`, `draft-view.tsx`, `composer.tsx`), with no behavior change.
+
+- [ ] **Step 3: Gate + commit**
+
+Run: `make check-frontend` → green (all existing tests still pass unchanged).
+
+```bash
+git add -A src/features/chat
+git commit -m "refactor(chat): components/ and hooks/ layout (ARCHITECTURE.md §3.2)"
+```
+
+All later tasks in this plan (Task 8: `chat-thread-list` → `components/`; Task 9: `index.tsx` imports
+`./components/chat-panel`) use this layout.
 
 ---
 
@@ -981,7 +1020,7 @@ git commit -m "chore(lint): forbid hex colors in features (DESIGN.md tokens only
 
 ### Task 8: Chat thread list (moved out of ChatPage, URL-driven)
 
-**Files:** Create `src/features/chat/chat-thread-list.tsx`, `src/features/chat/chat-thread-list.test.tsx`
+**Files:** Create `src/features/chat/components/chat-thread-list.tsx`, `src/features/chat/components/chat-thread-list.test.tsx` (code below shows `./chat-thread-list`; it's in `components/`)
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1182,9 +1221,9 @@ import { useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Toolbar } from '@/ui';
 import { useChatSessions, useCreateChatSession } from '@/api/hooks/use-chat-sessions';
-import { ChatPanel } from './chat-panel';
+import { ChatPanel } from './components/chat-panel';
 
-export { ChatThreadList } from './chat-thread-list';
+export { ChatThreadList } from './components/chat-thread-list';
 
 export default function ChatPage() {
   const { sessionId = null } = useParams();
@@ -1224,7 +1263,7 @@ export default function ChatPage() {
 }
 ```
 
-- [ ] **Step 2: Reserve toolbar clearance in `chat-panel.tsx`**
+- [ ] **Step 2: Reserve toolbar clearance in `components/chat-panel.tsx`** (or whichever split component owns the scroll content)
 
 Change the inner content container class `mx-auto w-full max-w-3xl space-y-4 px-4 py-6` to:
 ```

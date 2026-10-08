@@ -1,6 +1,6 @@
 # Hybrid Glass Track D1: Metrics Catalog + ⌘K Palette Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Follow the `engineering-standards` skill before writing code and the `production-code-review` skill before calling the track done. Gate: `make check` from the repo root (run `make format` first: the code below predates prettier/ruff formatting).
 
 **Goal:** Add a Metrics page (an Apple inset grouped list of every governed metric and funnel, rows that expand on a spring, mono ids, "Ask about this") and a Spotlight-style ⌘K command palette (pages, metrics, threads, "Ask …").
 
@@ -134,13 +134,13 @@ Run: `corepack pnpm vitest run src/features/metrics/ask.test.ts`
 // src/features/metrics/ask.ts
 // Entry point into chat: /ask?q=… (handled by the chat feature).
 export function askHref(item: { name: string; time_scope?: 'range' | 'snapshot' }): string {
-  const q =
-    item.time_scope === 'snapshot'
-      ? `What is ${item.name} right now?`
-      : item.time_scope === 'range'
-        ? `What was ${item.name} over the last 30 days?`
-        : `Where do users drop off in ${item.name} over the last 30 days?`;
-  return `/ask?q=${encodeURIComponent(q)}`;
+  return `/ask?q=${encodeURIComponent(question(item))}`;
+}
+
+function question(item: { name: string; time_scope?: 'range' | 'snapshot' }): string {
+  if (item.time_scope === 'snapshot') return `What is ${item.name} right now?`;
+  if (item.time_scope === 'range') return `What was ${item.name} over the last 30 days?`;
+  return `Where do users drop off in ${item.name} over the last 30 days?`;
 }
 ```
 

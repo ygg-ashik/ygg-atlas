@@ -13,7 +13,7 @@ independent work across isolated tracks.
 |---|---|---|---|
 | `…-01-foundation.md` | **A** | Frontend tokens, fonts, `ui/` primitives, glass shell, routing | none |
 | `…-02-backend-structured-answers.md` | **C** | `clarify` + `artifact` answer blocks, persistence, prompt, goldens | none |
-| `…-03-backend-read-endpoints.md` | **E-be** | `GET /api/v1/atlas/metrics`, `GET /api/v1/atlas/overview` | none |
+| `…-03-backend-read-endpoints.md` | **E-be** | `app/insights`: `GET /api/v1/atlas/metrics`, `GET /api/v1/atlas/overview` | none |
 | `…-04-chat-experience.md` | **B** | Chat restyle, streamdown streaming, steps block, composer, notices, provenance popover, `/ask?q=` prefill | A |
 | `…-05-catalog-and-command.md` | **D1** | Metrics catalog page, ⌘K palette | A, E-be (contract only) |
 | `…-06-dashboard.md` | **E-fe** | Overview dashboard (briefing-free), KPI cards, top-N, presets | A, E-be (contract only) |
@@ -29,6 +29,18 @@ Integration:        merge order A → C → E-be → B → D1 → E-fe → D2, f
 Frontend tracks in the same wave touch **disjoint folders** (`features/chat` vs `features/metrics` +
 `features/command` vs `features/dashboard`). The only shared files are `App.tsx` (one route line each)
 and `api/` (new files each). Resolve those trivially at merge.
+
+## Engineering standards adaptation (applies to every track)
+The base is `chore/engineering-standards` @ `f6fd138` (ruff 88, pyright, import-linter, prettier, stricter
+eslint, `make check`), rebased under `feature/design-system`.
+- **Skills:** `engineering-standards` before writing code, `production-code-review` before a track is done.
+- **Gate:** `make check` at the repo root (`make format` first; plan code predates the formatters).
+- **Backend:** new modules use ARCHITECTURE.md §2.2 (router → service → repository → models/schemas). Track E-be
+  is `app/insights` (contracts updated in the same change). Functions: complexity ≤10, ≤6 args, typed.
+- **Frontend:** features past ~8 files use `components/` + `hooks/` (Track A Task 0 restructures chat; the
+  dashboard uses `components/`). Limits: ≤300 lines/file, ≤150 lines/function, complexity ≤12, ≤4 params,
+  no nested ternaries, no `any`, `type` imports, `noUncheckedIndexedAccess`.
+- **Endpoints** in contract §2 are served by `app/insights/router.py` (same URLs).
 
 ## Out of scope (deferred, needs capability that doesn't exist)
 - **Jobs tray / background threads**: no background job runner exists.
@@ -94,8 +106,7 @@ export interface Overview { days: number; start_date: string; end_date: string;
 Both endpoints run through `AtlasTools.execute` with `surface="api"` so every call is audited (guardrail #5).
 
 ## Merge & verification gate (every track)
-- Frontend: `cd frontend && corepack pnpm test && corepack pnpm lint && corepack pnpm typecheck`
-- Backend: `cd backend && uv run pytest --cov=app && uv run ruff check . && uv run ruff format --check .`
+- `make check` from the repo root (backend: ruff, pyright, import-linter, pytest ≥80%; frontend: prettier, eslint, tsc, vitest, build)
 - DESIGN.md touched → `npx @google/design.md lint DESIGN.md` (0 errors)
 - UI tracks: run the app (`run` skill) and check light, dark, reduced-motion and reduced-transparency against
   `docs/design/reference/atlas-hybrid-glass.html` Mode ①.

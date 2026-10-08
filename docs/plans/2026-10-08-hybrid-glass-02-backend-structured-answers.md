@@ -1,6 +1,6 @@
 # Hybrid Glass Track C: Backend Structured Answers Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Follow the `engineering-standards` skill before writing code and the `production-code-review` skill before calling the track done. Gate: `make check` from the repo root (run `make format` first: the code below predates prettier/ruff formatting).
 
 **Goal:** Make answers carry structured `blocks`: a **clarify** block (the agent asks with choices instead of guessing) and **artifact** blocks (tables built deterministically from audited tool results). Stream and persist them so the UI (Track D2) can render choice pills and the artifact side panel.
 
@@ -152,6 +152,7 @@ Expected: FAIL, `ModuleNotFoundError: app.agent.blocks`.
   (guardrail #2 — numbers come from tool output, never from LLM prose).
 """
 
+from collections.abc import Callable
 from typing import Any
 
 MAX_CLARIFY_OPTIONS = 4
@@ -190,11 +191,13 @@ CLARIFY_TOOL = {
 }
 
 
-def build_clarify_block(arguments: dict[str, Any], known_metric_ids: set[str]) -> dict | None:
+def build_clarify_block(
+    arguments: dict[str, Any], known_metric_ids: set[str]
+) -> dict[str, Any] | None:
     """Validate model-supplied clarify arguments. Unknown metric ids are dropped (never trusted)."""
     question = str(arguments.get("question") or "").strip()
     raw = arguments.get("options") or []
-    options: list[dict] = []
+    options: list[dict[str, Any]] = []
     for opt in raw if isinstance(raw, list) else []:
         if not isinstance(opt, dict):
             continue
@@ -211,70 +214,78 @@ def build_clarify_block(arguments: dict[str, Any], known_metric_ids: set[str]) -
     return {"kind": "clarify", "question": question, "options": options}
 
 
-def _first_provenance(result: dict) -> dict | None:
+def _first_provenance(result: dict[str, Any]) -> dict[str, Any] | None:
     prov = result.get("provenance") or []
     return prov[0] if prov else None
 
 
-def artifact_from_result(tool: str, result: dict, seq: int) -> dict | None:
+def _breakdown(result: dict[str, Any], seq: int) -> dict[str, Any] | None:
+    rows = [[r.get("label"), r.get("value")] for r in result.get("rows", [])]
+    if not rows:
+        return None
+    return {
+        "id": f"metric_breakdown:{result.get('metric_id')}:{seq}",
+        "artifact_type": "breakdown",
+        "title": f"{result.get('name')}: breakdown",
+        "unit": result.get("unit") or "",
+        "columns": ["Label", "Value"],
+        "rows": rows,
+    }
+
+
+def _comparison(result: dict[str, Any], seq: int) -> dict[str, Any] | None:
+    a, b = result.get("period_a") or {}, result.get("period_b") or {}
+    pct = result.get("delta_pct")
+    suffix = f" ({pct:+.1f}%)" if isinstance(pct, (int, float)) else ""
+    return {
+        "id": f"compare_periods:{result.get('metric_id')}:{seq}",
+        "artifact_type": "comparison",
+        "title": f"{result.get('name')}: period comparison{suffix}",
+        "unit": result.get("unit") or "",
+        "columns": ["Period", "Start", "End", "Value"],
+        "rows": [
+            ["A", a.get("start"), a.get("end"), a.get("value")],
+            ["B", b.get("start"), b.get("end"), b.get("value")],
+        ],
+    }
+
+
+def _funnel(result: dict[str, Any], seq: int) -> dict[str, Any] | None:
+    steps = result.get("steps") or []
+    if not steps:
+        return None
+    return {
+        "id": f"funnel_analyze:{result.get('funnel_id')}:{seq}",
+        "artifact_type": "funnel",
+        "title": str(result.get("name")),
+        "unit": "users",
+        "columns": ["Step", "Users", "Conversion from previous %"],
+        "rows": [
+            [s.get("name"), s.get("count"), s.get("conversion_from_previous_pct")]
+            for s in steps
+        ],
+    }
+
+
+_BUILDERS: dict[str, Callable[[dict[str, Any], int], dict[str, Any] | None]] = {
+    "metric_breakdown": _breakdown,
+    "compare_periods": _comparison,
+    "funnel_analyze": _funnel,
+}
+
+
+def artifact_from_result(
+    tool: str, result: dict[str, Any], seq: int
+) -> dict[str, Any] | None:
     """Turn a successful table-shaped tool result into an artifact block (or None)."""
-    if not isinstance(result, dict) or "error" in result:
+    builder = _BUILDERS.get(tool)
+    if builder is None or not isinstance(result, dict) or "error" in result:
         return None
     provenance = _first_provenance(result)
-    if provenance is None:
+    body = builder(result, seq) if provenance is not None else None
+    if body is None:
         return None
-
-    if tool == "metric_breakdown":
-        rows = [[r.get("label"), r.get("value")] for r in result.get("rows", [])]
-        if not rows:
-            return None
-        return {
-            "kind": "artifact",
-            "id": f"metric_breakdown:{result.get('metric_id')}:{seq}",
-            "artifact_type": "breakdown",
-            "title": f"{result.get('name')}: breakdown",
-            "unit": result.get("unit") or "",
-            "columns": ["Label", "Value"],
-            "rows": rows,
-            "provenance": provenance,
-        }
-
-    if tool == "compare_periods":
-        a, b = result.get("period_a") or {}, result.get("period_b") or {}
-        pct = result.get("delta_pct")
-        suffix = f" ({pct:+.1f}%)" if isinstance(pct, (int, float)) else ""
-        return {
-            "kind": "artifact",
-            "id": f"compare_periods:{result.get('metric_id')}:{seq}",
-            "artifact_type": "comparison",
-            "title": f"{result.get('name')}: period comparison{suffix}",
-            "unit": result.get("unit") or "",
-            "columns": ["Period", "Start", "End", "Value"],
-            "rows": [
-                ["A", a.get("start"), a.get("end"), a.get("value")],
-                ["B", b.get("start"), b.get("end"), b.get("value")],
-            ],
-            "provenance": provenance,
-        }
-
-    if tool == "funnel_analyze":
-        steps = result.get("steps") or []
-        if not steps:
-            return None
-        return {
-            "kind": "artifact",
-            "id": f"funnel_analyze:{result.get('funnel_id')}:{seq}",
-            "artifact_type": "funnel",
-            "title": str(result.get("name")),
-            "unit": "users",
-            "columns": ["Step", "Users", "Conversion from previous %"],
-            "rows": [
-                [s.get("name"), s.get("count"), s.get("conversion_from_previous_pct")] for s in steps
-            ],
-            "provenance": provenance,
-        }
-
-    return None
+    return {"kind": "artifact", **body, "provenance": provenance}
 ```
 
 - [ ] **Step 4: Run tests**

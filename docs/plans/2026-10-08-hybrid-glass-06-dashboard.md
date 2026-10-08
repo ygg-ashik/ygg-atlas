@@ -1,6 +1,6 @@
 # Hybrid Glass Track E-fe: Overview Dashboard Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Follow the `engineering-standards` skill before writing code and the `production-code-review` skill before calling the track done. Gate: `make check` from the repo root (run `make format` first: the code below predates prettier/ruff formatting).
 
 **Goal:** Make `/` an Overview dashboard in Hybrid Glass:
 - serif greeting
@@ -14,6 +14,11 @@
 **Tech Stack:** React 19, `@number-flow/react`, `motion/react`, TanStack Query, react-router.
 
 **Depends on:** Track A merged; E-be contract. **Branch/worktree:** `feature/hybrid-glass-e-fe` · from `frontend/`.
+
+> **Folder layout (ARCHITECTURE.md §3.2).** This feature passes 8 files, so components live in
+> `src/features/dashboard/components/` (`range-switch`, `kpi-card`, `breakdown-card`, `overview-page`, with tests
+> next to them). `format.ts` and `index.ts` stay at the feature root. Paths below are written flat, so
+> place them accordingly and adjust relative imports (`../format`).
 
 ---
 
@@ -449,7 +454,9 @@ const PRESETS = [
 
 function greeting(now = new Date()) {
   const h = now.getHours();
-  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
 }
 
 /** Overview dashboard (DESIGN.md › Dashboard). Data on solid cards, chrome on glass. */

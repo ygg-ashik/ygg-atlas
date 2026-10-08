@@ -1,6 +1,6 @@
 # Hybrid Glass Track B: Chat Experience Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Follow the `engineering-standards` skill before writing code and the `production-code-review` skill before calling the track done. Gate: `make check` from the repo root (run `make format` first: the code below predates prettier/ruff formatting).
 
 **Goal:** Rebuild the chat in Atlas Hybrid Glass:
 - prose answers streamed with streamdown blur-in
@@ -25,6 +25,22 @@
 **Tech Stack:** React 19, `streamdown`, `motion/react`, Radix popover, Vitest + Testing Library.
 
 **Depends on:** Track A merged (`…-01-foundation.md`). **Branch/worktree:** `feature/hybrid-glass-b` · from `frontend/`.
+
+> **Folder layout (ARCHITECTURE.md §3.2).** Track A Task 0 moves the chat feature into `components/` and
+> `hooks/`. Paths in this plan are written flat (`src/features/chat/<file>`). Place each file as follows
+> and use matching relative imports (`../hooks/use-chat-turn`, `../steps`, `./composer`):
+>
+> | Location | Files (tests sit next to their module) |
+> |---|---|
+> | `src/features/chat/components/` | `chat-panel`, `markdown-message`, `steps-block`, `composer`, `notice`, `provenance-chips`, `message-actions`, `chat-thread-list`, `clarify-block`, `artifact-card`, `artifact-panel` |
+> | `src/features/chat/hooks/` | `use-chat-turn`, `use-stick-to-bottom` |
+> | `src/features/chat/` (root) | `index.tsx`, `steps.ts`, `chat-suggestions.ts`, `csv.ts`, `artifact-series.ts` |
+>
+> `chat-panel.tsx` was split by the standards change into `EmptyState` / `StoredMessage` / `DraftView` /
+> `Composer` to keep complexity ≤ 12. Keep that decomposition: put each in its own file under
+> `components/` (`empty-state.tsx`, `stored-message.tsx`, `draft-view.tsx`; the composer is this plan's
+> `composer.tsx`). `ChatPanel` stays a thin layout that composes them. Lint limits: ≤300 lines/file,
+> ≤150 lines/function, complexity ≤12, ≤4 params, no nested ternaries, `noUncheckedIndexedAccess`.
 
 ---
 
@@ -543,6 +559,14 @@ interface StepsBlockProps {
 
 const plural = (n: number) => `${n} step${n === 1 ? '' : 's'}`;
 
+function stepsTitle(count: number, live: boolean, durationMs?: number): string {
+  if (live) return `Working · ${plural(count)}`;
+  if (durationMs !== undefined) {
+    return `Worked for ${Math.max(1, Math.round(durationMs / 1000))}s · ${plural(count)}`;
+  }
+  return `Used ${count} atlas ${count === 1 ? 'step' : 'steps'}`;
+}
+
 /** Codex live plan → Claude "Worked for Ns" collapse (DESIGN.md › plan-block). */
 export function StepsBlock({ steps, live = false, durationMs }: StepsBlockProps) {
   const [open, setOpen] = useState(false);
@@ -550,11 +574,7 @@ export function StepsBlock({ steps, live = false, durationMs }: StepsBlockProps)
   if (steps.length === 0) return null;
 
   const expanded = live || open;
-  const title = live
-    ? `Working · ${plural(steps.length)}`
-    : durationMs !== undefined
-      ? `Worked for ${Math.max(1, Math.round(durationMs / 1000))}s · ${plural(steps.length)}`
-      : `Used ${steps.length} atlas ${steps.length === 1 ? 'step' : 'steps'}`;
+  const title = stepsTitle(steps.length, live, durationMs);
 
   return (
     <div className="mb-3.5 rounded-lg bg-card px-3.5 py-3 shadow-[0_0_0_1px_hsl(var(--border)/0.6)]">
