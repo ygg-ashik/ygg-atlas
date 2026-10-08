@@ -1,7 +1,7 @@
 // src/features/layout/sidebar-content.tsx
 import type { LucideIcon } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
-import { cn } from '@/ui';
+import { BrandMark, cn } from '@/ui';
 import { type ShellUser, ThemeToggle, UserMenu } from './account-controls';
 
 export interface NavItem {
@@ -23,10 +23,7 @@ export interface SidebarContentProps {
 export function SidebarContent({ user, onSignOut, nav, threads }: SidebarContentProps) {
   return (
     <>
-      <div className="flex items-center gap-2.5 px-2.5 pb-3.5 pt-1">
-        <span aria-hidden className="h-2.5 w-2.5 rotate-45 rounded-[3px] bg-primary" />
-        <span className="font-serif text-[21px] leading-none text-ink">Atlas</span>
-      </div>
+      <BrandMark className="px-2.5 pb-3.5 pt-1" />
       <nav className="space-y-0.5" aria-label="Primary">
         {nav.map(({ to, label, icon: Icon }) => (
           <NavLink

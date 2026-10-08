@@ -47,7 +47,7 @@ function Home() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider defaultTheme="system">
+      <ThemeProvider defaultTheme="light">
         <AuthProvider>
           <BrowserRouter>
             <Routes>
