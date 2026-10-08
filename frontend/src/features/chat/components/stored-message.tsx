@@ -2,6 +2,7 @@ import type { ChatMessage, Provenance } from '@/api/chat';
 import { freshnessLabel, isStale } from '@/lib/freshness';
 import type { LastTurn } from '../hooks/use-chat-turn';
 import { stepsFromProvenance } from '../steps';
+import { AnswerBlocks, type BlockActions } from './answer-blocks';
 import { MarkdownMessage } from './markdown-message';
 import { UserBubble } from './message-bubble';
 import { MessageActions } from './message-actions';
@@ -25,10 +26,11 @@ interface StoredMessageProps {
   message: ChatMessage;
   /** The turn that just finished, so its message keeps the live "Worked for Ns". */
   lastTurn: LastTurn | null;
+  blockActions: BlockActions;
 }
 
 /** One persisted message: the user's bubble, or the assistant's full answer. */
-export function StoredMessage({ message, lastTurn }: StoredMessageProps) {
+export function StoredMessage({ message, lastTurn, blockActions }: StoredMessageProps) {
   if (message.role === 'user') return <UserBubble text={message.content} />;
 
   const provenance = message.provenance ?? [];
@@ -41,6 +43,9 @@ export function StoredMessage({ message, lastTurn }: StoredMessageProps) {
       />
       <StaleWarning provenance={provenance} />
       <MarkdownMessage text={message.content} />
+      {message.blocks && (
+        <AnswerBlocks messageId={message.id} blocks={message.blocks} actions={blockActions} />
+      )}
       <ProvenanceChips provenance={provenance} />
       <MessageActions
         messageId={message.id}
