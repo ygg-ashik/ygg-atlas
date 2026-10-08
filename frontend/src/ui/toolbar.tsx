@@ -11,7 +11,8 @@ interface ToolbarProps {
 
 /** Floating glass page toolbar (DESIGN.md › glass-toolbar) plus the scroll-edge
  * blur beneath it. Place inside a `relative` page container; content below
- * reserves 84px (`pt-[84px]`) so nothing hides under the glass at rest. */
+ * reserves 84px (`pt-[84px]`) so nothing hides under the glass at rest. An ancestor may
+ * set `--toolbar-lead` to make room for floating chrome at the left (the nav button). */
 export function Toolbar({ title, children, className }: ToolbarProps) {
   return (
     <>
@@ -23,7 +24,7 @@ export function Toolbar({ title, children, className }: ToolbarProps) {
         as="header"
         specular
         className={cn(
-          'absolute inset-x-3.5 top-2.5 z-10 flex h-[52px] items-center gap-2 rounded-glass pl-[18px] pr-2',
+          'absolute inset-x-3.5 top-2.5 z-10 flex h-[52px] items-center gap-2 rounded-glass pl-[var(--toolbar-lead,18px)] pr-2',
           className,
         )}
       >

@@ -11,6 +11,12 @@ const DialogPortal = DialogPrimitive.Portal;
 
 const DialogClose = DialogPrimitive.Close;
 
+/** Unstyled dialog parts for surfaces that own their position and motion
+ * (drawers, side panels): use with `asChild` + `forceMount` and a motion element.
+ * They bring no scrim colour, centring, close button or CSS animation. */
+const DialogBareOverlay = DialogPrimitive.Overlay;
+const DialogBareContent = DialogPrimitive.Content;
+
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
@@ -91,6 +97,8 @@ export {
   DialogClose,
   DialogOverlay,
   DialogContent,
+  DialogBareOverlay,
+  DialogBareContent,
   DialogHeader,
   DialogFooter,
   DialogTitle,
