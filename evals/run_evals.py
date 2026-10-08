@@ -1,7 +1,8 @@
 """Golden-suite replay harness for the ygg-atlas agent.
 
 Runs each golden question through the real agent loop (the configured LLM provider
-and the seeded demo data) and checks tool usage, provenance and answer content.
+and the seeded demo data) and checks tool usage, provenance, answer blocks and
+answer content.
 
 Usage (from backend/, so the installed `app` package and its venv are used):
     uv run python ../evals/run_evals.py [--filter SUBSTRING]
@@ -14,6 +15,7 @@ import argparse
 import asyncio
 import re
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -50,63 +52,101 @@ def _fmt_variants(value: float) -> list[str]:
     return list(dict.fromkeys(variants))
 
 
-def _check_tool(golden: Golden, _answer: str, tools: list[str], _p: Provenance) -> str:
+@dataclass
+class Turn:
+    """What one agent turn produced, as the checks see it."""
+
+    answer: str = ""
+    tools_used: list[str] = field(default_factory=list[str])
+    provenance: Provenance = field(default_factory=list[dict[str, Any]])
+    blocks: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
+
+
+def _check_tool(golden: Golden, turn: Turn) -> str:
     tool = golden.get("expect_tool")
-    if tool and tool not in tools:
-        return f"expected tool '{tool}' to run; used {tools}"
+    if tool and tool not in turn.tools_used:
+        return f"expected tool '{tool}' to run; used {turn.tools_used}"
     return ""
 
 
-def _check_metric(golden: Golden, _answer: str, _t: list[str], prov: Provenance) -> str:
+def _check_metric(golden: Golden, turn: Turn) -> str:
     metric = golden.get("expect_metric")
-    metric_ids = {p.get("metric_id") for p in prov}
+    metric_ids = {p.get("metric_id") for p in turn.provenance}
     if metric and metric not in metric_ids:
         return f"expected metric '{metric}' in provenance; got {metric_ids}"
     return ""
 
 
-def _check_value(golden: Golden, answer: str, _t: list[str], _p: Provenance) -> str:
+def _check_value(golden: Golden, turn: Turn) -> str:
     value = golden.get("expect_value")
-    if value is not None and not any(v in answer for v in _fmt_variants(value)):
+    if value is not None and not any(v in turn.answer for v in _fmt_variants(value)):
         return f"expected value {value} in answer"
     return ""
 
 
-def _check_any(golden: Golden, answer: str, _t: list[str], _p: Provenance) -> str:
+def _check_any(golden: Golden, turn: Turn) -> str:
     any_of = golden.get("expect_any")
-    if any_of and not any(s.lower() in answer.lower() for s in any_of):
+    if any_of and not any(s.lower() in turn.answer.lower() for s in any_of):
         return f"expected one of {any_of} in answer"
     return ""
 
 
-def _check_no_numbers(
-    golden: Golden, answer: str, _t: list[str], _p: Provenance
-) -> str:
+def _check_no_numbers(golden: Golden, turn: Turn) -> str:
     if not golden.get("expect_no_numbers"):
         return ""
-    numbers = set(re.findall(r"\d[\d,\.]*", answer)) - _INNOCENT_NUMBERS
+    numbers = set(re.findall(r"\d[\d,\.]*", turn.answer)) - _INNOCENT_NUMBERS
     if numbers:
         return f"expected no data numbers, found {sorted(numbers)[:5]}"
     return ""
 
 
-_CHECKS: list[Callable[[Golden, str, list[str], Provenance], str]] = [
+def _check_clarify(golden: Golden, turn: Turn) -> str:
+    if golden.get("expect_clarify") and not any(
+        b.get("kind") == "clarify" for b in turn.blocks
+    ):
+        return "expected a clarify block (ask_clarification), got none"
+    return ""
+
+
+def _check_artifact(golden: Golden, turn: Turn) -> str:
+    artifact_type = golden.get("expect_artifact")
+    if not artifact_type:
+        return ""
+    kinds = [b.get("artifact_type") for b in turn.blocks if b.get("kind") == "artifact"]
+    if artifact_type not in kinds:
+        return f"expected a '{artifact_type}' artifact block; got {kinds}"
+    return ""
+
+
+_CHECKS: list[Callable[[Golden, Turn], str]] = [
     _check_tool,
     _check_metric,
     _check_value,
     _check_any,
     _check_no_numbers,
+    _check_clarify,
+    _check_artifact,
 ]
 
 
-def _check(
-    golden: Golden, answer: str, tools_used: list[str], provenance: Provenance
-) -> list[str]:
-    results = (check(golden, answer, tools_used, provenance) for check in _CHECKS)
+def _check(golden: Golden, turn: Turn) -> list[str]:
+    results = (check(golden, turn) for check in _CHECKS)
     return [failure for failure in results if failure]
 
 
-async def _run_question(question: str) -> tuple[str, list[str], Provenance]:
+def _record(turn: Turn, event: dict[str, Any]) -> None:
+    if event["type"] == "tool_status":
+        turn.tools_used.append(event["tool"])
+    elif event["type"] == "done":
+        turn.answer = event["content"]
+        turn.provenance = event.get("provenance", [])
+        turn.blocks = event.get("blocks", [])
+    elif event["type"] in ("error", "blocked"):
+        detail = event.get("message") or event.get("reason")
+        turn.answer = f"[{event['type']}] {detail}"
+
+
+async def _run_question(question: str) -> Turn:
     async with get_session_factory()() as db:
         session = ChatSession(
             user_uid="eval-runner", user_email="evals@yougotagift.com"
@@ -115,17 +155,10 @@ async def _run_question(question: str) -> tuple[str, list[str], Provenance]:
         await db.commit()
         await db.refresh(session)
 
-        answer, tools_used, provenance = "", [], []
+        turn = Turn()
         async for event in run_chat_turn("eval-runner", session.id, question, [], db):
-            if event["type"] == "tool_status":
-                tools_used.append(event["tool"])
-            elif event["type"] == "done":
-                answer = event["content"]
-                provenance = event.get("provenance", [])
-            elif event["type"] in ("error", "blocked"):
-                detail = event.get("message") or event.get("reason")
-                answer = f"[{event['type']}] {detail}"
-        return answer, tools_used, provenance
+            _record(turn, event)
+        return turn
 
 
 def _runnable(goldens: list[Golden]) -> list[Golden]:
@@ -157,14 +190,14 @@ async def main() -> int:
 
     passed = 0
     for golden in goldens:
-        answer, tools_used, provenance = await _run_question(golden["question"])
-        failures = _check(golden, answer, tools_used, provenance)
+        turn = await _run_question(golden["question"])
+        failures = _check(golden, turn)
         passed += not failures
         print(f"[{'FAIL' if failures else 'PASS'}] {golden['id']}")
         for failure in failures:
             print(f"       - {failure}")
         if failures:
-            print(f"       answer: {answer[:300]}")
+            print(f"       answer: {turn.answer[:300]}")
 
     print(f"\n{passed}/{len(goldens)} goldens passed")
     return 0 if passed == len(goldens) else 1
