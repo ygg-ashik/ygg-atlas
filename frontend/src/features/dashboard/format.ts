@@ -1,9 +1,10 @@
 // Pure KPI formatting and delta-tone rules for the Overview dashboard.
+import type { Format } from '@number-flow/react';
 
 const COMPACT_ABOVE = 100_000;
 
 /** Intl options per unit; also the `format` prop NumberFlow receives so the roll matches the text. */
-export function numberFormat(unit: string, value: number): Intl.NumberFormatOptions {
+export function numberFormat(unit: string, value: number): Format {
   if (unit === 'AED') {
     return { style: 'currency', currency: 'AED', notation: 'compact', maximumFractionDigits: 2 };
   }
