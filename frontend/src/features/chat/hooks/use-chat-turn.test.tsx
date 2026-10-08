@@ -214,6 +214,8 @@ describe('useChatTurn', () => {
     act(() => stream.emit({ type: 'blocked', reason: 'Daily limit reached.' }));
     act(() => stream.finish());
     await waitFor(() => expect(result.current.notice?.kind).toBe('blocked'));
+    // The notice lands at emit time; wait for the stream to close before re-sending.
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
     deferredStream();
     act(() => void result.current.send('b'));
     expect(result.current.notice).toBeNull();
