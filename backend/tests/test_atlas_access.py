@@ -225,6 +225,11 @@ async def test_an_entity_is_visible_through_its_funnel_grant(db) -> None:
 
 
 async def test_an_entity_is_visible_through_an_entity_level_grant(db) -> None:
+    # Exercises `_entity_visible` in isolation via an exact-path test policy
+    # (StaticPolicy + make_tools' `allowed`): the pattern "demo/order" matches
+    # only the entity path itself, never its items. Production can't store this
+    # as a grant — `validate_pattern` requires "demo/order/*" to cover an entity,
+    # which also covers its items.
     tools = make_tools(db=db, allowed=("demo/order",))
     entity = await tools.execute("describe_entity", {"entity_id": "order"})
     assert entity["id"] == "order"
