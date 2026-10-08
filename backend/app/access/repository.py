@@ -1,17 +1,18 @@
 """All database access for the access module.
 
-Reads return plain facts or rows. Writes are staged (add, delete, bump_version);
-the calling service commits once, so a change, its audit row and the version
-bump land together.
+Reads return plain facts or rows. Writes are staged (`add`, `delete`,
+`bump_version`, `ensure_policy_state`, `sync_capabilities`); the calling
+service `commit`s once, so a change, its audit row and the version bump
+land together.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, and_, or_
+from sqlalchemy import ColumnElement, and_, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import col, select
+from sqlmodel import SQLModel, col, select
 
 from app.access.errors import PolicyUnavailableError
 from app.access.facts import (
@@ -21,7 +22,7 @@ from app.access.facts import (
     GroupFacts,
     UserFacts,
 )
-from app.access.models import Grant, Group, GroupMember, PolicyState
+from app.access.models import Capability, Grant, Group, GroupMember, PolicyState
 from app.identity import User
 
 
@@ -124,3 +125,43 @@ class AccessRepository:
             )
             for g in rows
         ]
+
+    # ---- staged writes (the service commits) ----------------------------
+
+    def add(self, row: SQLModel) -> None:
+        self._db.add(row)
+
+    async def delete(self, row: SQLModel) -> None:
+        await self._db.delete(row)
+
+    async def bump_version(self) -> None:
+        await self._db.execute(
+            update(PolicyState)
+            .where(col(PolicyState.id) == 1)
+            .values(
+                policy_version=col(PolicyState.policy_version) + 1,
+                updated_at=datetime.now(UTC),
+            )
+        )
+
+    async def commit(self) -> None:
+        await self._db.commit()
+
+    async def ensure_policy_state(self) -> None:
+        if await self._db.get(PolicyState, 1, populate_existing=True) is None:
+            self._db.add(PolicyState(id=1, policy_version=1))
+            await self._db.flush()
+
+    async def sync_capabilities(self, catalog: Mapping[str, str]) -> None:
+        existing = {
+            c.code: c for c in (await self._db.execute(select(Capability))).scalars()
+        }
+        for code, description in catalog.items():
+            row = existing.get(code) or Capability(code=code, description=description)
+            row.description = description
+            row.deprecated = False
+            self._db.add(row)
+        for code, row in existing.items():
+            if code not in catalog:
+                row.deprecated = True
+                self._db.add(row)

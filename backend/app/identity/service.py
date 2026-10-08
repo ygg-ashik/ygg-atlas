@@ -8,10 +8,11 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.identity.errors import ForbiddenError, UnauthenticatedError
-from app.identity.models import User, UserStatus
+from app.identity.models import User, UserKind, UserStatus
 from app.identity.principal import AuthMethod, Principal
 from app.identity.repository import UserRepository
 from app.identity.tokens import TokenVerifier, VerifiedToken
@@ -139,3 +140,13 @@ class IdentityService:
         if last is None or now - _as_utc(last) >= LAST_SEEN_INTERVAL:
             user.last_seen_at = now
             await self._users.save(user)
+
+
+async def service_principal(db: AsyncSession, email: str) -> Principal | None:
+    """The Principal for an active service identity, or None (fail closed)."""
+    user = await UserRepository(db).get_by_email(email)
+    if user is None or user.kind != UserKind.SERVICE:
+        return None
+    if user.status != UserStatus.ACTIVE:
+        return None
+    return to_principal(user, "service")
