@@ -4,6 +4,7 @@ import { deltaLabel, deltaTone, formatKpi, numberFormat } from './format';
 describe('dashboard format', () => {
   it('formats AED compactly as currency', () => {
     expect(formatKpi(4_820_000, 'AED')).toMatch(/AED\s?4\.82M/);
+    expect(formatKpi(1000, 'AED')).toMatch(/^AED\s?1K$/);
   });
   it('formats counts with grouping, compact above 100k', () => {
     expect(formatKpi(38214, 'orders')).toBe('38,214');

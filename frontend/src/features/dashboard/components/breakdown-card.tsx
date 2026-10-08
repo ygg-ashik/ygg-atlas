@@ -1,5 +1,6 @@
 import type { OverviewBreakdown } from '@/api/overview';
 import { formatKpi } from '../format';
+import { SourceChip } from './source-chip';
 
 /** Top-N table (DESIGN.md › Dashboard): tabular figures, accent bars grow in staggered by 60ms. */
 export function BreakdownCard({ breakdown }: { breakdown: OverviewBreakdown }) {
@@ -20,6 +21,7 @@ export function BreakdownCard({ breakdown }: { breakdown: OverviewBreakdown }) {
               <td aria-hidden className="w-[36%] py-2">
                 <div className="h-1.5 overflow-hidden rounded-full bg-primary/15">
                   <div
+                    data-bar
                     className="h-full origin-left animate-[grow_900ms_cubic-bezier(.22,1,.36,1)_both] rounded-full bg-primary"
                     style={{
                       width: `${(Math.max(r.value, 0) / max) * 100}%`,
@@ -32,6 +34,9 @@ export function BreakdownCard({ breakdown }: { breakdown: OverviewBreakdown }) {
           ))}
         </tbody>
       </table>
+      <div className="mt-3">
+        <SourceChip provenance={breakdown.provenance} />
+      </div>
     </div>
   );
 }

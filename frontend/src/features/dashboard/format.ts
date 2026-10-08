@@ -6,7 +6,13 @@ const COMPACT_ABOVE = 100_000;
 /** Intl options per unit; also the `format` prop NumberFlow receives so the roll matches the text. */
 export function numberFormat(unit: string, value: number): Format {
   if (unit === 'AED') {
-    return { style: 'currency', currency: 'AED', notation: 'compact', maximumFractionDigits: 2 };
+    return {
+      style: 'currency',
+      currency: 'AED',
+      notation: 'compact',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    };
   }
   if (unit === '%') return { maximumFractionDigits: 1 };
   if (Math.abs(value) >= COMPACT_ABOVE) return { notation: 'compact', maximumFractionDigits: 1 };

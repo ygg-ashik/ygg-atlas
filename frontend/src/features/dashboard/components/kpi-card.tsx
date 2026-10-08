@@ -1,8 +1,8 @@
 import NumberFlow from '@number-flow/react';
 import type { OverviewKpi } from '@/api/overview';
-import { freshnessLabel, isStale } from '@/lib/freshness';
 import { cn } from '@/ui';
 import { deltaLabel, deltaTone, formatKpi, numberFormat } from '../format';
+import { SourceChip } from './source-chip';
 
 const TONE = {
   positive: 'bg-positive/[0.12] text-positive',
@@ -42,28 +42,7 @@ export function KpiCard({ kpi }: { kpi: OverviewKpi }) {
           aria-hidden
         />
       </div>
-      <SourceChip source={kpi.provenance.source} freshness={kpi.provenance.freshness} />
+      <SourceChip provenance={kpi.provenance} />
     </div>
-  );
-}
-
-/** Provenance chip: source plus data age; amber once the source is past its SLA. */
-function SourceChip({ source, freshness }: { source: string; freshness?: string }) {
-  const stale = isStale(freshness);
-  return (
-    <span
-      data-stale={stale}
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card-2 px-2.5 py-[3px] text-caption text-muted-foreground',
-        stale && 'border-warning/40 text-warning',
-      )}
-    >
-      <span
-        aria-hidden
-        className={cn('h-1.5 w-1.5 rounded-full', stale ? 'bg-warning' : 'bg-positive')}
-      />
-      {source}
-      {freshness && ` · ${freshnessLabel(freshness)}`}
-    </span>
   );
 }
