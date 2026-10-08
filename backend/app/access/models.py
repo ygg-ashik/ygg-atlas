@@ -75,6 +75,14 @@ class Grant(SQLModel, table=True):
             "target_kind IN ('resource', 'capability', 'clearance')",
             name="ck_grants_target_kind",
         ),
+        UniqueConstraint(
+            "subject_type",
+            "subject_id",
+            "effect",
+            "target_kind",
+            "target",
+            name="uq_grants_subject_target",
+        ),
     )
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)

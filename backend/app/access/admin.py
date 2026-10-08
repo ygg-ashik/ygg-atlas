@@ -14,7 +14,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Self
+from typing import Any, Literal, Self
 from uuid import UUID
 
 import structlog
@@ -74,6 +74,13 @@ class Actor:
             msg = f"This needs {capability}. Ask an atlas admin."
             raise AccessDeniedError(msg)
 
+    def require_any(self, *capabilities: str) -> None:
+        if self.policy is not None and not any(
+            self.policy.has(c) for c in capabilities
+        ):
+            msg = f"This needs {' or '.join(capabilities)}. Ask an atlas admin."
+            raise AccessDeniedError(msg)
+
     def require_member_admin(self, group_id: UUID) -> None:
         if self.policy is not None and not self.policy.can_manage_members(group_id):
             msg = "Only atlas admins and the group's managers can change its members."
@@ -111,6 +118,13 @@ def _member_out(member: GroupMember, user: User) -> MemberOut:
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+def _aware(moment: datetime | None) -> datetime | None:
+    """SQLite returns naive datetimes; every stored timestamp is UTC (CLAUDE.md)."""
+    if moment is None or moment.tzinfo is not None:
+        return moment
+    return moment.replace(tzinfo=UTC)
 
 
 def _grant_capability(subject_type: str) -> str:
@@ -295,7 +309,7 @@ class AccessAdmin:
     # ---- grants ---------------------------------------------------------
 
     async def list_grants(
-        self, actor: Actor, subject_type: str, subject_id: UUID
+        self, actor: Actor, subject_type: Literal["group", "user"], subject_id: UUID
     ) -> list[Grant]:
         actor.require(_grant_capability(subject_type))
         await self._subject(actor, subject_type, subject_id)
@@ -303,7 +317,15 @@ class AccessAdmin:
 
     async def create_grant(self, actor: Actor, payload: GrantCreate) -> Grant:
         actor.require(_grant_capability(payload.subject_type))
-        target = _validated_target(payload, _utcnow())
+        if payload.subject_type == SUBJECT_USER and actor.user_id == payload.subject_id:
+            # D10: no self-grants; only capabilities you hold.
+            msg = "You can't grant access to yourself. Ask another admin."
+            raise AccessDeniedError(msg)
+        now = _utcnow()
+        target = _validated_target(payload, now)
+        if payload.target_kind == KIND_CAPABILITY:
+            # D10: no self-grants; only capabilities you hold.
+            actor.require(target)
         async with self._write():
             await self._repo.lock_for_write()
             await self._subject(actor, payload.subject_type, payload.subject_id)
@@ -312,6 +334,13 @@ class AccessAdmin:
                 subject, payload.effect, payload.target_kind, target
             )
             if existing is not None:
+                expiry = _aware(existing.expires_at)
+                if expiry is not None and expiry <= now:
+                    msg = (
+                        f"An expired grant {existing.id} for that target exists; "
+                        "revoke it first."
+                    )
+                    raise ConflictError(msg)
                 msg = "That grant already exists."
                 raise ConflictError(msg)
             grant = Grant(
@@ -333,14 +362,21 @@ class AccessAdmin:
         return grant
 
     async def revoke_grant(self, actor: Actor, grant_id: UUID) -> None:
+        actor.require_any(ADMIN_GROUPS, ADMIN_USERS)
         async with self._write():
             await self._repo.lock_for_write()
             grant = await self._repo.grant(grant_id)
             if grant is None:
                 msg = "No such grant."
                 raise NotFoundError(msg)
+            try:
+                await self._subject(actor, grant.subject_type, grant.subject_id)
+            except NotFoundError:
+                # Hide whether a grant exists for a subject outside the actor's
+                # tenant: the same "No such grant" as an unknown id.
+                msg = "No such grant."
+                raise NotFoundError(msg) from None
             actor.require(_grant_capability(grant.subject_type))
-            await self._subject(actor, grant.subject_type, grant.subject_id)
             before = _snapshot(grant)
             await self._repo.delete(grant)
             await self._commit(

@@ -126,6 +126,14 @@ def _create_tables() -> None:
             "target_kind IN ('resource', 'capability', 'clearance')",
             name="ck_grants_target_kind",
         ),
+        sa.UniqueConstraint(
+            "subject_type",
+            "subject_id",
+            "effect",
+            "target_kind",
+            "target",
+            name="uq_grants_subject_target",
+        ),
     )
     op.create_index("ix_grants_subject_id", "grants", ["subject_id"])
     op.create_table(
