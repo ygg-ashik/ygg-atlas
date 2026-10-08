@@ -55,6 +55,7 @@ export default function Shell({ user, onSignOut, nav, threads, children }: Shell
             <NavLink
               key={to}
               to={to}
+              end={to === '/'}
               className={({ isActive }) =>
                 cn(
                   'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-[background-color,transform] duration-200 active:scale-[.97]',
