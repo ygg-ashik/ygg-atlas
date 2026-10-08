@@ -13,6 +13,9 @@ export interface DraftTurn {
   provenance: Provenance[] | null;
   steps: Step[];
   startedAt: number;
+  /** Set at `done`: the persisted assistant message and how long the turn took. */
+  messageId: string | null;
+  durationMs: number | null;
 }
 
 /** A blocked/error outcome that outlives the draft so the reader can retry. */
@@ -36,8 +39,17 @@ function nextSteps(steps: Step[], event: ChatStreamEvent): Step[] {
   return steps;
 }
 
-/** Pure draft transition for one stream event (steps are computed by the caller). */
-function reduceDraft(d: DraftTurn, event: ChatStreamEvent, steps: Step[]): DraftTurn {
+interface TurnProgress {
+  steps: Step[];
+  now: number;
+}
+
+/** Pure draft transition for one stream event (steps and clock come from the caller). */
+function reduceDraft(
+  d: DraftTurn,
+  event: ChatStreamEvent,
+  { steps, now }: TurnProgress,
+): DraftTurn {
   switch (event.type) {
     case 'token':
       return {
@@ -57,6 +69,8 @@ function reduceDraft(d: DraftTurn, event: ChatStreamEvent, steps: Step[]): Draft
         phase: null,
         provenance: event.provenance ?? null,
         steps,
+        messageId: event.message_id ?? null,
+        durationMs: now - d.startedAt,
       };
     case 'blocked':
       return { ...d, notice: event.reason, toolStatus: null, phase: null };
@@ -104,6 +118,8 @@ export function useChatTurn(sessionId: string | null, ensureSession?: () => Prom
         provenance: null,
         steps,
         startedAt,
+        messageId: null,
+        durationMs: null,
       });
       setIsStreaming(true);
 
@@ -130,13 +146,13 @@ export function useChatTurn(sessionId: string | null, ensureSession?: () => Prom
       // Side effects stay out of the state updater (StrictMode replays updaters).
       const onEvent = (event: ChatStreamEvent) => {
         steps = nextSteps(steps, event);
-        const current = steps;
-        setDraft((d) => d && reduceDraft(d, event, current));
+        const progress = { steps, now: Date.now() };
+        setDraft((d) => d && reduceDraft(d, event, progress));
         if (event.type === 'done' && event.message_id) {
           setLastTurn({
             messageId: event.message_id,
-            steps: current,
-            durationMs: Date.now() - startedAt,
+            steps,
+            durationMs: progress.now - startedAt,
           });
         }
         if (event.type === 'blocked') raise('blocked', event.reason);

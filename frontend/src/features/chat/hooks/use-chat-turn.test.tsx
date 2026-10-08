@@ -220,4 +220,17 @@ describe('useChatTurn', () => {
     act(() => void result.current.send('b'));
     expect(result.current.notice).toBeNull();
   });
+
+  it('stamps the persisted message id and duration on the draft at done', async () => {
+    const stream = deferredStream();
+    const { result } = renderHook(() => useChatTurn('sess-1'), { wrapper });
+    act(() => void result.current.send('q'));
+    await waitFor(() => expect(result.current.isStreaming).toBe(true));
+    expect(result.current.draft).toMatchObject({ messageId: null, durationMs: null });
+    act(() => stream.emit({ type: 'done', content: 'ok', provenance: [], message_id: 'm-7' }));
+    expect(result.current.draft?.messageId).toBe('m-7');
+    expect(result.current.draft?.durationMs).toBeGreaterThanOrEqual(0);
+    act(() => stream.finish());
+    await waitFor(() => expect(result.current.draft).toBeNull());
+  });
 });

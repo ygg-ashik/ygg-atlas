@@ -1,59 +1,37 @@
-// Curated starter questions for the analytics assistant, grouped by
-// capability. Static (no backend call) — cheap to curate, rotated client-side.
+// Preset analyses for the empty chat (Higgsfield-style gallery). Static and
+// curated; each preset sends its question.
+import type { PresetPreview } from '@/ui';
 
-export interface SuggestionGroup {
-  category: string;
-  questions: string[];
+export interface ChatPreset {
+  title: string;
+  description: string;
+  preview: PresetPreview;
+  question: string;
 }
 
-export const SUGGESTION_GROUPS: SuggestionGroup[] = [
+export const CHAT_PRESETS: ChatPreset[] = [
   {
-    category: 'Revenue & orders',
-    questions: [
-      'What was revenue last week?',
-      "Compare this month's orders to last month",
-      'What is the average order value this month?',
-      'What was total corporate revenue in AED this year?',
-    ],
+    title: 'Revenue review',
+    description: 'Last week, with drivers',
+    preview: 'line',
+    question: 'What was revenue last week?',
   },
   {
-    category: 'Portfolio health',
-    questions: [
-      'How many accounts are currently at risk?',
-      'What does the health band distribution look like?',
-      'Which are our top 10 accounts by YTD revenue?',
-    ],
+    title: 'Account health',
+    description: 'Who is at risk',
+    preview: 'bars',
+    question: 'How many accounts are currently at risk?',
   },
   {
-    category: 'Tasks & CSMs',
-    questions: [
-      'How many tasks are overdue right now?',
-      'How are open tasks distributed across CSMs?',
-      'How many tasks were completed this month?',
-    ],
+    title: 'CSM workload',
+    description: 'Open tasks by CSM',
+    preview: 'bars',
+    question: 'How are open tasks distributed across CSMs?',
   },
   {
-    category: 'Funnels & leads',
-    questions: [
-      'Where do users drop off in checkout?',
-      'Show the lead pipeline funnel for this year',
-      'How many leads came in this month, by channel?',
-    ],
+    title: 'Checkout funnel',
+    description: 'Where users drop off',
+    preview: 'funnel',
+    question: 'Where do users drop off in checkout?',
   },
 ];
-
-const pool = (): string[] => SUGGESTION_GROUPS.flatMap((g) => g.questions);
-
-/** Fisher–Yates on a copy — take the first `n`. */
-export function rotatingSuggestions(n: number): string[] {
-  const items = pool();
-  for (let i = items.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const current = items[i];
-    const other = items[j];
-    if (current === undefined || other === undefined) continue;
-    items[i] = other;
-    items[j] = current;
-  }
-  return items.slice(0, n);
-}

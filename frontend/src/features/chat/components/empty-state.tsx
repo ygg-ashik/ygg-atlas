@@ -1,32 +1,33 @@
-import { Orbit } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { PresetCard } from '@/ui';
+import { CHAT_PRESETS } from '../chat-suggestions';
 
-export function EmptyState({
-  starters,
-  onPick,
-}: {
-  starters: string[];
-  onPick: (text: string) => void;
-}) {
+interface EmptyStateProps {
+  /** The centered composer (it glides to the bottom once the chat starts). */
+  composer: ReactNode;
+  onPick: (question: string) => void;
+}
+
+/** First screen of a chat: serif greeting, centered composer, preset gallery. */
+export function EmptyState({ composer, onPick }: EmptyStateProps) {
   return (
-    <div className="mt-16 text-center">
-      <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent text-accent-foreground">
-        <Orbit className="h-6 w-6" />
-      </div>
-      <h2 className="text-lg font-semibold tracking-tight">Ask the atlas</h2>
-      <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-        Revenue, orders, funnels, campaigns — answered from governed metric definitions. Every
-        number carries provenance.
+    <div className="mx-auto max-w-[740px] px-6 pt-[20vh] text-center">
+      <h2 className="font-serif text-display font-normal text-ink">What would you like to know?</h2>
+      <p className="mt-1.5 text-muted-foreground">
+        Ask about revenue, campaigns, accounts or funnels. Every number comes from a governed
+        metric.
       </p>
-      <div className="mx-auto mt-6 grid max-w-lg gap-2 sm:grid-cols-2">
-        {starters.map((starter) => (
-          <button
-            key={starter}
-            type="button"
-            onClick={() => onPick(starter)}
-            className="rounded-lg border bg-card px-3 py-2.5 text-left text-xs text-muted-foreground shadow-sm transition-colors hover:border-primary/40 hover:text-foreground"
-          >
-            {starter}
-          </button>
+      <div className="mt-8">{composer}</div>
+      <div className="mt-8 grid grid-cols-2 gap-3 pb-10 text-left md:grid-cols-4">
+        {CHAT_PRESETS.map((p) => (
+          <PresetCard
+            key={p.title}
+            title={p.title}
+            description={p.description}
+            preview={p.preview}
+            compact
+            onSelect={() => onPick(p.question)}
+          />
         ))}
       </div>
     </div>
