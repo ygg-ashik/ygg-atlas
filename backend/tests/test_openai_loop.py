@@ -2,7 +2,9 @@
 
 from dataclasses import dataclass, field
 
-from app.agent.providers.openai_loop import run_tool_loop
+from app.agent.providers.openai_loop import run_tool_loop, to_openai_tools
+from app.agent.providers.types import Toolset
+from app.atlas import ATLAS_TOOL_SCHEMAS
 
 
 @dataclass
@@ -143,7 +145,7 @@ async def test_tool_round_then_answer():
             model="gpt-4.1",
             system="system prompt",
             messages=[{"role": "user", "content": "revenue?"}],
-            execute_tool=execute_tool,
+            toolset=Toolset(ATLAS_TOOL_SCHEMAS, execute_tool),
             max_rounds=6,
         )
     )
@@ -186,7 +188,7 @@ async def test_budget_exhaustion():
             model="gpt-4.1",
             system="s",
             messages=[{"role": "user", "content": "q"}],
-            execute_tool=execute_tool,
+            toolset=Toolset(ATLAS_TOOL_SCHEMAS, execute_tool),
             max_rounds=3,
         )
     )
@@ -206,9 +208,56 @@ async def test_plain_text_answer_streams():
             model="gpt-4.1",
             system="s",
             messages=[{"role": "user", "content": "hi"}],
-            execute_tool=execute_tool,
+            toolset=Toolset(ATLAS_TOOL_SCHEMAS, execute_tool),
             max_rounds=3,
         )
     )
     assert [e["type"] for e in events] == ["token", "final"]
     assert events[-1]["content"] == "Hello!"
+
+
+def test_custom_tools_are_converted_to_openai_functions():
+    tools = [
+        {
+            "name": "ask_clarification",
+            "description": "d",
+            "input_schema": {"type": "object", "properties": {}},
+        }
+    ]
+    assert to_openai_tools(tools) == [
+        {
+            "type": "function",
+            "function": {
+                "name": "ask_clarification",
+                "description": "d",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+
+
+async def test_explicit_tools_are_sent_to_the_model():
+    client = FakeOpenAIClient([_text_round("Hi")])
+
+    async def execute_tool(name, args):  # pragma: no cover - not called
+        return {}
+
+    tools = [
+        {
+            "name": "only_tool",
+            "description": "d",
+            "input_schema": {"type": "object", "properties": {}},
+        }
+    ]
+    await collect(
+        run_tool_loop(
+            client=client,
+            model="gpt-4.1",
+            system="s",
+            messages=[{"role": "user", "content": "q"}],
+            toolset=Toolset(tools, execute_tool),
+            max_rounds=1,
+        )
+    )
+    sent = [t["function"]["name"] for t in client.requests[0]["tools"]]
+    assert sent == ["only_tool"]

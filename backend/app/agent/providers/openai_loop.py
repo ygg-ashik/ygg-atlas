@@ -1,29 +1,31 @@
 """OpenAI Chat Completions tool loop (streaming)."""
 
 import json
-from collections.abc import AsyncGenerator, AsyncIterable, Iterable
+from collections.abc import AsyncGenerator, AsyncIterable, Iterable, Sequence
 from typing import Any, Literal, Protocol
 
 from openai.types.chat import ChatCompletionStreamOptionsParam
 
-from app.agent.providers.types import Event, ExecuteTool
-from app.atlas import ATLAS_TOOL_SCHEMAS
+from app.agent.providers.types import Event, Toolset
 
 BUDGET_ERROR = (
     "The assistant hit its tool budget for this question. Try a narrower question."
 )
 
-OPENAI_TOOL_SCHEMAS = [
-    {
-        "type": "function",
-        "function": {
-            "name": t["name"],
-            "description": t["description"],
-            "parameters": t["input_schema"],
-        },
-    }
-    for t in ATLAS_TOOL_SCHEMAS
-]
+
+def to_openai_tools(tools: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Anthropic-style tool schemas -> OpenAI function tools."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t["description"],
+                "parameters": t["input_schema"],
+            },
+        }
+        for t in tools
+    ]
 
 
 class OpenAICompletions(Protocol):
@@ -97,9 +99,10 @@ async def run_tool_loop(
     model: str,
     system: str,
     messages: list[dict[str, Any]],
-    execute_tool: ExecuteTool,
+    toolset: Toolset,
     max_rounds: int,
 ) -> AsyncGenerator[Event, None]:
+    openai_tools = to_openai_tools(toolset.schemas)
     messages = [{"role": "system", "content": system}, *messages]
     final_text_parts: list[str] = []
     usage_totals = {"input_tokens": 0, "output_tokens": 0}
@@ -108,7 +111,7 @@ async def run_tool_loop(
         stream = await client.chat.completions.create(
             model=model,
             messages=messages,
-            tools=OPENAI_TOOL_SCHEMAS,
+            tools=openai_tools,
             stream=True,
             stream_options={"include_usage": True},
         )
@@ -147,7 +150,7 @@ async def run_tool_loop(
         messages.append(_assistant_tool_message(round_text_parts, ordered))
         for tc in ordered:
             yield {"type": "tool_status", "tool": tc["name"]}
-            result = await execute_tool(tc["name"], _parse_args(tc["arguments"]))
+            result = await toolset.execute(tc["name"], _parse_args(tc["arguments"]))
             messages.append(
                 {
                     "role": "tool",

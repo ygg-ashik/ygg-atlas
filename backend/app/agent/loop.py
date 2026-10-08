@@ -25,8 +25,8 @@ from app.agent.guardrails import check_input
 from app.agent.prompts import build_system_prompt
 from app.agent.providers import anthropic_loop, openai_loop
 from app.agent.providers.anthropic_loop import AnthropicClient
-from app.agent.providers.types import Event, ToolLoopRunner
-from app.atlas import AtlasTools
+from app.agent.providers.types import Event, ToolLoopRunner, Toolset
+from app.atlas import ATLAS_TOOL_SCHEMAS, AtlasTools
 from app.config import get_settings
 
 logger = structlog.get_logger()
@@ -92,7 +92,7 @@ async def run_chat_turn(
             model=model,
             system=build_system_prompt(),
             messages=messages,
-            execute_tool=execute_tool,
+            toolset=Toolset(ATLAS_TOOL_SCHEMAS, execute_tool),
             max_rounds=settings.agent_max_tool_rounds,
         ):
             if event["type"] == "final":
