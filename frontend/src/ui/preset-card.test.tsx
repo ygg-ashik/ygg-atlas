@@ -26,4 +26,16 @@ describe('PresetCard (Higgsfield-style preset)', () => {
     render(<PresetCard title="t" preview={preview} onSelect={() => {}} />);
     expect(document.querySelector(`[data-preview="${preview}"]`)).not.toBeNull();
   });
+
+  it('line preview is visible at rest and draws on to full strength on hover', () => {
+    render(<PresetCard title="t" preview="line" onSelect={() => {}} />);
+    const rest = document.querySelector('[data-line="rest"]');
+    expect(rest).not.toBeNull();
+    // Fully drawn (no dash offset) but faint, so the card never looks empty.
+    expect(rest).toHaveAttribute('stroke-opacity', '0.25');
+    expect(rest?.getAttribute('class')).not.toMatch(/dashoffset/);
+    const play = document.querySelector('[data-line="play"]');
+    expect(play?.getAttribute('class')).toMatch(/group-hover:\[stroke-dashoffset:0\]/);
+    expect(play?.getAttribute('d')).toBe(rest?.getAttribute('d'));
+  });
 });

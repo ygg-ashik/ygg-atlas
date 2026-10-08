@@ -52,6 +52,8 @@ const FUNNEL: readonly (readonly [number, number, number])[] = [
   [70, 62, 0.4],
 ];
 
+const LINE = 'M10 88 C40 78,60 58,90 64 S140 28,190 22';
+
 function Preview({ kind }: { kind: PresetPreview }) {
   const drawn =
     'transition-[stroke-dashoffset] [transition-duration:1100ms] ease-out [stroke-dasharray:420] [stroke-dashoffset:420] group-hover:[stroke-dashoffset:0]';
@@ -63,8 +65,20 @@ function Preview({ kind }: { kind: PresetPreview }) {
         preserveAspectRatio="none"
         className="absolute inset-0 h-full w-full"
       >
+        {/* Resting: the whole line, faint, so the card never looks empty. */}
         <path
-          d="M10 88 C40 78,60 58,90 64 S140 28,190 22"
+          data-line="rest"
+          d={LINE}
+          fill="none"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeOpacity="0.25"
+          className="stroke-primary"
+        />
+        {/* Hover: the same line draws on over it at full strength. */}
+        <path
+          data-line="play"
+          d={LINE}
           fill="none"
           strokeWidth="2.2"
           strokeLinecap="round"
