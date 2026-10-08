@@ -23,6 +23,16 @@ async def api(db, monkeypatch):
             "provenance": [
                 {"tool": "query_metric", "source": "demo", "metric_id": "revenue"}
             ],
+            "blocks": [
+                {
+                    "kind": "clarify",
+                    "question": "Which?",
+                    "options": [
+                        {"label": "A", "metric_id": None},
+                        {"label": "B", "metric_id": None},
+                    ],
+                }
+            ],
             "model": "test-model",
             "token_usage": {"input_tokens": 1, "output_tokens": 2},
         }
@@ -116,3 +126,18 @@ async def test_session_isolation_404_for_foreign_session(api, db):
 async def test_healthz(api):
     resp = await api.get("/healthz")
     assert resp.json() == {"status": "ok"}
+
+
+async def test_blocks_are_streamed_and_persisted(api):
+    session = (await api.post("/api/v1/chat/sessions", json={})).json()
+    resp = await api.post(
+        f"/api/v1/chat/sessions/{session['id']}/messages", json={"content": "revenue?"}
+    )
+    events = [
+        json.loads(line[6:])
+        for line in resp.text.splitlines()
+        if line.startswith("data: ")
+    ]
+    assert events[-1]["blocks"][0]["kind"] == "clarify"
+    messages = (await api.get(f"/api/v1/chat/sessions/{session['id']}/messages")).json()
+    assert messages[1]["blocks"][0]["question"] == "Which?"

@@ -181,6 +181,7 @@ async def send_message(
                         role="assistant",
                         content=event["content"],
                         provenance=event.get("provenance"),
+                        blocks=event.get("blocks") or None,
                         model=event.get("model"),
                         token_usage=event.get("token_usage"),
                     )
