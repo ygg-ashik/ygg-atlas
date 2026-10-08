@@ -6,6 +6,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlmodel import SQLModel
 
+import app.identity.models  # noqa: F401  # registers the users table for create_all
 from app.atlas.registry import reset_registry
 from app.config import get_settings
 from app.database import get_engine, get_session_factory
