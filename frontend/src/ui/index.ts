@@ -27,3 +27,17 @@ export {
   DropdownMenuSeparator,
 } from './dropdown-menu';
 export { ScrollArea, ScrollBar } from './scroll-area';
+export { Glass, type GlassProps } from './glass';
+export { Toolbar } from './toolbar';
+export { Popover, PopoverTrigger, PopoverAnchor, PopoverContent } from './popover';
+export { Toaster, toast } from './toaster';
+export {
+  EASE_OUT,
+  EASE_SHEET,
+  durations,
+  materialize,
+  springDefault,
+  springMomentum,
+  withReducedMotion,
+} from './motion';
+export { PresetCard, type PresetPreview } from './preset-card';

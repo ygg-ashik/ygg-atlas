@@ -65,6 +65,19 @@ export default tseslint.config(
     // everything else comes from the api/lib/ui layers via @/.
     files: ['src/features/**/*.{ts,tsx}'],
     rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'Literal[value=/#[0-9a-fA-F]{3,8}\\b/]',
+          message:
+            'DESIGN.md: use design tokens (Tailwind token classes / CSS vars), never hex colors in features.',
+        },
+        {
+          selector: 'TemplateElement[value.raw=/#[0-9a-fA-F]{3,8}\\b/]',
+          message:
+            'DESIGN.md: use design tokens (Tailwind token classes / CSS vars), never hex colors in features.',
+        },
+      ],
       'no-restricted-imports': [
         'error',
         {
