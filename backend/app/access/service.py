@@ -73,12 +73,19 @@ class AccessService:
         return policy
 
     async def describe(self, policy: Policy) -> MeAccessOut:
-        """What /me/access shows: role, capabilities, groups, any data at all."""
-        memberships = await self._repo.memberships(policy.user_id)
+        """What /me/access shows: role, capabilities, groups, any data at all.
+
+        Built from the already-evaluated Policy (group_ids, managed_group_ids)
+        so this can never disagree with it; tenant_groups is read only for names.
+        """
         groups = await self._repo.tenant_groups(policy.tenant)
         refs = [
-            GroupRefOut(id=gid, name=groups[gid].name, standing=standing)
-            for gid, standing in memberships.items()
+            GroupRefOut(
+                id=gid,
+                name=groups[gid].name,
+                standing="manager" if gid in policy.managed_group_ids else "member",
+            )
+            for gid in policy.group_ids
             if gid in groups
         ]
         return MeAccessOut(

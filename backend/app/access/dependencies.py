@@ -2,6 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 
+import structlog
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,8 @@ from app.access.repository import AccessRepository
 from app.access.service import AccessService
 from app.database import get_db
 from app.identity import Principal, get_principal
+
+logger = structlog.get_logger()
 
 
 def get_access_service(db: AsyncSession = Depends(get_db)) -> AccessService:
@@ -50,6 +53,12 @@ def require_capability(code: str) -> Callable[..., Awaitable[Policy]]:
 
 
 async def access_error_handler(_request: Request, exc: Exception) -> JSONResponse:
-    """Maps AccessError subclasses to their HTTP status with a plain message."""
-    status = exc.status_code if isinstance(exc, AccessError) else 500
-    return JSONResponse({"detail": str(exc)}, status_code=status)
+    """Maps AccessError subclasses to their HTTP status with a plain message.
+
+    Anything else is a bug, not an access decision: it is logged and never
+    exposes `str(exc)` to the caller.
+    """
+    if isinstance(exc, AccessError):
+        return JSONResponse({"detail": str(exc)}, status_code=exc.status_code)
+    logger.exception("access.unhandled_error")
+    return JSONResponse({"detail": "Something went wrong."}, status_code=500)
