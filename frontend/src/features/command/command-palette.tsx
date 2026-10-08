@@ -9,6 +9,7 @@ import { useChatSessions } from '@/api/hooks/use-chat-sessions';
 import { usePaletteOpen } from './use-palette-open';
 
 const PAGES = [
+  { label: 'Overview', to: '/' },
   { label: 'Ask Atlas', to: '/ask' },
   { label: 'Metrics', to: '/metrics' },
 ];

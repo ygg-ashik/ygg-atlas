@@ -1,6 +1,6 @@
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { Library, MessageCircle } from 'lucide-react';
+import { LayoutDashboard, Library, MessageCircle } from 'lucide-react';
 import { queryClient } from '@/api/query-client';
 import { ThemeProvider } from '@/lib/theme-provider';
 import { Toaster } from '@/ui';
@@ -9,9 +9,10 @@ import { Shell, type NavItem } from '@/features/layout';
 import ChatPage, { ChatThreadList } from '@/features/chat';
 import { MetricsPage } from '@/features/metrics';
 import { CommandPalette, CommandTrigger } from '@/features/command';
+import { OverviewPage } from '@/features/dashboard';
 
-// Track E-fe appends its entry here (Overview).
 const NAV: NavItem[] = [
+  { to: '/', label: 'Overview', icon: LayoutDashboard },
   { to: '/ask', label: 'Ask Atlas', icon: MessageCircle },
   { to: '/metrics', label: 'Metrics', icon: Library },
 ];
@@ -37,6 +38,12 @@ function AppShell() {
   );
 }
 
+/** Home route: the Overview dashboard, greeted by the signed-in user's name. */
+function Home() {
+  const { user } = useAuth();
+  return <OverviewPage userName={user?.name ?? ''} />;
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -52,7 +59,7 @@ export default function App() {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<Navigate to="/ask" replace />} />
+                <Route index element={<Home />} />
                 <Route path="ask/:sessionId?" element={<ChatPage />} />
                 <Route path="metrics" element={<MetricsPage />} />
               </Route>
