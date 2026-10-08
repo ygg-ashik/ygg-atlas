@@ -113,6 +113,7 @@ def _change(
     return RbacChange(
         actor_user_id=actor.user_id,
         via=actor.via,
+        tenant=actor.tenant,
         action=action,
         object_type=object_type,
         object_id=str(object_id),
@@ -472,6 +473,7 @@ class AccessAdmin:
             await self._repo.lock_for_write()
             user = await self._user(actor, user_id)
             _not_self(actor, user)
+            await self._check_not_above_actor(actor, user)
             before, after = _apply_user_update(actor, user, payload)
             if not before:
                 await self._repo.commit()  # release the lock; nothing changed
@@ -492,7 +494,17 @@ class AccessAdmin:
 
     async def list_changes(self, actor: Actor, limit: int = 100) -> list[RbacChange]:
         actor.require(ADMIN_AUDIT)
-        return await self._repo.list_changes(limit)
+        return await self._repo.list_changes(actor.tenant, limit)
+
+    async def _check_not_above_actor(self, actor: Actor, user: User) -> None:
+        """D10: nobody changes the role or status of a user whose effective
+        capabilities exceed their own (the CLI actor, policy None, is unaffected)."""
+        if actor.policy is None:
+            return
+        target_policy = await self._access.policy_for_user(user.id)
+        if not target_policy.capabilities <= actor.policy.capabilities:
+            msg = "You can't change a user with more access than your own."
+            raise AccessDeniedError(msg)
 
     async def _end_firebase_sessions(self, user: User) -> None:
         if self._verifier is None or not user.firebase_uid:
@@ -502,6 +514,8 @@ class AccessAdmin:
         except Exception:
             # Status is enforced on every request; revocation only ends sessions sooner.
             logger.exception("access.revoke_failed", user_id=str(user.id))
+        else:
+            logger.info("access.sessions_revoked", user_id=str(user.id))
 
     # ---- helpers ------------------------------------------------------------
 

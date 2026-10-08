@@ -141,6 +141,7 @@ def _create_tables() -> None:
         sa.Column("id", sa.Uuid(), primary_key=True),
         sa.Column("actor_user_id", sa.Uuid(), sa.ForeignKey("users.id"), nullable=True),
         sa.Column("via", sa.String(16), nullable=False),
+        sa.Column("tenant", sa.String(64), nullable=False),
         sa.Column("action", sa.String(64), nullable=False),
         sa.Column("object_type", sa.String(32), nullable=False),
         sa.Column("object_id", sa.String(100), nullable=False),
@@ -149,6 +150,7 @@ def _create_tables() -> None:
         sa.Column("at", TS, nullable=False),
     )
     op.create_index("ix_rbac_changes_actor_user_id", "rbac_changes", ["actor_user_id"])
+    op.create_index("ix_rbac_changes_tenant", "rbac_changes", ["tenant"])
     op.create_index("ix_rbac_changes_at", "rbac_changes", ["at"])
     op.create_table(
         "policy_state",

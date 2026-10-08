@@ -274,6 +274,9 @@ class AccessRepository:
         return await self._db.get(User, user_id, populate_existing=True)
 
     async def user_by_email(self, email: str) -> User | None:
+        """Look up a user by email, globally: `users.email` is unique across
+        tenants, so this needs no tenant parameter. Used by the CLI, which has
+        no tenant-scoped actor to look a user up through."""
         stmt = (
             select(User)
             .where(col(User.email) == email.strip().lower())
@@ -297,9 +300,10 @@ class AccessRepository:
         )
         return list((await self._db.execute(stmt)).scalars().all())
 
-    async def list_changes(self, limit: int) -> list[RbacChange]:
+    async def list_changes(self, tenant: str, limit: int) -> list[RbacChange]:
         stmt = (
             select(RbacChange)
+            .where(col(RbacChange.tenant) == tenant)
             .order_by(col(RbacChange.at).desc())
             .limit(limit)
             .execution_options(populate_existing=True)
