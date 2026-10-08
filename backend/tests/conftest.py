@@ -6,6 +6,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlmodel import SQLModel
 
+import app.access.models  # registers the access tables for create_all
 import app.identity.models  # noqa: F401  # registers the users table for create_all
 from app.atlas.registry import reset_registry
 from app.config import get_settings
@@ -113,6 +114,13 @@ async def db():
         await conn.run_sync(SQLModel.metadata.drop_all)
         await conn.run_sync(SQLModel.metadata.create_all)
         await seed_demo(conn)
+        await conn.execute(
+            text(
+                "INSERT INTO policy_state (id, policy_version, updated_at) "
+                "VALUES (1, 1, :now)"
+            ),
+            {"now": datetime.now(UTC)},
+        )
 
     async with get_session_factory()() as session:
         yield session

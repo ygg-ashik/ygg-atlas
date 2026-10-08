@@ -13,10 +13,7 @@ class ChatSession(SQLModel, table=True):
     __tablename__ = "chat_sessions"  # pyright: ignore[reportAssignmentType]  # sqlmodel types it as declared_attr
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    user_uid: str = Field(index=True)
-    # Owner (atlas users.id). user_uid holds the same id as text for components that
-    # still key on strings (guardrails, audit) until phase 2 passes a Principal.
-    user_id: UUID | None = Field(default=None, foreign_key="users.id", index=True)
+    user_id: UUID = Field(foreign_key="users.id", index=True)  # the owner (users.id)
     user_email: str = Field(default="")
     title: str = Field(default="New chat")
     created_at: datetime = Field(

@@ -17,6 +17,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlmodel import SQLModel
 
+import app.access.models  # registers access tables
 import app.identity.models  # registers users on the metadata
 import app.models  # noqa: F401  # registers chat and audit tables
 
