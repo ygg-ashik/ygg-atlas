@@ -364,6 +364,15 @@ class AccessAdmin:
             if grant is None:
                 msg = "No such grant."
                 raise NotFoundError(msg)
+            try:
+                await self._subject(actor, grant.subject_type, grant.subject_id)
+            except NotFoundError:
+                # Hide whether a grant exists for a subject outside the actor's
+                # tenant: the same "No such grant" as an unknown id. Checked
+                # before D10 below, so a cross-tenant grant always reads as
+                # "No such grant", never as a D10 access-denied message.
+                msg = "No such grant."
+                raise NotFoundError(msg) from None
             if (
                 grant.effect == EFFECT_DENY
                 and grant.subject_type == SUBJECT_USER
@@ -375,13 +384,6 @@ class AccessAdmin:
             if grant.effect == EFFECT_DENY and grant.target_kind == KIND_CAPABILITY:
                 # D10: revoking a deny widens access; only lift one you hold.
                 actor.require(grant.target)
-            try:
-                await self._subject(actor, grant.subject_type, grant.subject_id)
-            except NotFoundError:
-                # Hide whether a grant exists for a subject outside the actor's
-                # tenant: the same "No such grant" as an unknown id.
-                msg = "No such grant."
-                raise NotFoundError(msg) from None
             actor.require(_grant_capability(grant.subject_type))
             before = _snapshot(grant)
             await self._repo.delete(grant)

@@ -43,6 +43,7 @@ The spec leaves these to implementation. They are deliberate; change them only w
 | D7 | **Local development needs one grant**: `make dev-access` grants the dev user `*`. | No bypass, even locally (D2). |
 | D8 | **Managers** (group standing `manager`) may add and remove *members* of their group and its descendants; only `admin:groups` can make someone a manager or edit grants. Direct user grants need `admin:users` and a reason. | Spec §5.2, §5.3. |
 | D9 | **Admin routes live in `app/access/router.py`** (prefix `/api/v1/admin`), not in a separate `api/admin` package as spec §8 sketches. | ARCHITECTURE.md §2.2: a module owns its router; this keeps the admin API next to the service it calls. |
+| D10 | **No self-escalation.** Nobody grants to themselves or lifts a deny on themselves; a capability grant, or lifting a capability deny, requires holding that capability; a role can only be assigned if its capabilities are within the actor's own. This covers direct grants; access gained through a group is allowed and relies on the rbac_changes audit trail. | Added after review: without it an `admin:users` holder could widen their own access. |
 
 ## File map
 
