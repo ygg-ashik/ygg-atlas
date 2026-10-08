@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Runs on the atlas EC2 box. SQL on stdin. Usage: atlasq <database> [max_rows] | atlasq --list
+set -euo pipefail
+exec docker run --rm -i \
+  -v "$HOME/ygg-atlas/backend/.env:/work/src.env:ro" \
+  -v "$HOME/atlas-analysis:/work/bin:ro" \
+  --entrypoint "" ygg-atlas-backend \
+  uv run --no-dev --no-sync python /work/bin/q.py "$@"

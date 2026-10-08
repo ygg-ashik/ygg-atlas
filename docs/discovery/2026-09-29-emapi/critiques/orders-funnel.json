@@ -1,0 +1,77 @@
+{
+  "unit": "orders-funnel",
+  "file": "/private/tmp/claude-501/-Users-ashikbabu-Projects-ygg-atlas/7995f92c-3b55-4867-88cc-df95fa3f0225/scratchpad/emapi/profiles/orders-funnel.md",
+  "final_score": 7,
+  "verdict": "revise",
+  "unresolved_issues": [
+    "The grant and the prepared queries contradict each other. With column-level privileges, any reference to an ungranted column makes the whole query fail, so these would all return permission denied under Option B: P13c (order_order.extra), P21/P22 (error_data, data), P29 (failure presence test), P31 (users_cognitouserdatasynclog.error), P23 (user_tip_tip, user_tip_invoice and offer_offerpromocode have no grant at all) and P30 (users_customuser has no grant). Either add derived PII-free columns in Option A views (e.g. has_failure boolean, error_data <> '' boolean, extracted jsonb keys, an is_staff flag), or rewrite the P-queries to use only granted columns. Then state in the doc which P-queries run under Option B and which need Option A.",
+    "Fix P8c and the \u00a73 lineage row. basket_line.line_reference is only unique per basket (UNIQUE(basket_id, line_reference)), so join through o.basket_id = bl.basket_id AND ol.order_id = o.id AND ol.line_reference = bl.line_reference, and mark the lineage unverified.",
+    "Correct \u00a77.5 and \u00a76. The kafka atwork, plusoffer and personalization_update logs have no order or offer key column, so any join to the funnel depends on keys inside data jsonb. Request a view that extracts the candidate keys (e.g. data->>'order_reference', data->>'code') so the B2B/@Work and offer-sync hypotheses can be tested. Without it, P22 cannot confirm the @Work mapping.",
+    "Update personalization_update_kafka_data_log to 128,996 est. and the ratio to about 1.37. Add the table to the Q20 staleness query.",
+    "Reword the NOT NULL PII statement as 'column is NOT NULL (may be empty string)'. Add derived boolean flags to the view spec (has_guest_email, has_user_phone, etc.) so PII presence can be measured without exposing values.",
+    "Relabel the 30 empty in-scope tables as exact-empty. Their current heap is 0 pages (pg_relation_size = 0), not merely reltuples 0.",
+    "Add prepared queries and grants for the overlooked signals: django_admin_log grouped by content_type_id \u00d7 action_flag \u00d7 month (the config-change history behind friction), users_guestuser count by platform/month vs guest orders, repeat purchase (orders per user_id over a date_placed window), and catalogue_productdenomination is_default uptake vs basket_basketquantitydetail.denomination.",
+    "The unit still cannot pass until the \u00a711.1 grant lands, since \u00a74, \u00a75 and \u00a77 are placeholders by the profile's own statement. Keep the escalation, and add the extra grants needed by the P-queries above (users_customuser id/is_staff/is_superuser/date_joined, users_guestuser non-PII columns, django_admin_log id/action_time/content_type_id/object_id/action_flag, user_tip_*, offer_offerpromocode minus promo_code)."
+  ],
+  "all_rounds": [
+    {
+      "round": 1,
+      "score": 6.5,
+      "verdict": "revise",
+      "issues": [
+        "Access is the main blocker. Escalate it concretely in section 11: give the exact GRANT SELECT list for the 20 populated in-scope tables, or better, PII-free views excluding user_email, guest_email, user_name, user_phone, owner, session_id, transaction_url, name_on_card, card_bin, card_last4, phone_number, email_address, sender_name and payload. Include the adjacent tables youpayclient_youpayclienttransactiondata, kafka_giftcreationlog and core_currencybasketlimit. Until the grant lands, sections 4, 5 and 7 are placeholders and the unit cannot pass.",
+        "Change payment_paymentdetail's cardinality to 0..1 per order. Add an explicit warning that revenue or payment metrics must not inner-join paymentdetail, and name youpay as the candidate payment ledger (about 1:1 with orders).",
+        "Reframe order_orderstatuschange: at 0.94 rows per order the transition log is incomplete. Add a prepared query for the share of orders with no status change, and for when logging began: min(date_created) in the log vs min(date_placed).",
+        "Correct the 'no shipping' claim. List the order_order.shipping_* columns and add P-queries for the distinct shipping_method and shipping_code values (sampled).",
+        "Add order_line.partner_line_reference and partner_line_notes to the entity table and the cross-DB keys table. Classify partner_line_notes as potentially sensitive until inspected.",
+        "Record in section 3 that address_country is the declared FK target for catalogue_store, offer_plusoffer, partner_partneraddress and user_tip_*.",
+        "Add a friction subsection that links the config tables to the funnel: core_currencybasketlimit (basket caps per currency), core_unsupportedcountry, order_giftactivationconfig (guest checkout toggle) and payment_paymentmethod.is_active. Queue prepared queries that join blocked or abandoned baskets to these configs.",
+        "Add a campaign/offer lineage row: order_line.offer_code (varchar 10) \u2192 offer_offerpromocode / offer_plusoffer. Include kafka_plusofferkafkadatalog status/error_data as the offer-sync error signal, with a prepared query for the status mix.",
+        "Add kafka_atworkkafkadatalog (1.7M) and personalization_* to the adjacent-signal list with their status and error columns, and form a hypothesis on the B2B/@Work vs consumer split via record_type and purchase_origin.",
+        "Add prepared queries for the higher-value behaviour metrics: guest vs registered conversion (order_order.guest_id IS NOT NULL); the gift vs self split (is_buy_for_self); scheduled vs instant delivery (delivery_date not null, is_instant_activated); lead time from order to instant activation (instant_activated_date - created_on); the gift_create_event_triggered=false rate among paid orders (stuck fulfilment); and the youpay decline mix (approved=false grouped by response_summary, payment_method). All should be time-bounded on indexed columns.",
+        "State the scope-count discrepancy explicitly: the brief says order_* 23, but the catalog has 26, so readers do not assume 3 tables are missing.",
+        "Note that the funnel's middle step (basket_line \u2192 order_line at 82%) cannot be read as a conversion rate: lines are keyed per basket, and order lines may come from baskets that were split via parent_id. Qualify the claim or remove it."
+      ],
+      "refuted": 5,
+      "missing": 11
+    },
+    {
+      "round": 2,
+      "score": 6,
+      "verdict": "revise",
+      "issues": [
+        "\u00a77.4/\u00a71: replace 'provably incomplete / at least 75k' with a staleness-adjusted statement. Record relpages-vs-current-pages growth for every key table (statuschange +4.5%, giftcreationlog +3.9%, orderlinepersonalisedetail +3.4%, basket_line +2.0%, order_order +0.1%) and recompute the ratios from the extrapolated counts. Add this staleness query to the appendix. It also answers Open Question 10 partly without any grant.",
+        "Add a cardinality warning for youpay: it has no UNIQUE on order_reference/transaction_id, so rows may be per attempt. Add a prepared query: count(*) vs count(DISTINCT order_reference) on a TABLESAMPLE, plus approved=true rows per order_reference. Until that runs, state that revenue must not be summed from youpay joined to orders.",
+        "\u00a711.1 Option B: the column-level grants are only comments. Write the actual `GRANT SELECT (col, ...) ON public.order_order TO <emapi_login_role>;` statements, with explicit column lists for each of the 10 PII-bearing in-scope tables and for youpay/kafka_giftcreationlog. The request was for an exact grant list.",
+        "PII/secrets: add kafka_giftcreationlog.payload (text), created_gift_details (text, likely issued gift codes/PINs) and failure (text) to \u00a79 and to the grant exclusion list. They are currently not named, and created_gift_details is plausibly as sensitive as partner_line_notes.",
+        "P24b is broken SQL. Inside a GROUP BY b.id group, count(DISTINCT b.id) is always 1, the HAVING sums price_incl_tax*quantity across lines that may have mixed currencies, and TABLESAMPLE is placed before a JOIN without an alias. Rewrite it as a CTE: sample baskets, sum lines per (basket, currency), join the active cap, then aggregate over_cap and over_cap_no_order via a LEFT JOIN to order_order.basket_id.",
+        "P15 does not actually compute guest vs registered conversion. Add a basket-side query: TABLESAMPLE basket_basket LEFT JOIN order_order ON o.basket_id=b.id, grouped by (b.guest_id IS NOT NULL), with orders/baskets. basket_basket.date_created is unindexed, so sampling is required.",
+        "Add friction prepared queries for users_blacklisteduserdetail (type/source/is_guest/is_removed mix), catalogue_productdenominationrange (basket_basketquantitydetail.denomination outside min/max per product/currency, sampled) and catalogue_producthandlingfee (active fee rules vs order process_fee).",
+        "Add a prepared query for gift issuance per order: sampled kafka_giftcreationlog grouped by status, (error IS NOT NULL), and events per distinct order_id. Cross-check it against gift_create_event_triggered in P17.",
+        "Add a prepared query for order_order.created_by_id <> user_id (on-behalf/admin-created orders) over a date_placed-bounded window.",
+        "State explicitly in \u00a76 that no referral or acquisition-attribution columns exist in this DB, and that refunds are not tracked in any populated in-scope table.",
+        "Fix the column count in \u00a710 (63, not ~80) and list the other NOT NULL PII columns (user_email, user_name, user_phone, owner) in \u00a72.2.",
+        "Minor: pg_stat_statements figures drift (orders DB now 18 entries / 1,859,038 calls; dealloc 663,118). Label them as point-in-time snapshots."
+      ],
+      "refuted": 4,
+      "missing": 10
+    },
+    {
+      "round": 3,
+      "score": 7,
+      "verdict": "revise",
+      "issues": [
+        "The grant and the prepared queries contradict each other. With column-level privileges, any reference to an ungranted column makes the whole query fail, so these would all return permission denied under Option B: P13c (order_order.extra), P21/P22 (error_data, data), P29 (failure presence test), P31 (users_cognitouserdatasynclog.error), P23 (user_tip_tip, user_tip_invoice and offer_offerpromocode have no grant at all) and P30 (users_customuser has no grant). Either add derived PII-free columns in Option A views (e.g. has_failure boolean, error_data <> '' boolean, extracted jsonb keys, an is_staff flag), or rewrite the P-queries to use only granted columns. Then state in the doc which P-queries run under Option B and which need Option A.",
+        "Fix P8c and the \u00a73 lineage row. basket_line.line_reference is only unique per basket (UNIQUE(basket_id, line_reference)), so join through o.basket_id = bl.basket_id AND ol.order_id = o.id AND ol.line_reference = bl.line_reference, and mark the lineage unverified.",
+        "Correct \u00a77.5 and \u00a76. The kafka atwork, plusoffer and personalization_update logs have no order or offer key column, so any join to the funnel depends on keys inside data jsonb. Request a view that extracts the candidate keys (e.g. data->>'order_reference', data->>'code') so the B2B/@Work and offer-sync hypotheses can be tested. Without it, P22 cannot confirm the @Work mapping.",
+        "Update personalization_update_kafka_data_log to 128,996 est. and the ratio to about 1.37. Add the table to the Q20 staleness query.",
+        "Reword the NOT NULL PII statement as 'column is NOT NULL (may be empty string)'. Add derived boolean flags to the view spec (has_guest_email, has_user_phone, etc.) so PII presence can be measured without exposing values.",
+        "Relabel the 30 empty in-scope tables as exact-empty. Their current heap is 0 pages (pg_relation_size = 0), not merely reltuples 0.",
+        "Add prepared queries and grants for the overlooked signals: django_admin_log grouped by content_type_id \u00d7 action_flag \u00d7 month (the config-change history behind friction), users_guestuser count by platform/month vs guest orders, repeat purchase (orders per user_id over a date_placed window), and catalogue_productdenomination is_default uptake vs basket_basketquantitydetail.denomination.",
+        "The unit still cannot pass until the \u00a711.1 grant lands, since \u00a74, \u00a75 and \u00a77 are placeholders by the profile's own statement. Keep the escalation, and add the extra grants needed by the P-queries above (users_customuser id/is_staff/is_superuser/date_joined, users_guestuser non-PII columns, django_admin_log id/action_time/content_type_id/object_id/action_flag, user_tip_*, offer_offerpromocode minus promo_code)."
+      ],
+      "refuted": 4,
+      "missing": 8
+    }
+  ]
+}

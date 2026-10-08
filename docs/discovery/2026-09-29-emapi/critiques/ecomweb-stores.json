@@ -1,0 +1,65 @@
+{
+  "unit": "ecomweb-stores",
+  "file": "/private/tmp/claude-501/-Users-ashikbabu-Projects-ygg-atlas/7995f92c-3b55-4867-88cc-df95fa3f0225/scratchpad/emapi/profiles/ecomweb-stores.md",
+  "final_score": 8,
+  "verdict": "pass",
+  "unresolved_issues": [],
+  "all_rounds": [
+    {
+      "round": 1,
+      "score": 7,
+      "verdict": "revise",
+      "issues": [
+        "Rewrite Open Question 1. The missing SELECT grant also affects ygag_emapi_stores_db (0/84) and ygag_plusoffers_db (0/49); ecom_users_db is readable. File one grant request covering all three DBs, with the same PII and credential exclusions.",
+        "Fix the webhooks_webhookmessage description. The 13 MB is the id PK index only. Add an inferred historical row-order estimate, labeled as inference.",
+        "Change the AI greetings interpretation to 'likely a response cache keyed by tone/relation/occasion/note (index-usage evidence)'. Stop presenting 538 as a usage count.",
+        "Mark notifications_twofactorauth as 'consumer or system OTP, unverified'. created_by_id is NOT NULL and points to staff users, and there is no consumer key. Update the 'two 2FA systems' line in Data Quality to match.",
+        "Add a per-index usage table to Behavior Signals / System Behavior, with provenance SQL in the appendix: cognitouser (username,is_enabled) 62,735 with every other index at 0; plusoffer brand_id 1.74M / start_date 958K / offer_type 62K; lastviewedbrand store_id 3,251 scans reading 41.9M tuples; aigreeting like-index lookups. Also cover the heavy CMS read paths: header_platform_type 48.1M seq scans, headertype 35.6M, menuitem 24.3M, platformchoice 73.2M, core_language 32.4M, siteconfiguration 9.9M. These show a per-request config fetch with no caching, which is a system-behavior signal.",
+        "Add caveats to Cross-DB Keys: users_cognitouser.sub is nullable, non-unique and unindexed; username is the only indexed unique consumer key. Add a Behavior Signals note that there is no last_login column, so there is no activity-recency signal.",
+        "Under Data Quality / Open Question 4, record that lastviewedbrand has no username index and no (username, brand_id) uniqueness.",
+        "Add emailsubscription.platform_id and productfeedbackbox.platform_id to Relations as real FKs to configurations_platformchoice, and explain their extra jsonb columns as potential attribution fields.",
+        "Name every table explicitly (a compact appendix list of all 134 with est rows is enough) so coverage can be checked mechanically.",
+        "Run a catalog column-name search for referral/utm/campaign/source/coupon/error/status columns and report the result. Absence is itself a finding.",
+        "The claim that 'user and session reads mostly hit the writer' is an inference from low replica counters. Label it as an inference."
+      ],
+      "refuted": 4,
+      "missing": 9
+    },
+    {
+      "round": 2,
+      "score": 7.5,
+      "verdict": "revise",
+      "issues": [
+        "AI greetings: change the key to tone/relation/occasion (the note indexes have 0 scans). Add the rows-read-per-scan figures (\u224854\u2013166) and name 'pre-generated greeting pool queried by BitmapAnd' as an alternative to a strict 1:1 cache. Add the 55,170 aigreetingsparameters seq scans as the widget-open proxy.",
+        "configurations_lastviewedbrand: report the seq path (4,637 scans, 276.2M tuples, full-table each time) alongside the store_id index path, and restate the inefficiency as full-table scans. Add the provenance SQL (pg_stat_all_tables seq_scan/seq_tup_read for the table).",
+        "Add a 'Read-counter traffic proxies' sub-table to Behavior Signals: widgetorder, homepageslider, brandpagepromotionbanner, branddenomination/range, genericbrandslist, brandsearchtag, captchaconfigurations, sitemeta, unsupportedcountry, remoteurlconfig, webhookconfig. Give each an interpretation labeled as inference and an explicit caveat that these are cumulative replica reads since an unknown start time, so ratios are usable but absolutes are not.",
+        "Add core_sitemeta to the hot-path list (877K seq scans, 1.99B tuples) and flag that it is never analyzed (reltuples -1) while hot.",
+        "Add the users_cognitouser seq_scan 24 / 7.78M tuples to the sweep observation.",
+        "Add configurations_downloadapprequest.platform_id as the third real FK to configurations_platformchoice in Relations and Data Quality.",
+        "Webhook/Kafka inference: state that btree pages are recycled after deletes, so 13 MB \u2248 500K\u2013600K rows is the peak number retained at one time, not the lifetime message count. The webhook paragraph says 'once held'. Match the Kafka line's 'at peak' wording.",
+        "Note the dead-feature polling (upcomingoccasion 89K and announcement 52K seq scans on 0-row tables) under system behavior.",
+        "Note that brandoffer, brandcommission, brandhandlingfee and currencyexchangerate have 0 replica reads, so the storefront may not use them. This is relevant to 'two offer systems'.",
+        "Minor: lastviewedbrand_pkey physical size is 2,728 KB = 341 pages, while relpages reads 338. Use the physical page count consistently, as done for the webhook pkey."
+      ],
+      "refuted": 2,
+      "missing": 11
+    },
+    {
+      "round": 3,
+      "score": 8,
+      "verdict": "pass",
+      "issues": [
+        "Add an 'inferred row count (seq_tup_read/seq_scan)' column for the -1 tables in Appendix B and the Entities section. The most important one is emailsubscription \u2248102 (inference), which replaces 'never analyzed (32 KB)' in Behavior Signals. Add the SQL: select relname, seq_scan, seq_tup_read, round(seq_tup_read::numeric/nullif(seq_scan,0),1) from pg_stat_all_tables s join pg_class c on c.oid=s.relid where c.reltuples<0.",
+        "Add a 'lookup hit rate' row to the Per-index usage table: cognitouser (username,is_enabled) 36,485/62,781 \u224858% and django_session session_key_like 2,348/8,080 \u224829%. Interpret these as miss or friction proxies (inference) and change the '**Every** single-user lookup resolves by username' reading to say that ~42% resolve to no row.",
+        "Extend 'Read-counter traffic proxies' with brandskin (245.8K, design selection), storelocation (362K), hasofferbrands (2.08M), plusoffer_happy_cards (1.17M), brandslug (21K redirects), defaultstorebrandforoffer (60K), testimonialapps/testimonialreview (104,482 each, read as a pair), howtouse (52K), pdfsamples (29.5K), happycardwidget (54K), brands_occasion (4.4K seq / 8.5K idx). Update the rough funnel line to put brandskin between brand-page (423K) and amount selection (1.29M).",
+        "Add a promo-code friction note: brands_offerpromocode has 73 total replica reads vs ~3.9M plusoffer reads, so promo validation does not happen on this replica.",
+        "Add an admin activity sub-section: totpdevice 1,793, customuser 5,282, usermetadata 1,212, statictoken 13 seq scans, plus totpdevice.last_t and customuser.last_login as recency columns available once granted.",
+        "Fix the Kafka peak estimate to ~7K-9K (24 x 300-370). Report the cognitouser pkey as 2,865 physical pages (22,920 KB).",
+        "Renumber Open Questions: they currently run 9, 12, 13, 10, 11.",
+        "Add brands_plusoffer country_id / offer_mode / brand_t index 0-scan rows to the per-index table."
+      ],
+      "refuted": 2,
+      "missing": 7
+    }
+  ]
+}

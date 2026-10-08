@@ -1,0 +1,77 @@
+{
+  "unit": "emapi-stores",
+  "file": "/private/tmp/claude-501/-Users-ashikbabu-Projects-ygg-atlas/7995f92c-3b55-4867-88cc-df95fa3f0225/scratchpad/emapi/profiles/emapi-stores.md",
+  "final_score": 7,
+  "verdict": "revise",
+  "unresolved_issues": [
+    "Keep the BLOCKER. The analysis is still catalog-only (0/84 tables, 0/83 sequences, re-verified today), so the lifecycle, trend and friction sections cannot pass until the Open Question 1 grant lands. Everything below is fixable now from the catalog.",
+    "Add a 'Schema chronology' section built from pg_class.oid order, plus a relfilenode-rewrite column (SQL: select oid::bigint, relname, relfilenode<>oid rewritten from pg_class where relnamespace='public'::regnamespace and relkind='r' order by oid). Use it to (1) support the hasofferbrands sync hypothesis (same migration window as kafka_emapistores/kafka_atwork), (2) mark shopcategory as the successor of myshopcategory, (3) date the plus-offer, promo-code, password-policy and notification features in relative order. Label it as relative order, not timestamps.",
+    "Fix mobile_app_client_config: list client_name!, platform!, version!, expiry_date and UNIQUE(client_name, platform, version). Describe it as a per-client app-version sunset/expiry table (a second upgrade gate, currently 0 bytes), and add it to the forced-upgrade discussion.",
+    "The queued queries contradict the grant you ask for. Kafka failure uses error_data<>'' and md5(data::text); webhook uses error_message is not null; promo dup uses count(distinct promo_code); user flags use sub is not null. Open Question 1 excludes all of these columns. Rewrite each query against the derived view columns you request (has_error, data_md5, has_error_message, promo_code_md5 or dup count, has_sub), and add promo_code_md5 and has_sub to the grant spec.",
+    "Add brands_generic_brand_item to the retention/churn list: pkey 25,395,200 B for about 533k rows (~2x expected) with a normal heap, pointing to auto_brand_sync churn. Record the index sizes in the appendix.",
+    "Add friction signals and queued queries for: (a) gift-card validity/expiry (non_expirable, validity_months, validity_days, expiry_details) by classification; (b) missing recipient redemption instructions (receiver_redemption_details_en/_ar null or empty) among active launched brands; (c) the password-rotation funnel (usermetadata.has_received_expiry_warning, password_last_changed, users_user.new_password_policy); (d) promo-code inventory versus promo_code_threshold and promo_code_end_date per offer, split by is_generic_promo_code/is_unique_promo_code.",
+    "Add the configurations_shopcategory layout flags (is_interest, is_slider, is_horizontal_scroll, row_count, column_count) to the merchandising section and queue a count by flags. Add the notifications_emailtemplateconfiguration email_type/template_code/language_id inventory as a trigger-configuration signal.",
+    "Caveat Open Question 1b: users_user.user_agent is varchar(100), so a derived OS version will be truncated or lossy.",
+    "Section 2: add the brand_id->brands_brand FK to hasofferbrands. Behavior Signals: change '\u2248158 brands/config' to '\u2248158 rows/config (est.)'.",
+    "Renumber the Open Questions: 8 currently appears between 5 and 6.",
+    "Note the IDENTITY columns on the 4 newest tables and the unused pg_trgm extension (no trigram indexes) in Data Quality."
+  ],
+  "all_rounds": [
+    {
+      "round": 1,
+      "score": 5,
+      "verdict": "revise",
+      "issues": [
+        "Keep the BLOCKER front and centre, and make Open Question 1 a concrete request: a column-limited GRANT or views that exclude users_user PII columns, kafka data/error_data, webhook message payloads, remote_url_config api_key/api_secret and brands_offerpromocode.promo_code. Also a GRANT on the 83 sequences so id ranges can be read. Until this lands, no lifecycle, trend or friction section can pass review.",
+        "Fix the incorrect 'every business table has created_on/modified_on' statement. List the actual time column per table: users_user = date_joined/last_login/modified_on; kafka_* = start_timestamp/completed_timestamp; webhookmessage = received_at; happy_cards = none.",
+        "Settle core_currencyexchangerate as a current-rate matrix (437 = 19 x 23; label it as a reltuples-based inference) instead of leaving it ambiguous.",
+        "Add the tables left out (django_content_type, django_migrations, locations_store_languages, auth_group/auth_permission/auth_group_permissions) so all 84 are accounted for individually.",
+        "Answer Open Question 4 from the catalog: happy_cards is an auto-M2M (no timestamps); hasofferbrands is a timestamped through-table with churn-level bloat, likely sync-maintained. Record the page/size evidence in the appendix.",
+        "Add a retention/churn note: webhookmessage and hasofferbrands index/heap sizes far exceed what their row counts imply.",
+        "Extend 'Queries to run once SELECT is granted' with: (a) the app_version vs required_version gap by platform; (b) the plusoffer purchase vs spend mechanic split (count of non-null purchase_offer_header vs spend_offer_header) with usage_count and has_budget_exceeded; (c) the brand redemption-friction flag matrix (require_mobile_verification, allow_any_country_mobile_verification, pin_redeemable_location_required, can_be_split) by classification; (d) kafka stuck rows (completed_timestamp IS NULL, older than 1h) per table, sampled by pkey id range using start_timestamp at id boundaries; (e) users_user.modified_on recency distribution; (f) django_admin_log action_flag by content_type (join django_content_type) per month; (g) django_migrations applied per month.",
+        "Qualify the 'staff authored' interpretation of the created_by/modified_by FKs for customer tables (useravailedoffer, favouritebrand).",
+        "Mention brands_brand TOAST (31 MiB) next to the 181 MB heap claim, and label MB vs MiB consistently."
+      ],
+      "refuted": 3,
+      "missing": 10
+    },
+    {
+      "round": 2,
+      "score": 7,
+      "verdict": "revise",
+      "issues": [
+        "Keep the BLOCKER. The analysis is still catalog-only (0/84 tables and 0/83 sequences readable, re-verified), so lifecycle, trend and friction sections cannot pass until the Open Question 1 grant lands. Nothing more is fixable on the analyst side except the catalog corrections below.",
+        "Change the 'empty' list in Data Quality and the Entities tables: only bannerimage, jet_bookmark, jet_pinnedapplication, mobile_app_client_config and two_factor_phonedevice have 0 bytes. Mark users_usermetadata, users_passwordhistory, django_site and notifications_emailtemplateconfiguration as '1 page, never analyzed, row count unknown' (notifications also has TOAST). Remove 'the email-template table is empty' from Behavior Signals.",
+        "Correct brands_offer_happy_cards to '<=24.5k (upper bound from 156 pages)' and show the arithmetic in the appendix.",
+        "Fix query (a): add a CTE that picks one row per lower(app_platform), e.g. distinct on (lower(app_platform)) ... order by lower(app_platform), modified_on desc nulls last. Guard required_version/latest_version with the same numeric regex before casting to int[]. Add an OS-version gate check using os_version_check_enabled/required_os_version (needs user OS version from user_agent, noted as not directly available).",
+        "Add missing-uniqueness findings for users_useravailedoffer (user_id, plus_offer_id), brands_offerpromocode (promo_code) and brands_generic_brand_item (generic_config_id, brand_id). Add queued queries: repeat-avail rate (count(*) - count(distinct (user_id, plus_offer_id))), orphan avails (plus_offer_id is null), duplicate promo codes, duplicate generic items.",
+        "Rename the 'Offer redemption' signal to 'offer availed (claim/activation)' unless a spend link is proven. useravailedoffer carries no amount, order or channel, so reconcile it against usage_count and the ygag_plusoffers_db ledger (Open Question 5).",
+        "Add can_be_swapped and buy_for_yourself to friction query (c), and add has_min_max_restriction, sponsor_payment_threshold_type and is_active to query (b).",
+        "In the users_user size note, attribute the 478 MB of indexes to redundant _like/unique pairs on email, phone and username (about 61+63+44+44+78+80+78 MB, from pg_index sizes) rather than implying churn. Record the per-index sizes in the appendix.",
+        "Add a queued-query section for merchandising exposure: guest vs logged-in slider counts per store, active carousel items currently inside their start/end window, and tag visibility by visible_to_ecommerce_app."
+      ],
+      "refuted": 3,
+      "missing": 9
+    },
+    {
+      "round": 3,
+      "score": 7,
+      "verdict": "revise",
+      "issues": [
+        "Keep the BLOCKER. The analysis is still catalog-only (0/84 tables, 0/83 sequences, re-verified today), so the lifecycle, trend and friction sections cannot pass until the Open Question 1 grant lands. Everything below is fixable now from the catalog.",
+        "Add a 'Schema chronology' section built from pg_class.oid order, plus a relfilenode-rewrite column (SQL: select oid::bigint, relname, relfilenode<>oid rewritten from pg_class where relnamespace='public'::regnamespace and relkind='r' order by oid). Use it to (1) support the hasofferbrands sync hypothesis (same migration window as kafka_emapistores/kafka_atwork), (2) mark shopcategory as the successor of myshopcategory, (3) date the plus-offer, promo-code, password-policy and notification features in relative order. Label it as relative order, not timestamps.",
+        "Fix mobile_app_client_config: list client_name!, platform!, version!, expiry_date and UNIQUE(client_name, platform, version). Describe it as a per-client app-version sunset/expiry table (a second upgrade gate, currently 0 bytes), and add it to the forced-upgrade discussion.",
+        "The queued queries contradict the grant you ask for. Kafka failure uses error_data<>'' and md5(data::text); webhook uses error_message is not null; promo dup uses count(distinct promo_code); user flags use sub is not null. Open Question 1 excludes all of these columns. Rewrite each query against the derived view columns you request (has_error, data_md5, has_error_message, promo_code_md5 or dup count, has_sub), and add promo_code_md5 and has_sub to the grant spec.",
+        "Add brands_generic_brand_item to the retention/churn list: pkey 25,395,200 B for about 533k rows (~2x expected) with a normal heap, pointing to auto_brand_sync churn. Record the index sizes in the appendix.",
+        "Add friction signals and queued queries for: (a) gift-card validity/expiry (non_expirable, validity_months, validity_days, expiry_details) by classification; (b) missing recipient redemption instructions (receiver_redemption_details_en/_ar null or empty) among active launched brands; (c) the password-rotation funnel (usermetadata.has_received_expiry_warning, password_last_changed, users_user.new_password_policy); (d) promo-code inventory versus promo_code_threshold and promo_code_end_date per offer, split by is_generic_promo_code/is_unique_promo_code.",
+        "Add the configurations_shopcategory layout flags (is_interest, is_slider, is_horizontal_scroll, row_count, column_count) to the merchandising section and queue a count by flags. Add the notifications_emailtemplateconfiguration email_type/template_code/language_id inventory as a trigger-configuration signal.",
+        "Caveat Open Question 1b: users_user.user_agent is varchar(100), so a derived OS version will be truncated or lossy.",
+        "Section 2: add the brand_id->brands_brand FK to hasofferbrands. Behavior Signals: change '\u2248158 brands/config' to '\u2248158 rows/config (est.)'.",
+        "Renumber the Open Questions: 8 currently appears between 5 and 6.",
+        "Note the IDENTITY columns on the 4 newest tables and the unused pg_trgm extension (no trigram indexes) in Data Quality."
+      ],
+      "refuted": 3,
+      "missing": 16
+    }
+  ]
+}

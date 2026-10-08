@@ -25,3 +25,7 @@ service-account*.json
 .DS_Store
 .idea/
 .vscode/
+
+# Discovery PDFs/HTML are regenerated from the markdown (see docs/discovery/*/README.md)
+docs/discovery/**/*.pdf
+docs/discovery/**/*.html

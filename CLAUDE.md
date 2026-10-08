@@ -7,7 +7,10 @@ interface and MCP. See `docs/specs/2026-09-23-ygg-atlas-mvp-design.md` for the f
 ## Architecture
 
 Monorepo:
-- `backend/` — FastAPI (Python 3.12, uv). Chat API + agent loop + atlas semantic registry + connectors + MCP server.
+- `backend/` — FastAPI (Python 3.12, uv). Chat API + agent loop + atlas semantic registry + data-source plugins + MCP server.
+  - `app/sources/<id>/` — one self-contained plugin per data source (`manifest.py` with its own
+    Settings, connector, `definitions/*.yaml`). A plugin is enabled iff its env vars are set.
+  - `app/agent/providers/` — LLM provider loops (OpenAI or Anthropic, chosen by which key is in `.env`).
 - `frontend/` — React 19 + Vite + TypeScript + Tailwind + shadcn/ui. Chat UI with SSE streaming.
 - `evals/` — golden Q&A suite; must pass before merge.
 - `docs/specs/` — design docs; `docs/plans/` — implementation plans.
@@ -17,12 +20,15 @@ Deployment: AWS EC2 (`ssh atlas`), docker compose, reverse proxy + HTTPS. NOT GC
 ## Non-negotiable guardrails
 
 1. **No raw text-to-SQL.** The agent answers only through atlas tools backed by vetted metric/entity
-   definitions in `backend/app/atlas/definitions/`. If the registry can't answer, the agent asks a
+   definitions in each plugin's `backend/app/sources/<id>/definitions/`. If the registry can't answer, the agent asks a
    clarifying question — it never generates freeform SQL or invents numbers.
 2. **Provenance on every number.** Every metric answer carries metric id, source, and data freshness,
    threaded through the SSE `done` event and rendered as provenance chips in the UI.
-3. **Connectors are read-only.** Source-DB connections use read-only credentials and per-source table
-   allowlists (`backend/app/connectors/`). Never point a connector at a production primary for heavy queries.
+3. **Connectors are read-only.** Source-DB connections use read-only credentials and per-plugin table
+   allowlists (`allowed_tables` in each `manifest.py`, linted at load by `backend/app/atlas/registry.py`;
+   SELECT-only enforced by `SQLSourceConnector` in `backend/app/sources/base.py`). Never point a connector
+   at a production primary for heavy queries. Source DBs are IP-restricted: connect only from the atlas
+   EC2 box (`ssh atlas`), never from a laptop.
 4. **Scope from token, never from prompt.** Auth/permissions come from the Firebase token (domain-locked
    to `@yougotagift.com`). Nothing user-typed can widen data access.
 5. **Audit everything.** Every atlas tool execution is written to the audit log (`backend/app/models/audit.py`).
@@ -34,7 +40,7 @@ Every module is self-contained and enterprise-grade:
 - One clear purpose per module; public interface at its root (`__init__.py` / `index.ts`).
 - Never reach into another feature's internals; no cross-feature imports.
 - Dependency direction only downward: `features → api/lib → ui` (frontend),
-  `api → agent/atlas → connectors` (backend). Enforced by ESLint `no-restricted-imports` on the frontend.
+  `api → agent → atlas → sources` (backend). Enforced by ESLint `no-restricted-imports` on the frontend.
 - Each unit testable in isolation.
 - No legacy silos — refactor in place, keep the tree clean.
 

@@ -1,0 +1,76 @@
+{
+  "unit": "orders-integrations",
+  "file": "/private/tmp/claude-501/-Users-ashikbabu-Projects-ygg-atlas/7995f92c-3b55-4867-88cc-df95fa3f0225/scratchpad/emapi/profiles/orders-integrations.md",
+  "final_score": 7.5,
+  "verdict": "revise",
+  "unresolved_issues": [
+    "Replace 'counters since stats creation' with an explicit 35.49-day window (pg_postmaster_start_time / pg_stat_bgwriter.stats_reset). Convert every scan count to per-day rates and add the SQL to the appendix. Also state that the pgss window is about 95.5 days (pg_stat_statements_info.stats_reset age), which differs from the table-stat window.",
+    "Rewrite the '~170 rows per PK scan = incremental extractor/CDC poller' interpretation. At about 617K rows/day (about 50% of the table/day), it is a repeated full paginated read or bulk keyed lookups, not incremental polling. Keep 'id-range pagination' only as one hypothesis.",
+    "Restate '36 seq scans = daily dump' as supported by evidence: 36 \u2248 35.49 days of uptime, and many DBs show exactly 36 xact_commit. Cite the pg_stat_database query.",
+    "Stop calling youpay seq scans 'whole-table reads' as a certainty. The average of 1,144,861 is 93% of reltuples and could mix full and partial (LIMIT-terminated) scans. Phrase it as 'consistent with mostly full-table reads'.",
+    "Grant request PII risk: kafka_giftcreationlog.error/failure (text), datalog error_data (text), and youpay response_summary are free text that commonly embeds payload fragments (emails, names, gift codes). Grant them only via a view that returns a normalized error class (for example regexp_replace of digits, emails and uuids, then left(\u2026,60)) or a has_error flag. P1 left(error,60) and P5 left(response_summary,80) should read from that view.",
+    "P11: `g.order_id ~ '^[0-9]{1,18}$' AND EXISTS(... o.id = g.order_id::bigint)` relies on AND short-circuit order, which Postgres does not guarantee. Rewrite as `CASE WHEN g.order_id ~ '^[0-9]{1,18}$' THEN EXISTS(...) END` so a non-numeric order_id cannot abort the query.",
+    "Add pack queries for the missing signals: otp last_t recency buckets; django_admin_log change_message JSON key names by content_type; FX rate age and spread; currency<>cart_currency share \u00d7 approved; youpay hour-of-week \u00d7 approval (1% sample); webhook ip_address = sender_ip share; commandexecuter distinct operators and date-window length.",
+    "Update the Blocker paragraph figures, or mark them as drifting. The orders-DB pgss set has changed (now 18 statements; the '19 calls / 36,575 rows' statement has been evicted and the current largest per call is 4 calls / 7,700 rows). Note that the statement set turns over, which is more evidence that pgss cannot identify the extractor.",
+    "Consider granting core_remoteurlconfig (server, is_active) plus a URL-host view, and django_admin_log.object_id (not object_repr), to allow joining admin edits to order ids. Both are PII-safe."
+  ],
+  "all_rounds": [
+    {
+      "round": 1,
+      "score": 6,
+      "verdict": "revise",
+      "issues": [
+        "Add a prepared-queries appendix, cheap and PII-safe, to run once SELECT is granted. It should cover: status and error counts per kafka table via TABLESAMPLE SYSTEM(1) on giftcreationlog and atwork; completed_timestamp IS NULL share and p50/p95 latency per *datalog; youpay payment_status \u00d7 approved \u00d7 payment_gateway counts and response_summary top-N; min/max created_on via ORDER BY id LIMIT 1 on the PK; and monthly buckets via id ranges.",
+        "Downgrade the 'about one payment session per order' inference. youpay order_reference is nullable, and matching reltuples (1.229M vs 1.232M) is not evidence of 1:1. List this as a hypothesis to test with a count(DISTINCT order_reference) sample.",
+        "Reframe '2.5 gift-creation events per order'. event_id is UNIQUE, so retries (if any) are new rows rather than updates. The ratio is uninterpretable until status is profiled, and it also depends on the order_id format (number vs id vs external ref).",
+        "Add success_url, failure_url, cancel_url and verify_url to the youpay PII/secret exclusion list for the column-level grant, alongside customer_email, customer_name, name_on_card, customer_ip_address, card_bin, card_last4, the mobile numbers, session_id and the jsonb blobs.",
+        "Correct the youpay index description: card_issuer_country and qitaf_request_id have btree indexes, in addition to the 3 boolean flag indexes.",
+        "Note that pg_stat_statements is readable but query text is redacted. Recommend granting pg_read_all_stats, or reading it from the primary's monitoring, to identify the consumer running 909 seq scans on youpay.",
+        "Add a latency/SLA section to Friction & Errors, using start/completed_timestamp and created_on/modified_on deltas as measurable metrics once granted.",
+        "Warn that joining kafka_giftcreationlog.order_id to order_order must be id-range- or sample-bounded, because there is no index on order_id.",
+        "Add ygag_youpay_db and ygag_ecom_gifts_db to Cross-DB Keys and to the grant request as counterpart sources for payment and gift-creation truth.",
+        "Make the grant request concrete: a table list plus an explicit column allowlist (or PII-free views) for youpay, kafka_giftcreationlog (excluding payload and created_gift_details) and the datalogs (excluding data, or exposing only jsonb keys)."
+      ],
+      "refuted": 2,
+      "missing": 9
+    },
+    {
+      "round": 2,
+      "score": 7,
+      "verdict": "revise",
+      "issues": [
+        "Rewrite the pg_stat_statements paragraph in the Blocker section: it is cluster-wide. Report the per-DB split (orders DB: 20 stmts / about 1.86M calls; ecomweb_stores: 4,818 / about 385M). Remove 'That includes all 38 tables in scope'. Add the per-DB query to the appendix.",
+        "Replace the 'grant pg_read_all_stats to find the 909-seq-scan consumer' recommendation. The current orders-DB pgss rows contain no statement matching about 1.14M rows per scan, and dealloc is 663,020. Recommend Performance Insights / pg_stat_activity sampling / log_min_duration_statement on the replica, and keep pg_read_all_stats only as a secondary aid.",
+        "Add the scan-ratio inference: about 1.145M rows per seq scan (full-table reads; also a live-row proxy) and about 170 rows per PK index scan (id-range pagination by an extractor). Note that the card_issuer_country, qitaf and boolean indexes are unused on the replica. Cite pg_stat_user_tables.seq_tup_read / idx_tup_fetch and pg_stat_user_indexes in the appendix.",
+        "Fix the datalog GRANT statement. As written it is invalid SQL, because the column list sits after the table list and inside a comment. Use `GRANT SELECT (id, status, error_data, start_timestamp, completed_timestamp) ON kafka_atworkkafkadatalog, kafka_plusofferkafkadatalog, ... TO <emapi_login_role>;`. Also add modified_on and event_id to the legacyfraud/blacklistgift grant (needed for retry span and idempotency checks).",
+        "Name the youpay point columns explicitly in the grant (available_points, redeemed_points, earned_point) instead of the placeholder comment, and add them to the loyalty behavior section.",
+        "Fix P8. Split it into three separate `SELECT count(*) ... WHERE <flag>` statements, which can use each boolean index, or use TABLESAMPLE. Stop calling the combined FILTER query cheap or index-backed. The card_issuer_country GROUP BY over 1.23M rows should also be sampled or explicitly timed-out-guarded.",
+        "Extend P11 to test all three candidate order_id formats in one bounded window: match on o.number, o.id::text and o.order_reference (all indexed on order_order). Note that the youpay reconciliation join should use order_order.order_reference (UNIQUE index), not payment_order_reference, which has no index.",
+        "Add PII-safe structural jsonb queries to the pack: jsonb_array_length(order_items), jsonb_array_length(order_history), jsonb_object_keys(udf1 | brand_details | webhooks message | error_message) with counts only, and never values.",
+        "Add cross-table friction queries: youpay amount / cart_amount against core_currencybasketlimit.limit_amount by currency (share within 10% of the limit); approval rate by card_issuer_country for countries in core_unsupportedcountry; is_gcc_card \u00d7 gateway \u00d7 approved.",
+        "Add django_admin_log grouped by content_type_id \u2192 django_content_type.model \u00d7 action_flag (which entities get manual back-office edits), and django_session expired share via the indexed expire_date.",
+        "Note the dropped youpay column (attnum 62 gap) in Data Quality."
+      ],
+      "refuted": 3,
+      "missing": 10
+    },
+    {
+      "round": 3,
+      "score": 7.5,
+      "verdict": "revise",
+      "issues": [
+        "Replace 'counters since stats creation' with an explicit 35.49-day window (pg_postmaster_start_time / pg_stat_bgwriter.stats_reset). Convert every scan count to per-day rates and add the SQL to the appendix. Also state that the pgss window is about 95.5 days (pg_stat_statements_info.stats_reset age), which differs from the table-stat window.",
+        "Rewrite the '~170 rows per PK scan = incremental extractor/CDC poller' interpretation. At about 617K rows/day (about 50% of the table/day), it is a repeated full paginated read or bulk keyed lookups, not incremental polling. Keep 'id-range pagination' only as one hypothesis.",
+        "Restate '36 seq scans = daily dump' as supported by evidence: 36 \u2248 35.49 days of uptime, and many DBs show exactly 36 xact_commit. Cite the pg_stat_database query.",
+        "Stop calling youpay seq scans 'whole-table reads' as a certainty. The average of 1,144,861 is 93% of reltuples and could mix full and partial (LIMIT-terminated) scans. Phrase it as 'consistent with mostly full-table reads'.",
+        "Grant request PII risk: kafka_giftcreationlog.error/failure (text), datalog error_data (text), and youpay response_summary are free text that commonly embeds payload fragments (emails, names, gift codes). Grant them only via a view that returns a normalized error class (for example regexp_replace of digits, emails and uuids, then left(\u2026,60)) or a has_error flag. P1 left(error,60) and P5 left(response_summary,80) should read from that view.",
+        "P11: `g.order_id ~ '^[0-9]{1,18}$' AND EXISTS(... o.id = g.order_id::bigint)` relies on AND short-circuit order, which Postgres does not guarantee. Rewrite as `CASE WHEN g.order_id ~ '^[0-9]{1,18}$' THEN EXISTS(...) END` so a non-numeric order_id cannot abort the query.",
+        "Add pack queries for the missing signals: otp last_t recency buckets; django_admin_log change_message JSON key names by content_type; FX rate age and spread; currency<>cart_currency share \u00d7 approved; youpay hour-of-week \u00d7 approval (1% sample); webhook ip_address = sender_ip share; commandexecuter distinct operators and date-window length.",
+        "Update the Blocker paragraph figures, or mark them as drifting. The orders-DB pgss set has changed (now 18 statements; the '19 calls / 36,575 rows' statement has been evicted and the current largest per call is 4 calls / 7,700 rows). Note that the statement set turns over, which is more evidence that pgss cannot identify the extractor.",
+        "Consider granting core_remoteurlconfig (server, is_active) plus a URL-host view, and django_admin_log.object_id (not object_repr), to allow joining admin edits to order ids. Both are PII-safe."
+      ],
+      "refuted": 2,
+      "missing": 10
+    }
+  ]
+}

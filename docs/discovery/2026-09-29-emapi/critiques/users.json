@@ -1,0 +1,63 @@
+{
+  "unit": "users",
+  "file": "/private/tmp/claude-501/-Users-ashikbabu-Projects-ygg-atlas/7995f92c-3b55-4867-88cc-df95fa3f0225/scratchpad/emapi/profiles/users.md",
+  "final_score": 8,
+  "verdict": "pass",
+  "unresolved_issues": [],
+  "all_rounds": [
+    {
+      "round": 1,
+      "score": 7,
+      "verdict": "revise",
+      "issues": [
+        "Rewrite Summary, Section 6 and Section 7 so that is_valid is described as 'not superseded by a resend', based on the lead() evidence. Replace the 'validity rate' headline with resend-chain metrics: share of recipients needing 2 or more codes, median resends, and time between resends. Resolve Open Question 1 with this evidence",
+        "Fix Section 10: verification modified_on differs from created_on on every row, but by less than 1 s. Say this precisely",
+        "Redo the id-gap analysis by month and report the May 2025 cutover (gap 40-60% until 2025 Apr, near zero from 2025 Jun). Warn that signup trends before and after May 2025 are not comparable, and that pre-2023 legacy users hold ids 1-190k",
+        "Reframe the Sep 22 event: signups stayed around 1.5k/day through Sep 24, while the resend spike was concentrated on Sep 22-23 in 2fa_account_verification",
+        "Add device-sharing, OS/browser, token-lifetime trend, OTP hour-of-day and country-prefix aggregates as behaviour signals",
+        "Add blacklist-to-registered-user overlap (759 active blacklisted emails belong to live accounts) as a fraud-control gap signal",
+        "Add a demographics block (gender split, birthdate coverage for age bands) with exact counts",
+        "Note the data-quality issues: WhatsApp delivery is not tracked by any delivery flag, and updated_phone_number actor_id is always NULL",
+        "Reconcile internal inconsistencies: the username UUID count (996,197 + 4 = 996,201) does not match 996,189 rows; tokens are given as both 59,828 and 59,835; OTP totals as both 68,407 and 68,415. Take snapshot numbers from a single query or label them as drift",
+        "Append the SQL for the new metrics to the provenance appendix"
+      ],
+      "refuted": 4,
+      "missing": 13
+    },
+    {
+      "round": 2,
+      "score": 7,
+      "verdict": "revise",
+      "issues": [
+        "Rewrite the birthdate findings in Section 6 (Demographics), Section 10 and Open Question 11: the format is '0000/DD/MM' (a birthday with no year). Report birth-month coverage (about 369.5k users) and the month distribution as a birthday-gifting trigger signal. Keep 'no age bands' and drop 'garbage/unusable'. Add the field-distribution SQL to the appendix.",
+        "Relabel users_user.type as 'signup method, populated only in 2023' and remove the '98% conventional / social 1.9%' claim. Add a per-year table of type and of google_id/apple_id/facebook_id non-null counts. State that social login share was about 36% in 2024 and is unrecorded from 2025. Add both to Section 10.",
+        "Add the post-blacklist token evidence (tokens with created_on > blacklist created_on, for users matched on email or mobile) to Sections 6 and 7 and to Open Question 10. Use a UNION of the two joins; a single OR join times out.",
+        "Break the Jun and Aug 2026 blacklist spikes down by source \u00d7 type, and flag them as bulk admin imports (ecom_users user_domain 508 in Jun; ecom_users user_email 1,181 in Aug).",
+        "Split token issuance into new-user logins (joined \u22641 day before the token) and returning logins, and state that token counts are mostly signup-driven (about 67% in Sep 2026).",
+        "Add a residence-vs-login-country mismatch aggregate as a travel/VPN risk signal.",
+        "Add the is_app_user share by signup year, and qualify the '~80% is_app_user' statement in the Summary.",
+        "Reconcile the users_user.id max: Section 2 says 1,411,092 and Section 8 says 1,411,103. Take both from S1 or label the difference as drift.",
+        "Reconcile or explain the producer-log count (14,148) against the blacklist rows (8,759).",
+        "Add a caveat: 726 sign_up and 369 sign_in resend chains contain 2 or more is_valid=true codes, so 'true = final accepted code' holds in most cases but not all."
+      ],
+      "refuted": 2,
+      "missing": 8
+    },
+    {
+      "round": 3,
+      "score": 8,
+      "verdict": "pass",
+      "issues": [
+        "Fix the token start date everywhere: in the Summary, section 2, section 5 and Open Question 8. The table effectively begins 2026-07-30, with a handful of rows from Jul 13-26. Describe it as a logging or app-release go-live, not a purge, and add the daily-count SQL to the appendix. Also caveat that the returning-login volume excludes app users whose 548-day tokens were issued before Jul 30.",
+        "Add the soft-deletion lag distribution (<1 day 58% for joiners from 2025 on) to sections 5 and 7. Reframe 'soft deletions' as mostly same-day cleanup of signups, and warn that is_deleted is not a churn metric. Note that modified_on is only a proxy for the deletion time.",
+        "Add OTP-to-blacklisted-identity counts, via a UNION of the email and mobile joins, to sections 6 and 7 and to Open Question 10. Include the observation that almost no OTPs follow the blacklist date.",
+        "Soften the producer-log reconciliation to component-level figures: adds 6,681 against 6,882 rows, and removals 350 against 164 currently removed.",
+        "Add a breakdown of whitelist rows by type and is_removed, and link sms_country_code whitelist and blacklist to OTP country routing.",
+        "Label new_password_policy and trusted_user as legacy or migration-era flags, with a per-year count.",
+        "Minor: section 6 gives 47,332 app devices while S1 gives 47,328 distinct device signatures. Label this as drift, as is done for the other counts."
+      ],
+      "refuted": 2,
+      "missing": 7
+    }
+  ]
+}

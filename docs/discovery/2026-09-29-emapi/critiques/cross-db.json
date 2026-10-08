@@ -1,0 +1,66 @@
+{
+  "unit": "cross-db",
+  "file": "/private/tmp/claude-501/-Users-ashikbabu-Projects-ygg-atlas/7995f92c-3b55-4867-88cc-df95fa3f0225/scratchpad/emapi/profiles/cross-db.md",
+  "final_score": 6.5,
+  "verdict": "revise",
+  "unresolved_issues": [
+    "Rewrite the \u00a71.3 'Guest identity' paragraph, the \u00a73.2 consumer-log row and \u00a76.9 as two populations. (a) 902 true-guest events with 30-char tokens, is_guest=true, no phone, 2024 to 2025 only. (b) 396 registered-user events with the UUID username in guest_id, is_guest=false, still arriving in 2026, 389 distinct users of which 18 are blacklisted elsewhere. Rename the ops metric to 'unapplied blacklist requests (guest and registered)' and report both counts.",
+    "Add the mark_as_fraud-key-absence finding (0/1,298 in_progress vs 2,895/2,895 completed blacklist events) as the probable root cause, with its SQL in the appendix.",
+    "Fix \u00a71.3b and \u00a76.7. The migration covered 168,691 users, and request_status=true exactly when legacy_auth_code is populated (57,754 vs 0 of 110,937). Define a legacy dimension with states linked (57.7k) / shell-created (110.9k, never logged in, 5,436 deleted) / native. Drop 'probably means downstream call failed [inferred]' and state the measured correlation.",
+    "Correct \u00a74 step 3. last_login is a frozen legacy-platform timestamp (57,377 non-null, 99.95% on or before 2023), not dead. Add it and the pre-migration date_joined (25,121 users) as legacy tenure/recency signals.",
+    "Reclassify the 'ecom_users' blacklist source as manual staff/admin action: 7 distinct staff creators, remarks on 5,116, 1,697 admin-log adds. Contrast it with the single service account per other source, and reinterpret the 2025\u20132026 escalation as fraud-ops workload.",
+    "Reconcile orders users_blacklisteduserdetail (48,646 est, UNIQUE(type,value)) against users core_blacklisteduserdetail (8,759) and add a V-test (hashed value overlap by type).",
+    "Add hashed email matching against orders users_guestuser.email to V8, and limit V8 to the 902 token events.",
+    "Document the producer payload (Python-repr text; regex extraction). Cover the 395 un-blacklist events and 350 legacy-sync removals, and map the fraud_type vocabulary (domain/email_address/phone/ip_address) to the core type vocabulary.",
+    "Add the admin hard-deletes of users (1,459) to the \u00a71.1 population reconciliation and to V9.",
+    "Add users_cognitoissuedtokens.user_platform to the identity graph as the app (emapi) vs web (ecomweb) channel signal, with counts.",
+    "Add time coverage for the refetch log and the identity activity log to \u00a73.3. List ecomweb OTP tables, emailsubscription, testimonialreview and the search-tag tables, and list orders' empty wishlist/review/usersearch/notification tables.",
+    "Fix the \u00a76 numbering (currently 1, 2, 7, 8, 9, 3, 4, 5, 6).",
+    "Update the drifted figures (users_user 996,264; blacklist ecom_users 7,088 / 8,760 total; via_gift 59,593; personalization log 128,996 est) or state the as-of timestamp next to each."
+  ],
+  "all_rounds": [
+    {
+      "round": 1,
+      "score": 6,
+      "verdict": "revise",
+      "issues": [
+        "Rewrite the \u00a71.3 ecom_legacy and guest narrative: the non-matching legacy refs are UUIDs (not namespaced), and is_guest=true coexists with registered-username matches; document is_guest as unreliable and report breakdown by (source, is_guest, type).",
+        "Add ecom_users (dominant, value-keyed) and ecom_legacy_fraud_event (920) rows to the \u00a71.3 producer table, with counts by blacklist type.",
+        "Add users_migratedtransactionlog and legacy_auth_code to the identity graph (\u00a71.1, \u00a71.4 diagram) and to the canonical key recommendation as the legacy-system crosswalk; add a V-test for legacy_auth_code overlap across users/ecomweb/emapi.",
+        "Use the verified `user_reference`=username convention (migratedtransactionlog, tokenrotatedusers) as supporting evidence for V2, and add ecomweb configurations_productfeedbackbox.user_reference to V2.",
+        "Correct reviews_googlereview semantics (PK user_reference, one row per user, review-prompt state) in \u00a74 step 14.",
+        "In \u00a71.3/\u00a76.2 propose users_guestuser.username / session_id as the candidate target for event guest_id and add it to the verification queue.",
+        "Link the 1,298 in_progress consumer events to the guest_id events explicitly (exact: all 1,298 in_progress rows have guest_id).",
+        "Reconcile the kafka_giftcreationlog figure (3.26M vs 3,134,464; 2.64 vs ~2.54 per order) and state the basis.",
+        "Quantify population differences: is_deleted 22,108 and trusted_user counts in users_user; list reconciliation of trusted_user/is_fraud flags across DBs as a V-test.",
+        "Add a 'promotions' note: Oscar voucher tables empty in orders; plusoffer promo-code flags are the only promotion mechanism in scope.",
+        "Minor PII hygiene: the 20 raw internal user ids in V1 are pseudonymous identifiers; consider referencing the X2b query (repeatable seed 7) instead of printing them.",
+        "Note that atlasq redaction mangles date outputs (min/max created_on rendered as '<phone>'); use to_char() for time-coverage figures and add time coverage (first/last event per cross-service log) which the profile currently lacks for most logs."
+      ],
+      "refuted": 4,
+      "missing": 11
+    },
+    {
+      "round": 2,
+      "score": 6.5,
+      "verdict": "revise",
+      "issues": [
+        "Rewrite the \u00a71.3 'Guest identity' paragraph, the \u00a73.2 consumer-log row and \u00a76.9 as two populations. (a) 902 true-guest events with 30-char tokens, is_guest=true, no phone, 2024 to 2025 only. (b) 396 registered-user events with the UUID username in guest_id, is_guest=false, still arriving in 2026, 389 distinct users of which 18 are blacklisted elsewhere. Rename the ops metric to 'unapplied blacklist requests (guest and registered)' and report both counts.",
+        "Add the mark_as_fraud-key-absence finding (0/1,298 in_progress vs 2,895/2,895 completed blacklist events) as the probable root cause, with its SQL in the appendix.",
+        "Fix \u00a71.3b and \u00a76.7. The migration covered 168,691 users, and request_status=true exactly when legacy_auth_code is populated (57,754 vs 0 of 110,937). Define a legacy dimension with states linked (57.7k) / shell-created (110.9k, never logged in, 5,436 deleted) / native. Drop 'probably means downstream call failed [inferred]' and state the measured correlation.",
+        "Correct \u00a74 step 3. last_login is a frozen legacy-platform timestamp (57,377 non-null, 99.95% on or before 2023), not dead. Add it and the pre-migration date_joined (25,121 users) as legacy tenure/recency signals.",
+        "Reclassify the 'ecom_users' blacklist source as manual staff/admin action: 7 distinct staff creators, remarks on 5,116, 1,697 admin-log adds. Contrast it with the single service account per other source, and reinterpret the 2025\u20132026 escalation as fraud-ops workload.",
+        "Reconcile orders users_blacklisteduserdetail (48,646 est, UNIQUE(type,value)) against users core_blacklisteduserdetail (8,759) and add a V-test (hashed value overlap by type).",
+        "Add hashed email matching against orders users_guestuser.email to V8, and limit V8 to the 902 token events.",
+        "Document the producer payload (Python-repr text; regex extraction). Cover the 395 un-blacklist events and 350 legacy-sync removals, and map the fraud_type vocabulary (domain/email_address/phone/ip_address) to the core type vocabulary.",
+        "Add the admin hard-deletes of users (1,459) to the \u00a71.1 population reconciliation and to V9.",
+        "Add users_cognitoissuedtokens.user_platform to the identity graph as the app (emapi) vs web (ecomweb) channel signal, with counts.",
+        "Add time coverage for the refetch log and the identity activity log to \u00a73.3. List ecomweb OTP tables, emailsubscription, testimonialreview and the search-tag tables, and list orders' empty wishlist/review/usersearch/notification tables.",
+        "Fix the \u00a76 numbering (currently 1, 2, 7, 8, 9, 3, 4, 5, 6).",
+        "Update the drifted figures (users_user 996,264; blacklist ecom_users 7,088 / 8,760 total; via_gift 59,593; personalization log 128,996 est) or state the as-of timestamp next to each."
+      ],
+      "refuted": 4,
+      "missing": 11
+    }
+  ]
+}

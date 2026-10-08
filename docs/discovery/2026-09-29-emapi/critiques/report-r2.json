@@ -1,0 +1,46 @@
+{
+  "verdict": "revise",
+  "score": 7.5,
+  "refuted_claims": [
+    {
+      "claim": "H03: 'about 275 Arabic chains a month x up to 28 pp, about 75 more claims a month' (REPORT.md line 471)",
+      "evidence": "themes/user-lifecycle.md H2 and I12: the base is about 987 Arabic 2fa chains per 31 days (454 of 987 accepted = 46.0%). Moving them to 73.8% gives about 274 EXTRA accepted chains, about 220 of them gift claims. The report used 275 as the base and applied 28 pp to it again, which understates this P1 hypothesis by about 3x."
+    },
+    {
+      "claim": "H01: 'about 2,700 multi-code signups a month'",
+      "evidence": "T18 (campaigns-triggers): 2,712 is the number of multi-code RECIPIENTS per 31 days, and only 1,540 of them registered. 'Signups needing 2+ codes' is about 1.5k, not 2.7k."
+    },
+    {
+      "claim": "Exec summary item 5: 'two payment records per order, one of them with no uniqueness guarantee'",
+      "evidence": "orders-funnel Q20: youpay is 1,238,225 rows (100.3% of orders) and paymentdetail is 769,659 rows (62% of orders, 0..1 per order). These are two payment TABLES; they do not give two records per order. B6 in the same report states it correctly."
+    },
+    {
+      "claim": "Roadmap 'Tier 3\u20134 lands' ships brand performance (AF-53)",
+      "evidence": "The feature catalog row AF-53 and the section 8 tier table both place AF-53 in tier 1: catalogue_product ships with the tier 1 \u00a74.3 companions (GRANTS.md \u00a74.3 justification says 'brand performance (AF-53, via catalogue_product.upc)'). The roadmap contradicts its own tier map."
+    },
+    {
+      "claim": "E5 evidence label 'Catalog check, STRUCTURAL'",
+      "evidence": "Data landscape line 198 labels the same finding 'VALIDATED grant state', and the access check itself was a has_table_privilege query. One finding carries two different labels; pick one and use it in both places."
+    }
+  ],
+  "missing": [
+    "The highest-value theme hypothesis is missing. errors-system-behavior H2 proposes switching the signup OTP default from email to WhatsApp/SMS, with email as fallback: 1-h registration goes from about 73% (email) to 90%+ (phone 94.3%, N11/N12). It is VALIDATED, ready-now and applies to all email-first signups, which is roughly 10x the reach of H02, a post-resend variant only. Add it as its own P1 hypothesis, or explicitly merge it into H02 and state the full-population upside.",
+    "purchase-friction H12 is missing: brands with require_mobile_verification and no allow_any_country_mobile_verification convert worse. It is the only brand-level checkout-friction hypothesis, and B4 cites the mechanism without a test.",
+    "catalog H11 (re-rank occasion tags 3 weeks before Ramadan/December) is missing. AF-96 exists as a feature, but it has no testable hypothesis or holdout.",
+    "catalog H12 is missing: non-GCC diaspora buyers (11.3k live signups a year, VALIDATED) show a different AOV and brand mix. It has no trace in the report.",
+    "Also missing with no stated reason: catalog H8 (generic-card breadth vs sales) and H9 (purchase_origin surface vs line value); gifting H7 (burst-day onboarding), H9 (occasion_code virality) and H10 (merged guest senders as seed); purchase H7 (scheduled-gift lead time), H10 (merged guests repeat 2x) and H11 (cross-currency conversion); risk H7 (delete-then-recreate), H11 (stale whitelist overrides) and H13 (marketing waste on risky accounts); errors H12 (whitelist/blacklist OTP inconsistency). Add a short 'merged into / dropped because' list so a product owner can see nothing was lost silently.",
+    "The feature catalog does not carry gifting F17 (alt-email cap friction); only hypothesis H56 does."
+  ],
+  "issues": [
+    "GRANTS.md PII inconsistency: order_order.guest_id and basket_basket.guest_id are granted as raw columns (\u00a74.1, \u00a74.2). The report itself says orders writes registered usernames (UUIDs) into guest_id, and GRANTS hashes username everywhere else (app_user, web_user, recent_view, guest_keys). A raw guest_id also exposes the guest username value that guest_keys deliberately hides. Replace it with HK(lower(btrim(guest_id))) in a view, or with a has_guest_id flag plus guest_key.",
+    "Hypothesis 'Data needed' cells for H01, H08 and H29 name raw `users_userprofile(user_id, cognito_id)`, but GRANTS only ever exposes HK(cognito_id) as user_key. Reword them to atlas_ro.user_profile.user_key so nobody asks the DBA for raw cognito_id.",
+    "Priority rule violation: P1 is defined as 'ready-now or tier 1 only, or tied to a live incident', but H49 (k-factor) is P1 and needs tiers 1+2. Either demote it to P2 or amend the rule.",
+    "The dependency tie-break is undercut by scoring. AF-88 (the domain classifier) is a prerequisite for top-10 items AF-08 and AF-09 and for AF-89, AF-90 and H50, yet it scores Imp 3 / 3.00 and ranks 17th. A product owner reading the ranked table will schedule AF-08 before its prerequisite. Give prerequisites the dependents' impact, or add a 'blocked by' column.",
+    "'About 26.8k active-user birthdays a month' (AF-04, top 10): the base is live non-shell users, not active users. Only 47% of recent token holders have a birthday. Say 'live non-shell' to avoid an inflated reach reading.",
+    "D1 lists 'Gift recipients: 26,737' as a trigger audience computable today, next to 30-day and 31-day counts. 26,737 is cumulative since 2024-08-05. State a per-month trigger volume, which is about 1\u20132k a month per H09.",
+    "The roadmap line 'Test H01, H08, H29, H30, H49 and H59 first (P1 and P2 on tier 1\u20132)' singles out H59 among about 15 P2 tier 1\u20132 hypotheses without saying why.",
+    "GRANTS.md grants the ecomweb configurations_testimonial, testimonialvideo, testimonialapps and testimonialorder tables at table level. cross-db.md notes that the testimonial block carries a curated customer_name. Confirm the columns, or grant them by column as was done for testimonialreview.",
+    "The GRANTS atlas_ro.gift_claim view hashes comment with the email normalisation for all four activity types. phone_updated rows would get an email-normalised hash that never matches phone_key. Filter to the email activity types, or branch the normalisation.",
+    "AF-03 value '26% of recipients stuck' vs user-lifecycle U14a '857 of 3,182 (27%) never became an identity': align to one source figure."
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "unit": "orders-customer-catalog",
+  "file": "/private/tmp/claude-501/-Users-ashikbabu-Projects-ygg-atlas/7995f92c-3b55-4867-88cc-df95fa3f0225/scratchpad/emapi/profiles/orders-customer-catalog.md",
+  "final_score": 7,
+  "verdict": "revise",
+  "unresolved_issues": [
+    "Rewrite the inbound-FK table in Relations from a fresh Q18. Add order_orderlinequantitydetail, basket_basketquantitydetail, payment_paymentdetail, payment_paymenttransactionpayload, the two personalisedetail tables and order_order.created_by_id/modified_by_id, each with its row estimate. Drop the word 'only', or list the small config referrers separately.",
+    "Refresh the personalization_update_kafka_data_log numbers (reltuples 128,996, PK index 140,520, 29,002/29,005 all-visible). Restate the msgs/personalization ratio as a range (about 1.37 to 1.49). Remove the 'rows updated in place' reading, or mark it as refuted by the new vacuum snapshot.",
+    "Add an explicit caveat to the visibility-map section: relallvisible depends on when the last vacuum ran. Readings like 'googlereview rows updated in place, so it is a prompt table' or 'cognito log retried' are weak evidence and must not drive semantics until the first queries run. Give the example of the kafka log flipping from 62.6% to 99.99% within the profiling window.",
+    "Add the 36-seq-scan cadence finding to Replica read-traffic and to Freshness. Name the five tables. Add an Open Question: which role or job runs a daily full extract of users_customuser/userprofile/order_line/paymentdetail on the replica? It may be an existing governed feed the atlas could reuse instead of new grants. Correct the 'replica serves only brand listings...' sentence.",
+    "Add an index-size cardinality subsection with page counts versus the packed-minimum for created_by_id on users_userprofile (1,790 vs about 2,665), personalization_detail (136 vs about 257) and users_blacklisteduserdetail (1,569, about the same as the pkey). Update the users_userprofile.created_by_id note ('the catalog shows it is heavily duplicated, so it is not the self user for a large share'). Update the blacklist actor classification to 'unverified, index suggests near-unique actors'.",
+    "Add the kafka_plusofferkafkadatalog TOAST size (1.53 GB, about 7.6 KB/msg) as supporting evidence under the offer_plusoffer churn explanation and as a cost/retention note.",
+    "Add payment_paymentdetail.is_fraud/is_flagged and youpayclient is_fraud/is_flagged to Friction & Errors and Cross-DB Keys as the fraud-outcome counterpart to the blacklist. Add their non-PII columns to the grant list.",
+    "Add a conformed platform dimension note (basket_basket, order_order, guestuser, tip, googlereview) to Behavior Signals. Add first queries once granted: platform distribution on guestuser, and a basket/order platform sample via TABLESAMPLE.",
+    "Add catalogue_product.is_discountable and rating to the catalogue inventory. Note is_discountable as the offer-eligibility gate for redemption analysis."
+  ],
+  "all_rounds": [
+    {
+      "round": 1,
+      "score": 6.5,
+      "verdict": "revise",
+      "issues": [
+        "Remove or correct the 2FA 'customer trust' signal. otp_totp_totpdevice (28) and otp_static_staticdevice (1) are staff admin 2FA, and two_factor_phonedevice is empty.",
+        "Annotate the inbound-FK 'join points' list with row counts and drop the empty ones (address_useraddress, payment_bankcard, voucher_voucherapplication, order_ordernote, two_factor_phonedevice, jet_*). State explicitly that voucher_* is empty, so offer/promo redemption must be sought in order_order/order_line/basket columns (discount or offer fields) or elsewhere.",
+        "Reclassify created_by_id on personalization_detail, users_userprofile and user_tip_tip as the acting-user link (NOT NULL FK to users_customuser). This gives a per-user personalization rate without the varchar cart/order join.",
+        "Downgrade confidence on the blacklist (48.6k) and cognito sync log (93.9k) volumes. Add the PK-index page evidence (1,560 and 1,231 pages vs about 135 and 256 expected) and say reltuples is likely stale; do not attribute the size only to bloat.",
+        "Add the index-reltuples cross-check table (table est vs PK index est) as a freshness/growth proxy, including users_guestuser 82,502 -> 88,689.",
+        "Add the kafka_blacklist*/kafka_legacyfraudsynclog and django_session tables as related out-of-scope sources in Friction & Errors and Cross-DB Keys.",
+        "Complete the offer_plusoffer column inventory: is_budget_available, promo_code_end_date, featured_order and tile/order numbers. Add its per-row size anomaly as a signal.",
+        "Report the zero replica idx_scan on checkout-path tables (denomination, handling fee, promo code, blacklist, guest, personalization). It tells the atlas that the replica does not see transactional lookups, and it is a freshness caveat for replica-based metrics.",
+        "Note the users_mergeduser cardinality risk (no unique constraints, nullable FKs) in Data Quality.",
+        "Fix the catalogue dead-table sub-count (10, not 9).",
+        "Keep the blocker section, but add a concrete minimal grant list per table (non-PII columns) and the exact first queries to run once granted, so the next round can close sections 3-6 quickly."
+      ],
+      "refuted": 5,
+      "missing": 9
+    },
+    {
+      "round": 2,
+      "score": 7,
+      "verdict": "revise",
+      "issues": [
+        "Correct the Relations claim that every table carries created_by_id. List the 16 non-empty in-scope tables without it, and note that guest identity, reviews and the cognito log have no actor link.",
+        "Fix the catalogue_product scan attribution: upc_like 13.45M (46%) > pkey 10.52M > retailer_id 3.53M > store_id 1.56M. Re-run Q10 without the `_like$` exclusion and say that UPC is the dominant operational brand key. Promote upc in Cross-DB Keys accordingly.",
+        "Add modified_on to users_cognitouserdatasynclog in the inventory and the grant list. Add a first query: status by (modified_on > created_on) as the retry rate.",
+        "Add basket_mergedbasket to the guest-conversion funnel (Behavior Signals and Data Quality) and to the grant list (id, guest_basket_id, user_basket_id, created_on). Add a first query: count(*), count(DISTINCT guest_basket_id).",
+        "Add send_tip_gift_event_triggered to the Send-a-tip inventory, Behavior Signals (trigger) and the user_tip_tip grant.",
+        "Add a visibility-map table (relallvisible / relpages) to the freshness section with a write-once vs mutable reading for guestuser (100%), personalization_detail (99.5%), reviews_googlereview (30%), denominationrange (17%), promocode (0%) and customuser (0.4%). Caveat the guest last_accessed metric accordingly.",
+        "Re-rank the offer_plusoffer churn explanation. Cite kafka_plusofferkafkadatalog at about 534 msgs/offer as the primary evidence of config-sync rewrites, and mark per-redemption budget updates as a hypothesis (the replica has n_tup_upd = 0, so this cannot be distinguished yet).",
+        "Add the ratios personalization kafka log/detail (about 1.47) and personalization_detail vs order_orderlinepersonalisedetail coverage (about 19%) as signals and caveats on the personalization-rate definition.",
+        "Replace 'no referral table in this unit' with the DB-wide finding: no referr/invite/utm/affiliate column exists anywhere in ygag_ecom_orders_db. Point to the loyalty point-program columns in payment_* and youpayclient_* as the nearest incentive signal for cross-unit coverage.",
+        "Grant list consistency: add created_on to reviews_googlereview. Decide whether user_reference (a pseudonymous uuid PK) can be granted, or else provide a hashed view for dedupe. Resolve the inconsistency that last_login is listed under PII but granted.",
+        "Note the users_userprofile.created_by_id semantics as unverified: profiles are likely created by the Cognito sync or a system user. Add a first query: share of rows where created_by_id = user_id.",
+        "Minor: analytics_recommendedbrand reltuples is now 85 (profile says 86). Blacklist max-width bound: varchar typmod is in characters, not bytes, so 498 B is a lower bound for non-ASCII values. Say so."
+      ],
+      "refuted": 3,
+      "missing": 9
+    },
+    {
+      "round": 3,
+      "score": 7,
+      "verdict": "revise",
+      "issues": [
+        "Rewrite the inbound-FK table in Relations from a fresh Q18. Add order_orderlinequantitydetail, basket_basketquantitydetail, payment_paymentdetail, payment_paymenttransactionpayload, the two personalisedetail tables and order_order.created_by_id/modified_by_id, each with its row estimate. Drop the word 'only', or list the small config referrers separately.",
+        "Refresh the personalization_update_kafka_data_log numbers (reltuples 128,996, PK index 140,520, 29,002/29,005 all-visible). Restate the msgs/personalization ratio as a range (about 1.37 to 1.49). Remove the 'rows updated in place' reading, or mark it as refuted by the new vacuum snapshot.",
+        "Add an explicit caveat to the visibility-map section: relallvisible depends on when the last vacuum ran. Readings like 'googlereview rows updated in place, so it is a prompt table' or 'cognito log retried' are weak evidence and must not drive semantics until the first queries run. Give the example of the kafka log flipping from 62.6% to 99.99% within the profiling window.",
+        "Add the 36-seq-scan cadence finding to Replica read-traffic and to Freshness. Name the five tables. Add an Open Question: which role or job runs a daily full extract of users_customuser/userprofile/order_line/paymentdetail on the replica? It may be an existing governed feed the atlas could reuse instead of new grants. Correct the 'replica serves only brand listings...' sentence.",
+        "Add an index-size cardinality subsection with page counts versus the packed-minimum for created_by_id on users_userprofile (1,790 vs about 2,665), personalization_detail (136 vs about 257) and users_blacklisteduserdetail (1,569, about the same as the pkey). Update the users_userprofile.created_by_id note ('the catalog shows it is heavily duplicated, so it is not the self user for a large share'). Update the blacklist actor classification to 'unverified, index suggests near-unique actors'.",
+        "Add the kafka_plusofferkafkadatalog TOAST size (1.53 GB, about 7.6 KB/msg) as supporting evidence under the offer_plusoffer churn explanation and as a cost/retention note.",
+        "Add payment_paymentdetail.is_fraud/is_flagged and youpayclient is_fraud/is_flagged to Friction & Errors and Cross-DB Keys as the fraud-outcome counterpart to the blacklist. Add their non-PII columns to the grant list.",
+        "Add a conformed platform dimension note (basket_basket, order_order, guestuser, tip, googlereview) to Behavior Signals. Add first queries once granted: platform distribution on guestuser, and a basket/order platform sample via TABLESAMPLE.",
+        "Add catalogue_product.is_discountable and rating to the catalogue inventory. Note is_discountable as the offer-eligibility gate for redemption analysis."
+      ],
+      "refuted": 3,
+      "missing": 7
+    }
+  ]
+}
