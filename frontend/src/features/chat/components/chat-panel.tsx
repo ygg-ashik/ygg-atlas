@@ -9,7 +9,10 @@ import {
   type LastTurn,
   type TurnNotice,
 } from '../hooks/use-chat-turn';
+import { useOpenArtifact } from '../hooks/use-open-artifact';
 import { useStickToBottom } from '../hooks/use-stick-to-bottom';
+import type { BlockActions } from './answer-blocks';
+import { ArtifactSidePanel } from './artifact-side-panel';
 import { Composer } from './composer';
 import { DraftView } from './draft-view';
 import { EmptyState } from './empty-state';
@@ -34,19 +37,27 @@ function historyShowsQuestion(messages: ChatMessage[], draft: DraftTurn): boolea
   return messages.slice(-2).some((m) => m.role === 'user' && m.content === draft.userText);
 }
 
+/** Clarify pills stay live only on the latest answer, and only once the turn settled. */
+function activeAnswerId(messages: ChatMessage[], draft: DraftTurn | null, isStreaming: boolean) {
+  if (isStreaming || (draft && !draftAlreadyPersisted(messages, draft))) return null;
+  return [...messages].reverse().find((m) => m.role === 'assistant')?.id ?? null;
+}
+
 interface ConversationProps {
   messages: ChatMessage[];
   draft: DraftTurn | null;
   notice: TurnNotice | null;
   lastTurn: LastTurn | null;
   onRetry: (text: string) => void;
+  blockActions: BlockActions;
 }
 
-function Conversation({ messages, draft, notice, lastTurn, onRetry }: ConversationProps) {
+function Conversation(props: ConversationProps) {
+  const { messages, draft, notice, lastTurn, onRetry, blockActions } = props;
   return (
     <div className="mx-auto max-w-[740px] px-6 pb-[190px] pt-[84px]">
       {messages.map((m) => (
-        <StoredMessage key={m.id} message={m} lastTurn={lastTurn} />
+        <StoredMessage key={m.id} message={m} lastTurn={lastTurn} blockActions={blockActions} />
       ))}
       {draft && !draftAlreadyPersisted(messages, draft) && (
         <DraftView draft={draft} showUser={!historyShowsQuestion(messages, draft)} />
@@ -71,6 +82,7 @@ export function ChatPanel({ sessionId, ensureSession, initialQuestion }: ChatPan
     ensureSession,
   );
   const [input, setInput] = useState('');
+  const artifactPanel = useOpenArtifact(sessionId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
 
@@ -94,6 +106,11 @@ export function ChatPanel({ sessionId, ensureSession, initialQuestion }: ChatPan
     void send(trimmed);
   };
   const isEmpty = messages.length === 0 && !draft && !notice;
+  const blockActions: BlockActions = {
+    activeMessageId: activeAnswerId(messages, draft, isStreaming),
+    onChoose: sendText,
+    onOpenArtifact: artifactPanel.open,
+  };
 
   const composer = (
     <motion.div
@@ -114,29 +131,33 @@ export function ChatPanel({ sessionId, ensureSession, initialQuestion }: ChatPan
   );
 
   return (
-    <div className="absolute inset-0">
-      <div ref={scrollRef} className="absolute inset-0 overflow-y-auto">
-        {isEmpty ? (
-          <EmptyState composer={composer} onPick={sendText} />
-        ) : (
-          <Conversation
-            messages={messages}
-            draft={draft}
-            notice={notice}
-            lastTurn={lastTurn}
-            onRetry={sendText}
-          />
+    <div className="absolute inset-0 flex">
+      <div className="relative min-w-0 flex-1">
+        <div ref={scrollRef} className="absolute inset-0 overflow-y-auto">
+          {isEmpty ? (
+            <EmptyState composer={composer} onPick={sendText} />
+          ) : (
+            <Conversation
+              messages={messages}
+              draft={draft}
+              notice={notice}
+              lastTurn={lastTurn}
+              onRetry={sendText}
+              blockActions={blockActions}
+            />
+          )}
+        </div>
+        {!isEmpty && (
+          <>
+            <div
+              aria-hidden
+              className="scroll-edge-bottom pointer-events-none absolute inset-x-0 bottom-0 z-[5] h-[130px]"
+            />
+            <div className="absolute inset-x-0 bottom-4 z-10 px-6">{composer}</div>
+          </>
         )}
       </div>
-      {!isEmpty && (
-        <>
-          <div
-            aria-hidden
-            className="scroll-edge-bottom pointer-events-none absolute inset-x-0 bottom-0 z-[5] h-[130px]"
-          />
-          <div className="absolute inset-x-0 bottom-4 z-10 px-6">{composer}</div>
-        </>
-      )}
+      <ArtifactSidePanel artifact={artifactPanel.artifact} onClose={artifactPanel.close} />
     </div>
   );
 }
