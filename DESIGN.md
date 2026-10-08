@@ -413,7 +413,7 @@ Bigger surfaces get bigger radii. Corners nest concentrically: inner radius = ou
 - **Answer prose**: `{typography.title}` heading, then `{typography.answer}` paragraphs streamed (see *Motion*). Bold marks the key figures.
 - **`metric-card`**: the headline number of an answer. `{typography.metric-xl}`, a delta badge, and a digit roll on appear.
 - **`provenance-chip`** (Atlas, **mandatory**): metric id, source (read-only), and a freshness dot (green, or amber when stale). It appears under every answer and on every KPI. Hovering it opens a glass popover with the vetted definition. Hovering a number in prose highlights its chip.
-- **`artifact-card`**: an inline card linking to a chart or table. Click it and the **`artifact-panel`** slides in from the right and leaves the same way. It offers Export and Save to dashboard.
+- **`artifact-card`**: an inline card linking to a chart or table. Click it and the **`artifact-panel`** slides in from the right and leaves the same way (docked at ≥1200px, an overlay sheet with scrim below). It offers Export CSV. "Save to dashboard" arrives with saved dashboards (Known Gaps).
 - **`review-card`**: Codex review-before-apply. Header "Proposed change · needs your approval", a **`diff-block`** (mono, `+` positive, `−` negative and struck through), then Approve / Edit / Dismiss. **Every agent action that writes, schedules or sends goes through this card.** Approve morphs to "✓ Approved", and the toast confirms.
 - **Clarify** (Atlas, guardrail #1): when no governed metric matches, the assistant explains why it won't guess and offers **choice pills** for the metric and the period. It never invents a number.
 - **`notice-denied`** (Atlas, guardrail #4): lock icon, "X isn't available to your role", why ("access comes from your sign-in"), which scope to request (mono), a provenance chip "scope · from your Google sign-in", and in-scope alternatives as pills.
@@ -519,6 +519,8 @@ Library: **`motion`** (springs, layout/shared-element, `AnimatePresence`). Numbe
 6. Lint after editing: `npx @google/design.md lint DESIGN.md`.
 
 ## Known Gaps
+
+- "Save to dashboard" on the artifact panel needs saved-dashboard persistence, which doesn't exist yet.
 
 - The categorical chart palette for more than four series is undefined. Use accent opacity steps until one is designed.
 - Mobile bottom sheets (`vaul`) and the gesture rules (velocity handoff, rubber-banding) are deferred until there's a mobile surface.
