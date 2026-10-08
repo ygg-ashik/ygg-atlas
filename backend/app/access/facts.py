@@ -5,7 +5,7 @@ No database, HTTP or clock here: the repository builds these, the evaluator read
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Final
 from uuid import UUID
 
@@ -56,3 +56,16 @@ class PolicyInputs:
     memberships: Mapping[UUID, str]  # group id -> standing, for this user
     grants: Sequence[GrantFacts]  # grants on this user and on the tenant's groups
     policy_version: int
+
+
+def as_utc(moment: datetime | None) -> datetime | None:
+    """Normalize a stored timestamp to UTC-aware.
+
+    SQLite returns naive datetimes even for columns declared
+    `TIMESTAMP(timezone=True)`; every stored timestamp is UTC end-to-end
+    (CLAUDE.md), so a naive value is always UTC. A `None` or already-aware
+    value is returned unchanged.
+    """
+    if moment is None or moment.tzinfo is not None:
+        return moment
+    return moment.replace(tzinfo=UTC)

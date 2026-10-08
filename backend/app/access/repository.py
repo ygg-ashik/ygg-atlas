@@ -22,16 +22,10 @@ from app.access.facts import (
     GrantFacts,
     GroupFacts,
     UserFacts,
+    as_utc,
 )
 from app.access.models import Capability, Grant, Group, GroupMember, PolicyState
 from app.identity import User
-
-
-def _aware(moment: datetime | None) -> datetime | None:
-    """SQLite returns naive datetimes; every stored timestamp is UTC (CLAUDE.md)."""
-    if moment is None or moment.tzinfo is not None:
-        return moment
-    return moment.replace(tzinfo=UTC)
 
 
 class AccessRepository:
@@ -122,7 +116,7 @@ class AccessRepository:
                 g.effect,
                 g.target_kind,
                 g.target,
-                _aware(g.expires_at),
+                as_utc(g.expires_at),
             )
             for g in rows
         ]

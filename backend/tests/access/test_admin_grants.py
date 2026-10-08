@@ -208,6 +208,41 @@ async def test_an_actor_with_only_admin_users_cannot_make_a_group_grant(db) -> N
         await admin_for(db).create_grant(actor, group_grant(group.id))
 
 
+async def test_a_grant_for_a_group_in_another_tenant_is_not_found(db) -> None:
+    actor = await actor_with(db)
+    other = Group(name="eu-team", tenant="acme")
+    db.add(other)
+    await db.commit()
+
+    with pytest.raises(NotFoundError):
+        await admin_for(db).create_grant(actor, group_grant(other.id))
+
+
+# ---- D10 also covers revoking a deny, which widens access -------------------
+
+
+async def test_lifting_a_deny_on_yourself_is_denied(db) -> None:
+    actor = await actor_with(db)
+    assert actor.user_id is not None
+    user = await AccessRepository(db).user(actor.user_id)
+    assert user is not None
+    grant = await add_grant(db, user, "demo/*", effect="deny")
+    grant_id = grant.id
+
+    with pytest.raises(AccessDeniedError, match="yourself"):
+        await admin_for(db).revoke_grant(actor, grant_id)
+
+
+async def test_lifting_a_capability_deny_needs_that_capability(db) -> None:
+    sara = await make_user(db, "sara@yougotagift.com")
+    grant = await add_grant(db, sara, "admin:audit", effect="deny", kind="capability")
+    grant_id = grant.id
+    actor = await _actor_with_capabilities(db, "admin:users")
+
+    with pytest.raises(AccessDeniedError):
+        await admin_for(db).revoke_grant(actor, grant_id)
+
+
 # ---- fix: an expired duplicate is a distinct, more useful conflict ----------
 
 

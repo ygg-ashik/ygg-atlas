@@ -30,12 +30,14 @@ from app.access.errors import (
 )
 from app.access.facts import (
     DEFAULT_TENANT,
+    EFFECT_DENY,
     KIND_CAPABILITY,
     KIND_CLEARANCE,
     STANDING_MANAGER,
     STANDING_MEMBER,
     SUBJECT_GROUP,
     SUBJECT_USER,
+    as_utc,
 )
 from app.access.models import Grant, Group, GroupMember, RbacChange
 from app.access.patterns import InvalidPatternError, validate_pattern
@@ -118,13 +120,6 @@ def _member_out(member: GroupMember, user: User) -> MemberOut:
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
-
-
-def _aware(moment: datetime | None) -> datetime | None:
-    """SQLite returns naive datetimes; every stored timestamp is UTC (CLAUDE.md)."""
-    if moment is None or moment.tzinfo is not None:
-        return moment
-    return moment.replace(tzinfo=UTC)
 
 
 def _grant_capability(subject_type: str) -> str:
@@ -334,7 +329,7 @@ class AccessAdmin:
                 subject, payload.effect, payload.target_kind, target
             )
             if existing is not None:
-                expiry = _aware(existing.expires_at)
+                expiry = as_utc(existing.expires_at)
                 if expiry is not None and expiry <= now:
                     msg = (
                         f"An expired grant {existing.id} for that target exists; "
@@ -369,6 +364,17 @@ class AccessAdmin:
             if grant is None:
                 msg = "No such grant."
                 raise NotFoundError(msg)
+            if (
+                grant.effect == EFFECT_DENY
+                and grant.subject_type == SUBJECT_USER
+                and grant.subject_id == actor.user_id
+            ):
+                # D10: revoking a deny widens access, same as a self-grant.
+                msg = "You can't lift a restriction on yourself. Ask another admin."
+                raise AccessDeniedError(msg)
+            if grant.effect == EFFECT_DENY and grant.target_kind == KIND_CAPABILITY:
+                # D10: revoking a deny widens access; only lift one you hold.
+                actor.require(grant.target)
             try:
                 await self._subject(actor, grant.subject_type, grant.subject_id)
             except NotFoundError:
