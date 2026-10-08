@@ -156,6 +156,30 @@ class AccessRepository:
     async def commit(self) -> None:
         await self._db.commit()
 
+    async def rollback(self) -> None:
+        await self._db.rollback()
+
+    async def lock_for_write(self) -> None:
+        """Serialize admin writes: take a row lock on policy_state (spec §9).
+
+        On Postgres, `FOR UPDATE` blocks a concurrent writer until this
+        transaction commits or rolls back, so two admin writes never race
+        past each other's application-level checks (duplicate names,
+        parent cycles, in-use deletes). SQLite's dialect silently drops
+        `FOR UPDATE` at compile time, but aiosqlite serializes writers to
+        one connection anyway, so the same call is a safe no-op there.
+        """
+        version = (
+            await self._db.execute(
+                select(col(PolicyState.policy_version))
+                .where(col(PolicyState.id) == 1)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if version is None:
+            msg = "policy_state has no row"
+            raise PolicyUnavailableError(msg)
+
     async def ensure_policy_state(self) -> None:
         if await self._db.get(PolicyState, 1, populate_existing=True) is None:
             self._db.add(PolicyState(id=1, policy_version=1))
