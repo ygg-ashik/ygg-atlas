@@ -5,33 +5,39 @@ import json
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
+import app.api.chat as chat_module
+from app.main import app as asgi_app
+from app.models.chat import ChatSession
+
 
 @pytest_asyncio.fixture
 async def api(db, monkeypatch):
-    async def fake_run_chat_turn(user_uid, session_id, content, history, db, client=None):
+    async def fake_run_chat_turn(
+        user_uid, session_id, content, history, db, client=None
+    ):
         yield {"type": "token", "content": "42 "}
         yield {"type": "token", "content": "AED"}
         yield {
             "type": "done",
             "content": "42 AED",
-            "provenance": [{"tool": "query_metric", "source": "demo", "metric_id": "revenue"}],
+            "provenance": [
+                {"tool": "query_metric", "source": "demo", "metric_id": "revenue"}
+            ],
             "model": "test-model",
             "token_usage": {"input_tokens": 1, "output_tokens": 2},
         }
 
-    import app.api.chat as chat_module
-
     monkeypatch.setattr(chat_module, "run_chat_turn", fake_run_chat_turn)
 
-    from app.main import app
-
-    transport = ASGITransport(app=app)
+    transport = ASGITransport(app=asgi_app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
 
 
 async def test_session_crud(api):
-    created = (await api.post("/api/v1/chat/sessions", json={"title": "Weekly numbers"})).json()
+    created = (
+        await api.post("/api/v1/chat/sessions", json={"title": "Weekly numbers"})
+    ).json()
     assert created["title"] == "Weekly numbers"
     assert created["user_uid"] == "dev-user"
 
@@ -78,7 +84,9 @@ async def test_send_message_streams_sse_and_persists(api):
 
 async def test_feedback(api):
     session = (await api.post("/api/v1/chat/sessions", json={})).json()
-    await api.post(f"/api/v1/chat/sessions/{session['id']}/messages", json={"content": "q"})
+    await api.post(
+        f"/api/v1/chat/sessions/{session['id']}/messages", json={"content": "q"}
+    )
     messages = (await api.get(f"/api/v1/chat/sessions/{session['id']}/messages")).json()
     assistant_id = messages[1]["id"]
 
@@ -96,8 +104,6 @@ async def test_feedback(api):
 
 
 async def test_session_isolation_404_for_foreign_session(api, db):
-    from app.models.chat import ChatSession
-
     foreign = ChatSession(user_uid="someone-else", user_email="x@yougotagift.com")
     db.add(foreign)
     await db.commit()

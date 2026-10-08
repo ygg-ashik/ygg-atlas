@@ -6,21 +6,23 @@ platform runs with whatever sources are configured.
 
 import importlib
 import pkgutil
+from functools import cache
 
 import structlog
 
-from app.sources.base import Connector, ConnectorError, ConnectorNotConfigured, SourcePlugin
+from app.sources.base import (
+    Connector,
+    ConnectorError,
+    ConnectorNotConfiguredError,
+    SourcePlugin,
+)
 
 logger = structlog.get_logger()
 
-_plugins: dict[str, SourcePlugin] | None = None
-
 
 def _discover() -> dict[str, SourcePlugin]:
-    import app.sources as pkg
-
     plugins: dict[str, SourcePlugin] = {}
-    for module_info in pkgutil.iter_modules(pkg.__path__):
+    for module_info in pkgutil.iter_modules(__path__):
         if not module_info.ispkg:
             continue
         module = importlib.import_module(f"app.sources.{module_info.name}.manifest")
@@ -39,17 +41,15 @@ def _discover() -> dict[str, SourcePlugin]:
     return plugins
 
 
+@cache
 def get_plugins() -> dict[str, SourcePlugin]:
-    global _plugins
-    if _plugins is None:
-        _plugins = _discover()
-    return _plugins
+    return _discover()
 
 
 def get_connector(source_id: str) -> Connector:
     plugin = get_plugins().get(source_id)
     if plugin is None:
-        raise ConnectorNotConfigured(
+        raise ConnectorNotConfiguredError(
             f"Data source '{source_id}' is not configured or does not exist"
         )
     return plugin.connector()
@@ -57,17 +57,16 @@ def get_connector(source_id: str) -> Connector:
 
 def reset_plugins() -> None:
     """Test helper: force re-discovery and drop cached connectors."""
-    global _plugins
-    if _plugins:
-        for plugin in _plugins.values():
+    if get_plugins.cache_info().currsize:
+        for plugin in get_plugins().values():
             plugin.reset()
-    _plugins = None
+    get_plugins.cache_clear()
 
 
 __all__ = [
     "Connector",
     "ConnectorError",
-    "ConnectorNotConfigured",
+    "ConnectorNotConfiguredError",
     "SourcePlugin",
     "get_connector",
     "get_plugins",

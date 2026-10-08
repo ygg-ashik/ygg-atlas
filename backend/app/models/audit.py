@@ -12,7 +12,7 @@ def _utcnow() -> datetime:
 class AtlasAuditLog(SQLModel, table=True):
     """Audit record for every atlas tool execution — chat agent or MCP client."""
 
-    __tablename__ = "atlas_audit_log"
+    __tablename__ = "atlas_audit_log"  # pyright: ignore[reportAssignmentType]  # sqlmodel types it as declared_attr
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_uid: str = Field(index=True)
@@ -23,4 +23,6 @@ class AtlasAuditLog(SQLModel, table=True):
     success: bool = True
     error: str | None = None
     duration_ms: int | None = None
-    created_at: datetime = Field(default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True))
+    created_at: datetime = Field(
+        default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True)
+    )

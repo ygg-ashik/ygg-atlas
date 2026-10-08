@@ -88,7 +88,10 @@ function DropdownMenuCheckItem({
   children: React.ReactNode;
 }) {
   return (
-    <DropdownMenuItem onSelect={onSelect} className={active ? 'bg-accent text-accent-foreground' : ''}>
+    <DropdownMenuItem
+      onSelect={onSelect}
+      className={active ? 'bg-accent text-accent-foreground' : ''}
+    >
       {children}
     </DropdownMenuItem>
   );
@@ -106,7 +109,12 @@ function UserMenu({ user, onSignOut }: { user: ShellUser | null; onSignOut: () =
           className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border bg-muted text-xs font-medium transition-opacity hover:opacity-80"
         >
           {user.avatar ? (
-            <img src={user.avatar} alt={user.name} referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+            <img
+              src={user.avatar}
+              alt={user.name}
+              referrerPolicy="no-referrer"
+              className="h-full w-full object-cover"
+            />
           ) : (
             initial
           )}

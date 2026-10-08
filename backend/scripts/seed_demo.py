@@ -72,20 +72,32 @@ async def seed() -> None:
             noon = datetime.combine(day, time(12, 0), tzinfo=UTC)
 
             orders = (
-                [("b2c", 100, "paid")] * 5 + [("b2b", 500, "paid")] * 2 + [("b2c", 50, "refunded")]
+                [("b2c", 100, "paid")] * 5
+                + [("b2b", 500, "paid")] * 2
+                + [("b2c", 50, "refunded")]
             )
             for i, (channel, amount, status) in enumerate(orders):
                 await conn.execute(
                     text(
-                        "INSERT INTO demo_orders (customer_id, channel, amount, status, created_at)"
+                        "INSERT INTO demo_orders"
+                        " (customer_id, channel, amount, status, created_at)"
                         " VALUES (:c, :ch, :a, :s, :t)"
                     ),
-                    {"c": day_offset * 10 + i, "ch": channel, "a": amount, "s": status, "t": noon},
+                    {
+                        "c": day_offset * 10 + i,
+                        "ch": channel,
+                        "a": amount,
+                        "s": status,
+                        "t": noon,
+                    },
                 )
 
             for segment in ("consumer", "consumer", "corporate"):
                 await conn.execute(
-                    text("INSERT INTO demo_customers (segment, created_at) VALUES (:s, :t)"),
+                    text(
+                        "INSERT INTO demo_customers (segment, created_at)"
+                        " VALUES (:s, :t)"
+                    ),
                     {"s": segment, "t": noon},
                 )
 

@@ -9,17 +9,20 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.sources.base import SourcePlugin
+from app.sources.base import Connector, SourcePlugin
 
 
 class GA4Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
     ga4_property_id: str = ""
 
 
-def _connector():
-    from app.sources.ga4.connector import GA4Connector
+def _connector() -> Connector:
+    # Lazy plugin load: the connector imports this manifest's GA4Settings.
+    from app.sources.ga4.connector import GA4Connector  # noqa: PLC0415  # import cycle
 
     return GA4Connector()
 

@@ -1,6 +1,7 @@
 """Provenance objects attached to every number the platform returns."""
 
 from datetime import UTC, datetime
+from typing import Any
 
 
 def build_provenance(
@@ -9,7 +10,7 @@ def build_provenance(
     metric_id: str | None = None,
     metric_name: str | None = None,
     freshness: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     return {
         "tool": tool,
         "source": source,

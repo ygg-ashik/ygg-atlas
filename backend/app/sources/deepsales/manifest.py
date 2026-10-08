@@ -19,7 +19,9 @@ logger = structlog.get_logger()
 
 
 class DeepSalesSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
     deepsales_db_url_live: str = ""
 
@@ -31,7 +33,7 @@ class DeepSalesSettings(BaseSettings):
         return url
 
 
-def _connector():
+def _connector() -> SQLSourceConnector:
     logger.warning(
         "deepsales.credential_warning",
         message="DEEPSALES_DB_URL_LIVE should be a SELECT-only role; "

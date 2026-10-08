@@ -1,9 +1,13 @@
-"""Pre-flight guardrails for chat turns. Cheap, deterministic, enforced before the model runs."""
+"""Pre-flight guardrails for chat turns.
+
+Cheap, deterministic, enforced before the model runs.
+"""
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
 
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
 from app.config import get_settings
@@ -16,7 +20,9 @@ class GuardrailVerdict:
     reason: str = ""
 
 
-async def check_input(content: str, user_uid: str, db) -> GuardrailVerdict:
+async def check_input(
+    content: str, user_uid: str, db: AsyncSession
+) -> GuardrailVerdict:
     settings = get_settings()
 
     if not content or not content.strip():
@@ -33,9 +39,9 @@ async def check_input(content: str, user_uid: str, db) -> GuardrailVerdict:
         .select_from(ChatMessage)
         .join(ChatSession, col(ChatMessage.session_id) == col(ChatSession.id))
         .where(
-            ChatSession.user_uid == user_uid,
-            ChatMessage.role == "user",
-            ChatMessage.created_at >= midnight,
+            col(ChatSession.user_uid) == user_uid,
+            col(ChatMessage.role) == "user",
+            col(ChatMessage.created_at) >= midnight,
         )
     )
     count = (await db.execute(stmt)).scalar_one()

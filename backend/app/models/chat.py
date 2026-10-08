@@ -10,18 +10,22 @@ def _utcnow() -> datetime:
 
 
 class ChatSession(SQLModel, table=True):
-    __tablename__ = "chat_sessions"
+    __tablename__ = "chat_sessions"  # pyright: ignore[reportAssignmentType]  # sqlmodel types it as declared_attr
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_uid: str = Field(index=True)
     user_email: str = Field(default="")
     title: str = Field(default="New chat")
-    created_at: datetime = Field(default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True))
-    updated_at: datetime = Field(default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True))
+    created_at: datetime = Field(
+        default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True)
+    )
+    updated_at: datetime = Field(
+        default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True)
+    )
 
 
 class ChatMessage(SQLModel, table=True):
-    __tablename__ = "chat_messages"
+    __tablename__ = "chat_messages"  # pyright: ignore[reportAssignmentType]  # sqlmodel types it as declared_attr
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     session_id: UUID = Field(foreign_key="chat_sessions.id", index=True)
@@ -32,4 +36,6 @@ class ChatMessage(SQLModel, table=True):
     token_usage: dict | None = Field(default=None, sa_column=Column(JSON))
     feedback_rating: str | None = None  # 'up' | 'down'
     feedback_category: str | None = None  # 'inaccurate' | 'incomplete' | 'not_relevant'
-    created_at: datetime = Field(default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True))
+    created_at: datetime = Field(
+        default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True)
+    )

@@ -22,14 +22,18 @@ class ConnectorError(Exception):
     pass
 
 
-class ConnectorNotConfigured(ConnectorError):
+class ConnectorNotConfiguredError(ConnectorError):
     pass
 
 
 class Connector(Protocol):
-    async def fetch_one(self, query: str, params: dict[str, Any]) -> dict[str, Any] | None: ...
+    async def fetch_one(
+        self, query: str, params: dict[str, Any]
+    ) -> dict[str, Any] | None: ...
 
-    async def fetch_all(self, query: str, params: dict[str, Any]) -> list[dict[str, Any]]: ...
+    async def fetch_all(
+        self, query: str, params: dict[str, Any]
+    ) -> list[dict[str, Any]]: ...
 
 
 @dataclass
@@ -75,7 +79,9 @@ class SQLSourceConnector:
     defense-in-depth guard, not the primary control.
     """
 
-    def __init__(self, url_getter: Callable[[], str], engine: AsyncEngine | None = None):
+    def __init__(
+        self, url_getter: Callable[[], str], engine: AsyncEngine | None = None
+    ) -> None:
         self._url_getter = url_getter
         self._engine = engine
 
@@ -83,18 +89,22 @@ class SQLSourceConnector:
         if self._engine is None:
             url = self._url_getter()
             if not url:
-                raise ConnectorNotConfigured("Data source URL is not configured")
+                raise ConnectorNotConfiguredError("Data source URL is not configured")
             self._engine = create_async_engine(url, pool_pre_ping=True)
         return self._engine
 
-    async def fetch_one(self, query: str, params: dict[str, Any]) -> dict[str, Any] | None:
+    async def fetch_one(
+        self, query: str, params: dict[str, Any]
+    ) -> dict[str, Any] | None:
         assert_read_only(query)
         async with self._get_engine().connect() as conn:
             result = await conn.execute(text(query), params)
             row = result.mappings().first()
             return dict(row) if row is not None else None
 
-    async def fetch_all(self, query: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+    async def fetch_all(
+        self, query: str, params: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         assert_read_only(query)
         async with self._get_engine().connect() as conn:
             result = await conn.execute(text(query), params)

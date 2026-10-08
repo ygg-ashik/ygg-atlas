@@ -67,16 +67,18 @@ describe('streamChatMessage', () => {
     });
 
   it('delivers events across chunk boundaries with auth header', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        sseBody([
-          'data: {"type":"token","content":"Rev"}\n\ndata: {"type":"tok',
-          'en","content":"enue"}\n\n',
-          'data: {"type":"done","content":"Revenue","provenance":[]}\n\n',
-        ]),
-        { status: 200 },
-      ),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          sseBody([
+            'data: {"type":"token","content":"Rev"}\n\ndata: {"type":"tok',
+            'en","content":"enue"}\n\n',
+            'data: {"type":"done","content":"Revenue","provenance":[]}\n\n',
+          ]),
+          { status: 200 },
+        ),
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     const events: ChatStreamEvent[] = [];
@@ -88,7 +90,7 @@ describe('streamChatMessage', () => {
       { type: 'done', content: 'Revenue', provenance: [] },
     ]);
 
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(String(url)).toContain('/api/v1/chat/sessions/sess-1/messages');
     expect(init.headers.Authorization).toBe('Bearer test-token');
     expect(JSON.parse(init.body)).toEqual({ content: 'What was revenue?' });
@@ -97,9 +99,11 @@ describe('streamChatMessage', () => {
   it('emits an error event on a non-ok response', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ detail: 'Session not found' }), { status: 404 }),
-      ),
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ detail: 'Session not found' }), { status: 404 }),
+        ),
     );
 
     const events: ChatStreamEvent[] = [];

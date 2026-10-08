@@ -58,9 +58,9 @@ export function stabilizeStreamingMarkdown(text: string): string {
   // the last outside '**'.
   const boldSpans = codeSpanRanges(out);
   const boldMatches = [...out.matchAll(/\*\*/g)].filter((m) => !insideRanges(m.index, boldSpans));
-  if (boldMatches.length % 2 === 1) {
-    const lastBoldIdx = boldMatches[boldMatches.length - 1].index;
-    out = out.slice(0, lastBoldIdx);
+  const lastBold = boldMatches.at(-1);
+  if (boldMatches.length % 2 === 1 && lastBold) {
+    out = out.slice(0, lastBold.index);
   }
 
   // Trailing table row missing its closing pipe

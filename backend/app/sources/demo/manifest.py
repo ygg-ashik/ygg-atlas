@@ -13,7 +13,9 @@ from app.sources.base import SourcePlugin, SQLSourceConnector
 
 
 class DemoSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
     appdb_url: str = "postgresql+asyncpg://atlas:atlas@localhost:5433/ygg_atlas"
 
@@ -21,8 +23,8 @@ class DemoSettings(BaseSettings):
 SOURCE = SourcePlugin(
     id="demo",
     name="Demo commerce data",
-    description="Deterministic sample ecommerce data (orders, customers, checkout events) "
-    "standing in for the production store until it is connected.",
+    description="Deterministic sample ecommerce data (orders, customers, checkout "
+    "events) standing in for the production store until it is connected.",
     definitions_dir=Path(__file__).parent / "definitions",
     connector_factory=lambda: SQLSourceConnector(lambda: DemoSettings().appdb_url),
     required_env=["APPDB_URL"],

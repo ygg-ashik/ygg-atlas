@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import structlog
@@ -22,7 +23,7 @@ except Exception:  # MCP is optional at runtime; never block the chat API
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # MVP schema management; Alembic takes over once the schema stabilizes.
     async with get_engine().begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
@@ -49,7 +50,7 @@ app.include_router(chat_router)
 
 
 @app.get("/healthz")
-async def healthz():
+async def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 

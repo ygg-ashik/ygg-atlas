@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Orbit, SendHorizontal, Square } from 'lucide-react';
 import { useChatMessages } from '@/api/hooks/use-chat-sessions';
-import { useChatTurn } from './use-chat-turn';
+import { type ChatMessage } from '@/api/chat';
+import { useChatTurn, type DraftTurn } from './use-chat-turn';
 import { MarkdownMessage } from './markdown-message';
 import { stabilizeStreamingMarkdown } from './markdown-stream';
 import { ProvenanceChips } from './provenance-chips';
@@ -44,124 +45,156 @@ export function ChatPanel({ sessionId, ensureSession }: ChatPanelProps) {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6">
-          {isEmpty && (
-            <div className="mt-16 text-center">
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent text-accent-foreground">
-                <Orbit className="h-6 w-6" />
-              </div>
-              <h2 className="text-lg font-semibold tracking-tight">Ask the atlas</h2>
-              <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                Revenue, orders, funnels, campaigns — answered from governed metric definitions.
-                Every number carries provenance.
-              </p>
-              <div className="mx-auto mt-6 grid max-w-lg gap-2 sm:grid-cols-2">
-                {starters.map((starter) => (
-                  <button
-                    key={starter}
-                    type="button"
-                    onClick={() => sendText(starter)}
-                    className="rounded-lg border bg-card px-3 py-2.5 text-left text-xs text-muted-foreground shadow-sm transition-colors hover:border-primary/40 hover:text-foreground"
-                  >
-                    {starter}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
+          {isEmpty && <EmptyState starters={starters} onPick={sendText} />}
           {messages.map((m) => (
-            <div key={m.id}>
-              <MessageBubble role={m.role} text={m.content} />
-              {m.role === 'assistant' && m.provenance && m.provenance.length > 0 && (
-                <ProvenanceChips provenance={m.provenance} />
-              )}
-              {m.role === 'assistant' && (
-                <MessageFeedback messageId={m.id} initialRating={m.feedback_rating ?? null} />
-              )}
-            </div>
+            <StoredMessage key={m.id} message={m} />
           ))}
-
-          {draft && (
-            <>
-              <MessageBubble role="user" text={draft.userText} />
-              {draft.phase === 'thinking' && !draft.toolStatus && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
-                  Thinking…
-                </div>
-              )}
-              {draft.assistantText && (
-                <MessageBubble
-                  role="assistant"
-                  text={
-                    draft.phase === 'streaming'
-                      ? stabilizeStreamingMarkdown(draft.assistantText)
-                      : draft.assistantText
-                  }
-                />
-              )}
-              {draft.provenance && draft.provenance.length > 0 && (
-                <ProvenanceChips provenance={draft.provenance} />
-              )}
-              {draft.toolStatus && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                  Consulting atlas: <code className="rounded bg-secondary px-1">{draft.toolStatus}</code>…
-                </div>
-              )}
-              {draft.notice && (
-                <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
-                  {draft.notice}
-                </div>
-              )}
-            </>
-          )}
+          {draft && <DraftView draft={draft} />}
           <div ref={bottomRef} />
         </div>
       </div>
+      <Composer
+        value={input}
+        onChange={setInput}
+        isStreaming={isStreaming}
+        canSend={canSend}
+        onSubmit={() => sendText(input)}
+        onAbort={abort}
+      />
+    </div>
+  );
+}
 
-      <div className="border-t bg-background">
-        <div className="mx-auto w-full max-w-3xl px-4 py-3">
-          <div className="flex items-end gap-2">
-            <textarea
-              className="max-h-32 min-h-[42px] flex-1 resize-none rounded-lg border bg-background px-3 py-2.5 text-sm shadow-sm outline-none transition-shadow placeholder:text-muted-foreground focus:ring-1 focus:ring-ring disabled:opacity-50"
-              rows={1}
-              placeholder="Ask about revenue, orders, funnels…"
-              value={input}
-              disabled={isStreaming || !canSend}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                  e.preventDefault();
-                  sendText(input);
-                }
-              }}
-            />
-            {isStreaming ? (
-              <button
-                type="button"
-                aria-label="Stop generating"
-                className="rounded-lg bg-muted p-2.5 text-muted-foreground transition-colors hover:bg-muted/80"
-                onClick={abort}
-              >
-                <Square className="h-4 w-4" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                aria-label="Send"
-                className="rounded-lg bg-primary p-2.5 text-primary-foreground transition-opacity disabled:opacity-50"
-                disabled={!input.trim() || !canSend}
-                onClick={() => sendText(input)}
-              >
-                <SendHorizontal className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-          <p className="px-1 pt-1.5 text-[10px] text-muted-foreground">
-            Answers come from vetted atlas metrics — check the provenance chips under each number.
-          </p>
+function EmptyState({ starters, onPick }: { starters: string[]; onPick: (text: string) => void }) {
+  return (
+    <div className="mt-16 text-center">
+      <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent text-accent-foreground">
+        <Orbit className="h-6 w-6" />
+      </div>
+      <h2 className="text-lg font-semibold tracking-tight">Ask the atlas</h2>
+      <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+        Revenue, orders, funnels, campaigns — answered from governed metric definitions. Every
+        number carries provenance.
+      </p>
+      <div className="mx-auto mt-6 grid max-w-lg gap-2 sm:grid-cols-2">
+        {starters.map((starter) => (
+          <button
+            key={starter}
+            type="button"
+            onClick={() => onPick(starter)}
+            className="rounded-lg border bg-card px-3 py-2.5 text-left text-xs text-muted-foreground shadow-sm transition-colors hover:border-primary/40 hover:text-foreground"
+          >
+            {starter}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StoredMessage({ message }: { message: ChatMessage }) {
+  const isAssistant = message.role === 'assistant';
+  const provenance = message.provenance ?? [];
+  return (
+    <div>
+      <MessageBubble role={message.role} text={message.content} />
+      {isAssistant && provenance.length > 0 && <ProvenanceChips provenance={provenance} />}
+      {isAssistant && (
+        <MessageFeedback messageId={message.id} initialRating={message.feedback_rating ?? null} />
+      )}
+    </div>
+  );
+}
+
+function DraftView({ draft }: { draft: DraftTurn }) {
+  const provenance = draft.provenance ?? [];
+  const assistantText =
+    draft.phase === 'streaming'
+      ? stabilizeStreamingMarkdown(draft.assistantText)
+      : draft.assistantText;
+  return (
+    <>
+      <MessageBubble role="user" text={draft.userText} />
+      {draft.phase === 'thinking' && !draft.toolStatus && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
+          Thinking…
         </div>
+      )}
+      {draft.assistantText && <MessageBubble role="assistant" text={assistantText} />}
+      {provenance.length > 0 && <ProvenanceChips provenance={provenance} />}
+      {draft.toolStatus && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3 w-3 animate-spin text-primary" />
+          Consulting atlas: <code className="rounded bg-secondary px-1">{draft.toolStatus}</code>…
+        </div>
+      )}
+      {draft.notice && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+          {draft.notice}
+        </div>
+      )}
+    </>
+  );
+}
+
+function Composer({
+  value,
+  onChange,
+  isStreaming,
+  canSend,
+  onSubmit,
+  onAbort,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  isStreaming: boolean;
+  canSend: boolean;
+  onSubmit: () => void;
+  onAbort: () => void;
+}) {
+  return (
+    <div className="border-t bg-background">
+      <div className="mx-auto w-full max-w-3xl px-4 py-3">
+        <div className="flex items-end gap-2">
+          <textarea
+            className="max-h-32 min-h-[42px] flex-1 resize-none rounded-lg border bg-background px-3 py-2.5 text-sm shadow-sm outline-none transition-shadow placeholder:text-muted-foreground focus:ring-1 focus:ring-ring disabled:opacity-50"
+            rows={1}
+            placeholder="Ask about revenue, orders, funnels…"
+            value={value}
+            disabled={isStreaming || !canSend}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                onSubmit();
+              }
+            }}
+          />
+          {isStreaming ? (
+            <button
+              type="button"
+              aria-label="Stop generating"
+              className="rounded-lg bg-muted p-2.5 text-muted-foreground transition-colors hover:bg-muted/80"
+              onClick={onAbort}
+            >
+              <Square className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              aria-label="Send"
+              className="rounded-lg bg-primary p-2.5 text-primary-foreground transition-opacity disabled:opacity-50"
+              disabled={!value.trim() || !canSend}
+              onClick={onSubmit}
+            >
+              <SendHorizontal className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        <p className="px-1 pt-1.5 text-[10px] text-muted-foreground">
+          Answers come from vetted atlas metrics — check the provenance chips under each number.
+        </p>
       </div>
     </div>
   );

@@ -1,9 +1,10 @@
 import pytest
 
+from app.database import get_engine, get_session_factory, reset_database
 from app.sources import get_connector, get_plugins, reset_plugins
 from app.sources.base import (
     ConnectorError,
-    ConnectorNotConfigured,
+    ConnectorNotConfiguredError,
     SQLSourceConnector,
     assert_read_only,
 )
@@ -34,7 +35,8 @@ def test_allows_select_and_cte():
 async def test_fetch_one_and_all(db):
     connector = get_connector("demo")
     row = await connector.fetch_one("SELECT COUNT(*) AS value FROM demo_orders", {})
-    assert row is not None and row["value"] > 0
+    assert row is not None
+    assert row["value"] > 0
 
     rows = await connector.fetch_all(
         "SELECT channel AS label, COUNT(*) AS value FROM demo_orders "
@@ -46,12 +48,12 @@ async def test_fetch_one_and_all(db):
 
 def test_unconfigured_connector_raises():
     connector = SQLSourceConnector(lambda: "")
-    with pytest.raises(ConnectorNotConfigured):
+    with pytest.raises(ConnectorNotConfiguredError):
         connector._get_engine()
 
 
 def test_unknown_source_raises(db):
-    with pytest.raises(ConnectorNotConfigured):
+    with pytest.raises(ConnectorNotConfiguredError):
         get_connector("bigquery")
 
 
@@ -72,3 +74,10 @@ def test_discovery_finds_demo_and_skips_unconfigured(monkeypatch, db):
     finally:
         monkeypatch.delenv("GA4_PROPERTY_ID")
         reset_plugins()
+
+
+async def test_reset_database_drops_engine_and_session_factory() -> None:
+    engine, factory = get_engine(), get_session_factory()
+    await reset_database()
+    assert get_engine() is not engine
+    assert get_session_factory() is not factory

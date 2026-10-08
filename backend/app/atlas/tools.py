@@ -11,12 +11,13 @@ from typing import Any
 from uuid import UUID
 
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.atlas.models import MetricDef
+from app.atlas.models import EntityDef, MetricDef
 from app.atlas.provenance import build_provenance
 from app.atlas.registry import AtlasRegistry, get_registry
 from app.models.audit import AtlasAuditLog
-from app.sources import ConnectorError, ConnectorNotConfigured, get_connector
+from app.sources import ConnectorError, ConnectorNotConfiguredError, get_connector
 
 logger = structlog.get_logger()
 
@@ -25,14 +26,19 @@ MAX_BREAKDOWN_LIMIT = 50
 
 
 class AtlasToolError(Exception):
-    """User-visible tool failure; the agent should relay/explain it, not retry blindly."""
+    """User-visible tool failure.
+
+    The agent should relay/explain it, not retry blindly.
+    """
 
 
 def _parse_date(value: str, name: str) -> date:
     try:
         return date.fromisoformat(value)
     except (TypeError, ValueError):
-        raise AtlasToolError(f"{name} must be an ISO date (YYYY-MM-DD), got {value!r}") from None
+        raise AtlasToolError(
+            f"{name} must be an ISO date (YYYY-MM-DD), got {value!r}"
+        ) from None
 
 
 def _range_params(start: str, end: str) -> dict[str, Any]:
@@ -55,9 +61,9 @@ class AtlasTools:
         user_uid: str,
         surface: str = "chat",
         session_id: UUID | None = None,
-        db=None,
+        db: AsyncSession | None = None,
         registry: AtlasRegistry | None = None,
-    ):
+    ) -> None:
         self.user_uid = user_uid
         self.surface = surface
         self.session_id = session_id
@@ -86,7 +92,7 @@ class AtlasTools:
         success, error = True, None
         try:
             result = await handlers[tool](**arguments)
-        except (AtlasToolError, ConnectorNotConfigured, ConnectorError) as exc:
+        except (AtlasToolError, ConnectorNotConfiguredError, ConnectorError) as exc:
             success, error = False, str(exc)
             result = {"error": str(exc)}
         except TypeError as exc:
@@ -97,10 +103,19 @@ class AtlasTools:
             success, error = False, str(exc)
             result = {"error": f"Internal error executing {tool}"}
 
-        await self._audit(tool, arguments, success, error, int((time.monotonic() - started) * 1000))
+        await self._audit(
+            tool, arguments, success, error, int((time.monotonic() - started) * 1000)
+        )
         return result
 
-    async def _audit(self, tool, arguments, success, error, duration_ms) -> None:
+    async def _audit(
+        self,
+        tool: str,
+        arguments: dict[str, Any],
+        success: bool,
+        error: str | None,
+        duration_ms: int,
+    ) -> None:
         if self.db is None:
             return
         self.db.add(
@@ -123,8 +138,9 @@ class AtlasTools:
         metric = self.registry.metrics.get(metric_id)
         if metric is None:
             raise AtlasToolError(
-                f"No metric '{metric_id}' in the atlas. Use list_metrics or search_atlas; "
-                "if nothing fits, ask the user a clarifying question instead of guessing."
+                f"No metric '{metric_id}' in the atlas. Use list_metrics or "
+                "search_atlas; if nothing fits, ask the user a clarifying question "
+                "instead of guessing."
             )
         return metric
 
@@ -140,11 +156,13 @@ class AtlasTools:
             )
         return _range_params(start_date, end_date)
 
-    async def _freshness(self, entity) -> str | None:
+    async def _freshness(self, entity: EntityDef | None) -> str | None:
         if not entity or not entity.freshness_query:
             return None
         try:
-            row = await get_connector(entity.source).fetch_one(entity.freshness_query, {})
+            row = await get_connector(entity.source).fetch_one(
+                entity.freshness_query, {}
+            )
             if row:
                 value = next(iter(row.values()), None)
                 return str(value) if value is not None else None
@@ -152,7 +170,9 @@ class AtlasTools:
             return None
         return None
 
-    async def _metric_provenance(self, tool: str, metric: MetricDef) -> list[dict]:
+    async def _metric_provenance(
+        self, tool: str, metric: MetricDef
+    ) -> list[dict[str, Any]]:
         entity = self.registry.entities.get(metric.entity)
         return [
             build_provenance(
@@ -166,8 +186,8 @@ class AtlasTools:
 
     # ---- the seven tools -------------------------------------------------
 
-    async def list_metrics(self) -> dict:
-        sources = {}
+    async def list_metrics(self) -> dict[str, Any]:
+        sources: dict[str, dict[str, Any]] = {}
         for plugin in self.registry.plugins.values():
             sources[plugin.id] = {
                 "id": plugin.id,
@@ -190,13 +210,20 @@ class AtlasTools:
             )
         for f in self.registry.funnels.values():
             sources[f.source]["funnels"].append(
-                {"id": f.id, "name": f.name, "description": f.description, "entity": f.entity}
+                {
+                    "id": f.id,
+                    "name": f.name,
+                    "description": f.description,
+                    "entity": f.entity,
+                }
             )
-        return {"sources": [s for s in sources.values() if s["metrics"] or s["funnels"]]}
+        return {
+            "sources": [s for s in sources.values() if s["metrics"] or s["funnels"]]
+        }
 
     async def query_metric(
         self, metric_id: str, start_date: str | None = None, end_date: str | None = None
-    ) -> dict:
+    ) -> dict[str, Any]:
         metric = self._get_metric(metric_id)
         params = self._metric_params(metric, start_date, end_date)
         row = await get_connector(metric.source).fetch_one(metric.query, params)
@@ -221,13 +248,15 @@ class AtlasTools:
         limit: int = DEFAULT_BREAKDOWN_LIMIT,
         start_date: str | None = None,
         end_date: str | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         metric = self._get_metric(metric_id)
         if not metric.breakdown_query:
             raise AtlasToolError(f"Metric '{metric_id}' has no breakdown view.")
         limit = max(1, min(int(limit), MAX_BREAKDOWN_LIMIT))
         params = self._metric_params(metric, start_date, end_date) | {"limit": limit}
-        rows = await get_connector(metric.source).fetch_all(metric.breakdown_query, params)
+        rows = await get_connector(metric.source).fetch_all(
+            metric.breakdown_query, params
+        )
         return {
             "metric_id": metric.id,
             "name": metric.name,
@@ -242,10 +271,12 @@ class AtlasTools:
             "provenance": await self._metric_provenance("metric_breakdown", metric),
         }
 
-    async def describe_entity(self, entity_id: str) -> dict:
+    async def describe_entity(self, entity_id: str) -> dict[str, Any]:
         entity = self.registry.entities.get(entity_id)
         if entity is None:
-            raise AtlasToolError(f"No entity '{entity_id}' in the atlas. Use search_atlas.")
+            raise AtlasToolError(
+                f"No entity '{entity_id}' in the atlas. Use search_atlas."
+            )
         return {
             "id": entity.id,
             "name": entity.name,
@@ -257,16 +288,20 @@ class AtlasTools:
             "funnels": [f.id for f in entity.funnels],
         }
 
-    async def funnel_analyze(self, funnel_id: str, start_date: str, end_date: str) -> dict:
+    async def funnel_analyze(
+        self, funnel_id: str, start_date: str, end_date: str
+    ) -> dict[str, Any]:
         funnel = self.registry.funnels.get(funnel_id)
         if funnel is None:
-            raise AtlasToolError(f"No funnel '{funnel_id}' in the atlas. Use list_metrics.")
+            raise AtlasToolError(
+                f"No funnel '{funnel_id}' in the atlas. Use list_metrics."
+            )
         params = _range_params(start_date, end_date)
         connector = get_connector(funnel.source)
 
-        steps: list[dict] = []
+        steps: list[dict[str, Any]] = []
         prev_count: float | None = None
-        worst = {"step": None, "drop_pct": 0.0}
+        worst: dict[str, Any] = {"step": None, "drop_pct": 0.0}
         for step in funnel.steps:
             row = await connector.fetch_one(step.query, params)
             count = float(row.get("value", 0) if row else 0)
@@ -319,12 +354,12 @@ class AtlasTools:
         period_a_end: str,
         period_b_start: str,
         period_b_end: str,
-    ) -> dict:
+    ) -> dict[str, Any]:
         metric = self._get_metric(metric_id)
         if metric.time_scope == "snapshot":
             raise AtlasToolError(
-                f"Metric '{metric_id}' is a point-in-time snapshot and cannot be compared "
-                "across periods."
+                f"Metric '{metric_id}' is a point-in-time snapshot and cannot be "
+                "compared across periods."
             )
         a = await self.query_metric(metric_id, period_a_start, period_a_end)
         b = await self.query_metric(metric_id, period_b_start, period_b_end)
@@ -334,19 +369,28 @@ class AtlasTools:
             "metric_id": metric_id,
             "name": a["name"],
             "unit": a["unit"],
-            "period_a": {"start": period_a_start, "end": period_a_end, "value": a["value"]},
-            "period_b": {"start": period_b_start, "end": period_b_end, "value": b["value"]},
+            "period_a": {
+                "start": period_a_start,
+                "end": period_a_end,
+                "value": a["value"],
+            },
+            "period_b": {
+                "start": period_b_start,
+                "end": period_b_end,
+                "value": b["value"],
+            },
             "delta": delta,
             "delta_pct": round(pct, 1) if pct is not None else None,
             "provenance": a["provenance"],
         }
 
-    async def search_atlas(self, query: str) -> dict:
+    async def search_atlas(self, query: str) -> dict[str, Any]:
         results = self.registry.search(query)
         return {
             "results": results,
             "hint": (
-                "Nothing matched. Ask the user a clarifying question — do not guess or fabricate."
+                "Nothing matched. Ask the user a clarifying question — do not guess "
+                "or fabricate."
                 if not results
                 else None
             ),
@@ -358,22 +402,26 @@ _DATE_PROPS = {
     "end_date": {"type": "string", "description": "ISO date YYYY-MM-DD"},
 }
 
-ATLAS_TOOL_SCHEMAS: list[dict] = [
+ATLAS_TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
         "name": "list_metrics",
-        "description": "List every governed metric and funnel in the atlas, grouped by data "
-        "source, with descriptions. Call this first when unsure what data exists.",
+        "description": "List every governed metric and funnel in the atlas, grouped "
+        "by data source, with descriptions. Call this first when unsure what data "
+        "exists.",
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
     {
         "name": "query_metric",
-        "description": "Get the value of a governed metric. Range metrics require start_date/"
-        "end_date (inclusive UTC); snapshot metrics ('as of now') take no dates. The only "
-        "sanctioned way to obtain a business number.",
+        "description": "Get the value of a governed metric. Range metrics require "
+        "start_date/end_date (inclusive UTC); snapshot metrics ('as of now') take no "
+        "dates. The only sanctioned way to obtain a business number.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "metric_id": {"type": "string", "description": "Metric id from list_metrics"},
+                "metric_id": {
+                    "type": "string",
+                    "description": "Metric id from list_metrics",
+                },
                 **_DATE_PROPS,
             },
             "required": ["metric_id"],
@@ -381,13 +429,17 @@ ATLAS_TOOL_SCHEMAS: list[dict] = [
     },
     {
         "name": "metric_breakdown",
-        "description": "Top-N breakdown of a metric (e.g. top accounts by revenue, tasks per "
-        "CSM). Only for metrics where list_metrics shows has_breakdown=true.",
+        "description": "Top-N breakdown of a metric (e.g. top accounts by revenue, "
+        "tasks per CSM). Only for metrics where list_metrics shows "
+        "has_breakdown=true.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "metric_id": {"type": "string"},
-                "limit": {"type": "integer", "description": "Rows to return (default 10, max 50)"},
+                "limit": {
+                    "type": "integer",
+                    "description": "Rows to return (default 10, max 50)",
+                },
                 **_DATE_PROPS,
             },
             "required": ["metric_id"],
@@ -395,7 +447,8 @@ ATLAS_TOOL_SCHEMAS: list[dict] = [
     },
     {
         "name": "describe_entity",
-        "description": "Describe an atlas entity: fields, PII flags, its metrics and funnels.",
+        "description": "Describe an atlas entity: fields, PII flags, its metrics and "
+        "funnels.",
         "input_schema": {
             "type": "object",
             "properties": {"entity_id": {"type": "string"}},
@@ -404,8 +457,8 @@ ATLAS_TOOL_SCHEMAS: list[dict] = [
     },
     {
         "name": "funnel_analyze",
-        "description": "Analyze a governed funnel over a date range: step counts, step conversion, "
-        "overall conversion, and the biggest drop-off point.",
+        "description": "Analyze a governed funnel over a date range: step counts, "
+        "step conversion, overall conversion, and the biggest drop-off point.",
         "input_schema": {
             "type": "object",
             "properties": {"funnel_id": {"type": "string"}, **_DATE_PROPS},
@@ -414,8 +467,9 @@ ATLAS_TOOL_SCHEMAS: list[dict] = [
     },
     {
         "name": "compare_periods",
-        "description": "Compare a range metric between two date ranges (e.g. this month vs last "
-        "month). Returns both values, absolute delta, and percent change.",
+        "description": "Compare a range metric between two date ranges (e.g. this "
+        "month vs last month). Returns both values, absolute delta, and percent "
+        "change.",
         "input_schema": {
             "type": "object",
             "properties": {

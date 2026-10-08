@@ -49,7 +49,11 @@ export function rotatingSuggestions(n: number): string[] {
   const items = pool();
   for (let i = items.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [items[i], items[j]] = [items[j], items[i]];
+    const current = items[i];
+    const other = items[j];
+    if (current === undefined || other === undefined) continue;
+    items[i] = other;
+    items[j] = current;
   }
   return items.slice(0, n);
 }

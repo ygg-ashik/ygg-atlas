@@ -1,11 +1,17 @@
 """OpenAI Chat Completions tool loop (streaming)."""
 
 import json
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator, AsyncIterable, Iterable
+from typing import Any, Literal, Protocol
 
+from openai.types.chat import ChatCompletionStreamOptionsParam
+
+from app.agent.providers.types import Event, ExecuteTool
 from app.atlas import ATLAS_TOOL_SCHEMAS
 
-BUDGET_ERROR = "The assistant hit its tool budget for this question. Try a narrower question."
+BUDGET_ERROR = (
+    "The assistant hit its tool budget for this question. Try a narrower question."
+)
 
 OPENAI_TOOL_SCHEMAS = [
     {
@@ -20,7 +26,31 @@ OPENAI_TOOL_SCHEMAS = [
 ]
 
 
-def _parse_args(raw: str) -> dict:
+class OpenAICompletions(Protocol):
+    async def create(
+        self,
+        *,
+        model: str,
+        messages: Iterable[Any],
+        tools: Iterable[Any],
+        stream: Literal[True],
+        stream_options: ChatCompletionStreamOptionsParam,
+    ) -> AsyncIterable[Any]: ...  # SDK ChatCompletionChunk stream
+
+
+class OpenAIChat(Protocol):
+    @property
+    def completions(self) -> OpenAICompletions: ...
+
+
+class OpenAIClient(Protocol):
+    """Structural view of `openai.AsyncOpenAI` (fakeable in tests)."""
+
+    @property
+    def chat(self) -> OpenAIChat: ...
+
+
+def _parse_args(raw: str) -> dict[str, Any]:
     try:
         parsed = json.loads(raw) if raw else {}
         return parsed if isinstance(parsed, dict) else {}
@@ -28,14 +58,48 @@ def _parse_args(raw: str) -> dict:
         return {}
 
 
+def _merge_tool_call_deltas(
+    tool_calls: dict[int, dict[str, str]],
+    deltas: Iterable[Any],  # SDK ChoiceDeltaToolCall
+) -> None:
+    """Accumulate streamed tool-call fragments into per-index slots."""
+    for tc in deltas:
+        slot = tool_calls.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
+        if tc.id:
+            slot["id"] = tc.id
+        if tc.function:
+            slot["name"] = slot["name"] or (tc.function.name or "")
+            slot["arguments"] += tc.function.arguments or ""
+
+
+def _assistant_tool_message(
+    round_text_parts: list[str], ordered: list[dict[str, str]]
+) -> dict[str, Any]:
+    return {
+        "role": "assistant",
+        "content": "".join(round_text_parts) or None,
+        "tool_calls": [
+            {
+                "id": tc["id"],
+                "type": "function",
+                "function": {
+                    "name": tc["name"],
+                    "arguments": tc["arguments"] or "{}",
+                },
+            }
+            for tc in ordered
+        ],
+    }
+
+
 async def run_tool_loop(
-    client,
+    client: OpenAIClient,
     model: str,
     system: str,
-    messages: list[dict],
-    execute_tool: Callable[[str, dict], Awaitable[dict]],
+    messages: list[dict[str, Any]],
+    execute_tool: ExecuteTool,
     max_rounds: int,
-) -> AsyncGenerator[dict, None]:
+) -> AsyncGenerator[Event, None]:
     messages = [{"role": "system", "content": system}, *messages]
     final_text_parts: list[str] = []
     usage_totals = {"input_tokens": 0, "output_tokens": 0}
@@ -50,7 +114,7 @@ async def run_tool_loop(
         )
 
         round_text_parts: list[str] = []
-        tool_calls: dict[int, dict] = {}  # index -> {id, name, arguments}
+        tool_calls: dict[int, dict[str, str]] = {}  # index -> {id, name, arguments}
         finish_reason = None
         async for chunk in stream:
             usage = getattr(chunk, "usage", None)
@@ -67,13 +131,7 @@ async def run_tool_loop(
             if delta.content:
                 round_text_parts.append(delta.content)
                 yield {"type": "token", "content": delta.content}
-            for tc in delta.tool_calls or []:
-                slot = tool_calls.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
-                if tc.id:
-                    slot["id"] = tc.id
-                if tc.function:
-                    slot["name"] = slot["name"] or (tc.function.name or "")
-                    slot["arguments"] += tc.function.arguments or ""
+            _merge_tool_call_deltas(tool_calls, delta.tool_calls or [])
 
         final_text_parts.extend(round_text_parts)
 
@@ -86,20 +144,7 @@ async def run_tool_loop(
             return
 
         ordered = [tool_calls[i] for i in sorted(tool_calls)]
-        messages.append(
-            {
-                "role": "assistant",
-                "content": "".join(round_text_parts) or None,
-                "tool_calls": [
-                    {
-                        "id": tc["id"],
-                        "type": "function",
-                        "function": {"name": tc["name"], "arguments": tc["arguments"] or "{}"},
-                    }
-                    for tc in ordered
-                ],
-            }
-        )
+        messages.append(_assistant_tool_message(round_text_parts, ordered))
         for tc in ordered:
             yield {"type": "tool_status", "tool": tc["name"]}
             result = await execute_tool(tc["name"], _parse_args(tc["arguments"]))

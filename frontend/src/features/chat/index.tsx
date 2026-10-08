@@ -61,7 +61,12 @@ export default function ChatPage() {
       {/* Sessions sidebar */}
       <aside className="flex w-64 shrink-0 flex-col border-r bg-card">
         <div className="p-3">
-          <Button variant="outline" size="sm" className="w-full justify-start" onClick={handleNewChat}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full justify-start"
+            onClick={handleNewChat}
+          >
             <Plus className="h-3.5 w-3.5" />
             New chat
           </Button>
@@ -90,7 +95,9 @@ export default function ChatPage() {
                   )}
                 >
                   <MessageSquareText className="h-3.5 w-3.5 shrink-0 opacity-60" />
-                  <span className="min-w-0 flex-1 truncate">{session.title || 'Untitled chat'}</span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {session.title || 'Untitled chat'}
+                  </span>
                   <span className="shrink-0 text-[10px] text-muted-foreground/70 group-hover:hidden">
                     {formatRelativeTime(session.updated_at)}
                   </span>

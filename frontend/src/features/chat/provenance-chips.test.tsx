@@ -23,7 +23,9 @@ describe('ProvenanceChips', () => {
   it('falls back to the tool name when metric_name is absent', () => {
     render(
       <ProvenanceChips
-        provenance={[{ tool: 'list_metrics', source: 'atlas_registry', executed_at: base.executed_at }]}
+        provenance={[
+          { tool: 'list_metrics', source: 'atlas_registry', executed_at: base.executed_at },
+        ]}
       />,
     );
     expect(screen.getByText('list_metrics')).toBeInTheDocument();
@@ -32,16 +34,19 @@ describe('ProvenanceChips', () => {
 
   it('dedupes repeated executions of the same metric and source', () => {
     render(
-      <ProvenanceChips
-        provenance={[base, { ...base, executed_at: '2026-09-23T10:05:00Z' }]}
-      />,
+      <ProvenanceChips provenance={[base, { ...base, executed_at: '2026-09-23T10:05:00Z' }]} />,
     );
     expect(screen.getAllByText('Total revenue')).toHaveLength(1);
   });
 
   it('keeps distinct chips for different sources', () => {
     render(
-      <ProvenanceChips provenance={[base, { ...base, metric_id: 'orders_count', metric_name: 'Orders', source: 'ads_db' }]} />,
+      <ProvenanceChips
+        provenance={[
+          base,
+          { ...base, metric_id: 'orders_count', metric_name: 'Orders', source: 'ads_db' },
+        ]}
+      />,
     );
     expect(screen.getByText('Total revenue')).toBeInTheDocument();
     expect(screen.getByText('Orders')).toBeInTheDocument();

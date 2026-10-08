@@ -1,17 +1,22 @@
-"""Firebase ID-token verification. Scope comes from the token, never from the request body."""
+"""Firebase ID-token verification.
+
+Scope comes from the token, never from the request body.
+"""
 
 from dataclasses import dataclass
+from functools import cache
 
+import firebase_admin
 import structlog
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from firebase_admin import auth as fb_auth
 
 from app.config import Settings, get_settings
 
 logger = structlog.get_logger()
 
 _bearer = HTTPBearer(auto_error=False)
-_firebase_initialized = False
 
 
 @dataclass(frozen=True)
@@ -20,20 +25,17 @@ class AuthUser:
     email: str
 
 
+@cache
+def _ensure_firebase_app(project_id: str) -> None:
+    """Initialize the default Firebase app once per process."""
+    if not firebase_admin._apps:
+        firebase_admin.initialize_app(
+            options={"projectId": project_id} if project_id else None
+        )
+
+
 def _verify_firebase_token(token: str, settings: Settings) -> AuthUser:
-    global _firebase_initialized
-    import firebase_admin
-    from firebase_admin import auth as fb_auth
-
-    if not _firebase_initialized:
-        if not firebase_admin._apps:
-            firebase_admin.initialize_app(
-                options={"projectId": settings.firebase_project_id}
-                if settings.firebase_project_id
-                else None
-            )
-        _firebase_initialized = True
-
+    _ensure_firebase_app(settings.firebase_project_id)
     decoded = fb_auth.verify_id_token(token)
     return AuthUser(uid=decoded["uid"], email=decoded.get("email", ""))
 
@@ -53,7 +55,9 @@ async def get_current_user(
         user = _verify_firebase_token(credentials.credentials, settings)
     except Exception:
         logger.warning("auth.token_invalid")
-        raise HTTPException(status_code=401, detail="Invalid or expired token") from None
+        raise HTTPException(
+            status_code=401, detail="Invalid or expired token"
+        ) from None
 
     domain = user.email.rsplit("@", 1)[-1].lower() if "@" in user.email else ""
     if domain != settings.allowed_email_domain.lower():

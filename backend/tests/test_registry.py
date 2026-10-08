@@ -3,10 +3,17 @@ from pathlib import Path
 import pytest
 
 from app.atlas.registry import AtlasRegistry
-from app.sources.base import SourcePlugin
+from app.sources import get_plugins
+from app.sources.base import Connector, SourcePlugin
 
 
-def _plugin(tmp_path: Path, yaml_text: str, allowed: set[str] | None = None) -> SourcePlugin:
+def _no_connector() -> Connector:
+    raise AssertionError("registry tests never query a connector")
+
+
+def _plugin(
+    tmp_path: Path, yaml_text: str, allowed: set[str] | None = None
+) -> SourcePlugin:
     (tmp_path / "defs").mkdir(exist_ok=True)
     (tmp_path / "defs" / "test.yaml").write_text(yaml_text)
     return SourcePlugin(
@@ -14,7 +21,7 @@ def _plugin(tmp_path: Path, yaml_text: str, allowed: set[str] | None = None) -> 
         name="Test source",
         description="",
         definitions_dir=tmp_path / "defs",
-        connector_factory=lambda: None,
+        connector_factory=_no_connector,
         allowed_tables=allowed,
     )
 
@@ -54,7 +61,7 @@ metrics:
 """,
         allowed={"demo_orders"},
     )
-    with pytest.raises(ValueError, match="non-allowlisted tables.*secret_table"):
+    with pytest.raises(ValueError, match=r"non-allowlisted tables.*secret_table"):
         AtlasRegistry(plugins={"testsrc": plugin})
 
 
@@ -94,8 +101,6 @@ metrics:
 
 
 def test_duplicate_metric_id_across_plugins_rejected(tmp_path, db):
-    from app.sources import get_plugins
-
     plugin = _plugin(
         tmp_path,
         """

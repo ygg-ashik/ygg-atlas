@@ -1,4 +1,5 @@
 import json
+from collections.abc import AsyncGenerator, Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -31,7 +32,9 @@ class FeedbackRequest(BaseModel):
     category: str | None = None  # 'inaccurate' | 'incomplete' | 'not_relevant'
 
 
-async def _owned_session(session_id: UUID, user: AuthUser, db: AsyncSession) -> ChatSession:
+async def _owned_session(
+    session_id: UUID, user: AuthUser, db: AsyncSession
+) -> ChatSession:
     session = (
         await db.execute(select(ChatSession).where(ChatSession.id == session_id))
     ).scalar_one_or_none()
@@ -45,8 +48,10 @@ async def create_session(
     body: CreateSessionRequest,
     user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
-    session = ChatSession(user_uid=user.uid, user_email=user.email, title=body.title or "New chat")
+) -> ChatSession:
+    session = ChatSession(
+        user_uid=user.uid, user_email=user.email, title=body.title or "New chat"
+    )
     db.add(session)
     await db.commit()
     await db.refresh(session)
@@ -56,7 +61,7 @@ async def create_session(
 @router.get("/sessions", response_model=list[ChatSession])
 async def list_sessions(
     user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
-):
+) -> Sequence[ChatSession]:
     result = await db.execute(
         select(ChatSession)
         .where(ChatSession.user_uid == user.uid)
@@ -70,7 +75,7 @@ async def list_messages(
     session_id: UUID,
     user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> Sequence[ChatMessage]:
     await _owned_session(session_id, user, db)
     result = await db.execute(
         select(ChatMessage)
@@ -86,10 +91,14 @@ async def delete_session(
     session_id: UUID,
     user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> None:
     session = await _owned_session(session_id, user, db)
     messages = (
-        (await db.execute(select(ChatMessage).where(ChatMessage.session_id == session_id)))
+        (
+            await db.execute(
+                select(ChatMessage).where(ChatMessage.session_id == session_id)
+            )
+        )
         .scalars()
         .all()
     )
@@ -105,7 +114,7 @@ async def message_feedback(
     body: FeedbackRequest,
     user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> ChatMessage:
     if body.rating not in ("up", "down"):
         raise HTTPException(status_code=422, detail="rating must be 'up' or 'down'")
     message = (
@@ -129,7 +138,7 @@ async def send_message(
     body: SendMessageRequest,
     user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> StreamingResponse:
     session = await _owned_session(session_id, user, db)
 
     history_rows = (
@@ -154,7 +163,7 @@ async def send_message(
     db.add(session)
     await db.commit()
 
-    async def event_stream():
+    async def event_stream() -> AsyncGenerator[str, None]:
         # The request-scoped db session closes when the response handler returns,
         # so streaming uses its own session for the turn + persistence.
         async with get_session_factory()() as stream_db:
@@ -165,6 +174,7 @@ async def send_message(
                 history=history,
                 db=stream_db,
             ):
+                payload = event
                 if event["type"] == "done":
                     assistant_message = ChatMessage(
                         session_id=session_id,
@@ -176,8 +186,8 @@ async def send_message(
                     )
                     stream_db.add(assistant_message)
                     await stream_db.commit()
-                    event = {**event, "message_id": str(assistant_message.id)}
-                yield f"data: {json.dumps(event, default=str)}\n\n"
+                    payload = {**event, "message_id": str(assistant_message.id)}
+                yield f"data: {json.dumps(payload, default=str)}\n\n"
 
     return StreamingResponse(
         event_stream(),

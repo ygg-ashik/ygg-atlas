@@ -1,4 +1,4 @@
-"""Chat turn orchestration: guardrails → provider tool loop → SSE events.
+"""Chat turn orchestration: guardrails -> provider tool loop -> SSE events.
 
 Yields SSE-ready event dicts:
   {type: 'token', content}      streamed text delta
@@ -12,20 +12,27 @@ configured; see Settings.llm_provider.
 """
 
 from collections.abc import AsyncGenerator
+from functools import partial
+from typing import Any
 from uuid import UUID
 
 import structlog
+from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.guardrails import check_input
 from app.agent.prompts import build_system_prompt
 from app.agent.providers import anthropic_loop, openai_loop
+from app.agent.providers.anthropic_loop import AnthropicClient
+from app.agent.providers.types import Event, ToolLoopRunner
 from app.atlas import AtlasTools
 from app.config import get_settings
 
 logger = structlog.get_logger()
 
 
-def _history_to_messages(history: list[dict]) -> list[dict]:
+def _history_to_messages(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Prior turns as plain text messages (tool exchanges are not replayed)."""
     return [
         {"role": m["role"], "content": m["content"]}
@@ -34,28 +41,32 @@ def _history_to_messages(history: list[dict]) -> list[dict]:
     ]
 
 
-def _select_provider(client):
-    """Returns (provider_module, client). An injected client implies Anthropic (tests)."""
+def _select_provider(client: AnthropicClient | None) -> ToolLoopRunner:
+    """The provider loop bound to its client.
+
+    An injected client implies Anthropic (tests).
+    """
     settings = get_settings()
     if client is not None:
-        return anthropic_loop, client
+        return partial(anthropic_loop.run_tool_loop, client)
     if settings.llm_provider == "openai":
-        from openai import AsyncOpenAI
-
-        return openai_loop, AsyncOpenAI(api_key=settings.openai_api_key)
-    from anthropic import AsyncAnthropic
-
-    return anthropic_loop, AsyncAnthropic(api_key=settings.anthropic_api_key)
+        return partial(
+            openai_loop.run_tool_loop, AsyncOpenAI(api_key=settings.openai_api_key)
+        )
+    return partial(
+        anthropic_loop.run_tool_loop,
+        AsyncAnthropic(api_key=settings.anthropic_api_key),
+    )
 
 
 async def run_chat_turn(
     user_uid: str,
     session_id: UUID,
     content: str,
-    history: list[dict],
-    db,
-    client=None,
-) -> AsyncGenerator[dict, None]:
+    history: list[dict[str, Any]],
+    db: AsyncSession,
+    client: AnthropicClient | None = None,
+) -> AsyncGenerator[Event, None]:
     settings = get_settings()
 
     verdict = await check_input(content, user_uid, db)
@@ -63,22 +74,21 @@ async def run_chat_turn(
         yield {"type": "blocked", "reason": verdict.reason}
         return
 
-    provider, client = _select_provider(client)
+    run_tool_loop = _select_provider(client)
     tools = AtlasTools(user_uid=user_uid, surface="chat", session_id=session_id, db=db)
-    provenance: list[dict] = []
+    provenance: list[dict[str, Any]] = []
 
-    async def execute_tool(name: str, arguments: dict) -> dict:
+    async def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         result = await tools.execute(name, arguments)
         if isinstance(result, dict) and result.get("provenance"):
             provenance.extend(result["provenance"])
         return result
 
-    messages = _history_to_messages(history) + [{"role": "user", "content": content}]
+    messages = [*_history_to_messages(history), {"role": "user", "content": content}]
     model = settings.resolved_agent_model
 
     try:
-        async for event in provider.run_tool_loop(
-            client=client,
+        async for event in run_tool_loop(
             model=model,
             system=build_system_prompt(),
             messages=messages,
@@ -97,4 +107,7 @@ async def run_chat_turn(
                 yield event
     except Exception:
         logger.exception("agent.turn_failed", session_id=str(session_id))
-        yield {"type": "error", "message": "Something went wrong answering that. Please retry."}
+        yield {
+            "type": "error",
+            "message": "Something went wrong answering that. Please retry.",
+        }

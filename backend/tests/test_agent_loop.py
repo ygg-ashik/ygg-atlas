@@ -58,7 +58,11 @@ class FakeStream:
 
     def __aiter__(self):
         self._events = iter(
-            [FakeStreamEvent(FakeDelta(b.text)) for b in self._response.content if b.type == "text"]
+            [
+                FakeStreamEvent(FakeDelta(b.text))
+                for b in self._response.content
+                if b.type == "text"
+            ]
         )
         return self
 
@@ -102,7 +106,8 @@ async def test_plain_answer_streams_and_finishes(db):
     client = FakeAnthropicClient(
         [
             FakeResponse(
-                content=[FakeTextBlock("Hello! Ask me about revenue.")], stop_reason="end_turn"
+                content=[FakeTextBlock("Hello! Ask me about revenue.")],
+                stop_reason="end_turn",
             )
         ]
     )
@@ -127,7 +132,11 @@ async def test_tool_round_collects_provenance(db):
                     FakeToolUseBlock(
                         id="tu_1",
                         name="query_metric",
-                        input={"metric_id": "revenue", "start_date": start, "end_date": end},
+                        input={
+                            "metric_id": "revenue",
+                            "start_date": start,
+                            "end_date": end,
+                        },
                     )
                 ],
                 stop_reason="tool_use",
@@ -151,7 +160,8 @@ async def test_tool_round_collects_provenance(db):
 
 async def test_guardrail_blocks_before_model(db):
     session = await _make_session(db)
-    client = FakeAnthropicClient([])  # would raise StopIteration if the model were called
+    # An empty script would raise StopIteration if the model were ever called.
+    client = FakeAnthropicClient([])
     events = await collect(run_chat_turn("u1", session.id, "", [], db, client=client))
     assert events == [{"type": "blocked", "reason": "Empty message"}]
 
@@ -163,6 +173,8 @@ async def test_tool_budget_exhaustion_yields_error(db):
         stop_reason="tool_use",
     )
     client = FakeAnthropicClient([tool_response] * 10)  # never stops calling tools
-    events = await collect(run_chat_turn("u1", session.id, "loop!", [], db, client=client))
+    events = await collect(
+        run_chat_turn("u1", session.id, "loop!", [], db, client=client)
+    )
     assert events[-1]["type"] == "error"
     assert "budget" in events[-1]["message"].lower()

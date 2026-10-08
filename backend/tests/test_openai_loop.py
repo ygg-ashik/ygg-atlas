@@ -84,7 +84,9 @@ def _tool_round() -> list[FakeChunk]:
                             FakeToolCallDelta(
                                 0,
                                 id="call_1",
-                                function=FakeFunction("query_metric", '{"metric_id": "rev'),
+                                function=FakeFunction(
+                                    "query_metric", '{"metric_id": "rev'
+                                ),
                             )
                         ]
                     )
@@ -100,7 +102,8 @@ def _tool_round() -> list[FakeChunk]:
                                 0,
                                 function=FakeFunction(
                                     None,
-                                    'enue", "start_date": "2026-01-01", "end_date": "2026-01-07"}',
+                                    'enue", "start_date": "2026-01-01", '
+                                    '"end_date": "2026-01-07"}',
                                 ),
                             )
                         ]
@@ -116,7 +119,9 @@ def _tool_round() -> list[FakeChunk]:
 def _text_round(text: str) -> list[FakeChunk]:
     return [
         FakeChunk(choices=[FakeChoice(FakeDelta(content=text))]),
-        FakeChunk(choices=[FakeChoice(FakeDelta(), finish_reason="stop")], usage=FakeUsage()),
+        FakeChunk(
+            choices=[FakeChoice(FakeDelta(), finish_reason="stop")], usage=FakeUsage()
+        ),
     ]
 
 
@@ -146,7 +151,11 @@ async def test_tool_round_then_answer():
     assert executed == [
         (
             "query_metric",
-            {"metric_id": "revenue", "start_date": "2026-01-01", "end_date": "2026-01-07"},
+            {
+                "metric_id": "revenue",
+                "start_date": "2026-01-01",
+                "end_date": "2026-01-07",
+            },
         )
     ]
     types = [e["type"] for e in events]

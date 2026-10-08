@@ -4,7 +4,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
     database_url: str = "postgresql+asyncpg://atlas:atlas@localhost:5433/ygg_atlas"
 
@@ -17,7 +19,8 @@ class Settings(BaseSettings):
     allowed_email_domain: str = "yougotagift.com"
     auth_disabled: bool = False
 
-    # Source-specific config lives in each plugin's Settings (app/sources/<id>/manifest.py)
+    # Source-specific config lives in each plugin's Settings
+    # (app/sources/<id>/manifest.py)
 
     chat_daily_message_limit: int = 200
     agent_max_tool_rounds: int = 6
@@ -33,7 +36,11 @@ class Settings(BaseSettings):
 
     @property
     def llm_provider(self) -> str:
-        return "anthropic" if self.anthropic_api_key or not self.openai_api_key else "openai"
+        return (
+            "anthropic"
+            if self.anthropic_api_key or not self.openai_api_key
+            else "openai"
+        )
 
     @property
     def resolved_agent_model(self) -> str:

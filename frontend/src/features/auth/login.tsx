@@ -55,8 +55,8 @@ export default function LoginPage() {
           </div>
           <h1 className="text-xl font-semibold tracking-tight">Atlas</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            YouGotAGift data intelligence. Ask about revenue, orders, funnels — every number
-            carries provenance.
+            YouGotAGift data intelligence. Ask about revenue, orders, funnels — every number carries
+            provenance.
           </p>
         </div>
 

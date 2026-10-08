@@ -46,7 +46,12 @@ export function useChatTurn(sessionId: string | null, ensureSession?: () => Prom
         } catch {
           setDraft(
             (d) =>
-              d && { ...d, notice: 'Could not start a chat. Please try again.', toolStatus: null, phase: null },
+              d && {
+                ...d,
+                notice: 'Could not start a chat. Please try again.',
+                toolStatus: null,
+                phase: null,
+              },
           );
           setIsStreaming(false);
           return;
@@ -99,7 +104,13 @@ export function useChatTurn(sessionId: string | null, ensureSession?: () => Prom
       } catch (e) {
         if ((e as DOMException)?.name !== 'AbortError') {
           setDraft(
-            (d) => d && { ...d, notice: 'Connection lost. Please try again.', toolStatus: null, phase: null },
+            (d) =>
+              d && {
+                ...d,
+                notice: 'Connection lost. Please try again.',
+                toolStatus: null,
+                phase: null,
+              },
           );
         }
       } finally {
