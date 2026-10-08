@@ -19,7 +19,7 @@ import {
   useDeleteChatSession,
 } from '@/api/hooks/use-chat-sessions';
 import type { ChatSession } from '@/api/chat';
-import { ChatPanel } from './chat-panel';
+import { ChatPanel } from './components/chat-panel';
 
 export default function ChatPage() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
