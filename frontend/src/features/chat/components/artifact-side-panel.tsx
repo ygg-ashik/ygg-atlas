@@ -44,7 +44,8 @@ export function ArtifactSidePanel({ artifact, onClose }: ArtifactSidePanelProps)
             animate={{ width: WIDTH, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={transition}
-            className="relative shrink-0 overflow-hidden py-2.5 pr-2.5"
+            // z-20: full height beside the conversation, above the page toolbar (reference Mode ①).
+            className="relative z-20 shrink-0 overflow-hidden py-2.5 pr-2.5"
           >
             <div className="h-full w-[min(44vw,540px)] min-w-[320px]">
               <ArtifactPanel artifact={artifact} onClose={onClose} />
