@@ -8,6 +8,7 @@ from sqlmodel import SQLModel
 
 import app.access.models  # registers the access tables for create_all
 import app.identity.models  # noqa: F401  # registers the users table for create_all
+from app.access.cache import shared_cache
 from app.atlas.registry import reset_registry
 from app.config import get_settings
 from app.database import get_engine, get_session_factory
@@ -107,6 +108,7 @@ async def seed_demo(conn, days: int = 10) -> None:
 @pytest_asyncio.fixture
 async def db():
     """Fresh app schema + seeded demo data on the shared test database."""
+    shared_cache().clear()
     reset_plugins()
     reset_registry()
     engine = get_engine()
