@@ -81,6 +81,7 @@ export default {
         },
         shimmer: { from: { backgroundPosition: '120% 0' }, to: { backgroundPosition: '-80% 0' } },
         'caret-pulse': { '50%': { transform: 'scale(.6)', opacity: '.5' } },
+        grow: { from: { transform: 'scaleX(0)' }, to: { transform: 'scaleX(1)' } },
       },
       animation: {
         'materialize-in': 'materialize-in 320ms cubic-bezier(.22,1,.36,1) both',
