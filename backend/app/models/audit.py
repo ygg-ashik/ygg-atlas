@@ -17,7 +17,7 @@ class AtlasAuditLog(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_uid: str = Field(index=True)
     session_id: UUID | None = Field(default=None, index=True)
-    surface: str = Field(default="chat")  # 'chat' | 'mcp'
+    surface: str = Field(default="chat")  # 'chat' | 'mcp' | 'api'
     tool: str
     arguments: dict | None = Field(default=None, sa_column=Column(JSON))
     success: bool = True

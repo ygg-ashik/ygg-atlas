@@ -118,17 +118,17 @@ venv = ".venv"
 typeCheckingMode = "standard"
 reportMissingTypeStubs = false
 # Ratchet: new self-contained modules are added here and checked in strict mode.
-strict = []
+strict = ["app/insights"]
 
 [tool.importlinter]
 root_package = "app"
 
 [[tool.importlinter.contracts]]
-name = "Backend layers: main > api|mcp > agent > atlas > sources"
+name = "Backend layers: main > api|mcp|insights > agent > atlas > sources"
 type = "layers"
 layers = [
     "app.main",
-    "app.api | app.mcp",
+    "app.api | app.mcp | app.insights",
     "app.agent",
     "app.atlas",
     "app.sources",
@@ -139,7 +139,7 @@ name = "Source plugins are leaves: no atlas DB, no HTTP, no higher layers"
 type = "forbidden"
 source_modules = ["app.sources"]
 forbidden_modules = [
-    "app.main", "app.api", "app.mcp", "app.agent", "app.atlas",
+    "app.main", "app.api", "app.mcp", "app.insights", "app.agent", "app.atlas",
     "app.models", "app.database", "app.middleware",
 ]
 
@@ -153,7 +153,8 @@ name = "Platform modules never depend on features"
 type = "forbidden"
 source_modules = ["app.config", "app.database", "app.models", "app.middleware"]
 forbidden_modules = [
-    "app.main", "app.api", "app.mcp", "app.agent", "app.atlas", "app.sources",
+    "app.main", "app.api", "app.mcp", "app.insights", "app.agent", "app.atlas",
+    "app.sources",
 ]
 
 [[tool.importlinter.contracts]]
