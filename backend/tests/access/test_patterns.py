@@ -21,6 +21,7 @@ from app.access.patterns import InvalidPatternError, matches, validate_pattern
         ("deepsales/*", "demo/order/revenue", False),
         ("demo/order", "demo/order", True),
         ("demo/order", "demo/order/revenue", False),
+        ("*", "", False),
     ],
 )
 def test_matches(pattern: str, path: str, expected: bool) -> None:

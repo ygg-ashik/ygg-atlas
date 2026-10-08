@@ -46,6 +46,8 @@ def matches(pattern: str, path: str) -> bool:
     Both arguments must already be well formed: run `validate_pattern` on a
     pattern before storing it; resource paths always come from the registry.
     """
+    if not path:
+        return False
     want = pattern.split("/")
     have = path.split("/")
     if want[-1] == "*":
