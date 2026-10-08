@@ -10,9 +10,9 @@ from app.access.patterns import InvalidPatternError, matches, validate_pattern
         ("*", "demo/order", True),
         ("demo/*", "demo/order/revenue", True),
         ("demo/*", "demo/order", True),
-        ("demo/*", "demo", False),
+        ("demo/*", "demo", True),
         ("demo/order/*", "demo/order/revenue", True),
-        ("demo/order/*", "demo/order", False),
+        ("demo/order/*", "demo/order", True),
         ("demo/order/*", "demo/checkout/checkout_funnel", False),
         ("demo/order/revenue", "demo/order/revenue", True),
         ("demo/order/revenue", "demo/order/aov", False),
@@ -36,8 +36,23 @@ def test_valid_patterns(pattern: str) -> None:
 
 @pytest.mark.parametrize(
     "pattern",
-    ["", "demo//x", "Demo/*", "demo/order/revenue/x", "demo/*x", "demo/a b", "../x"],
+    [
+        "",
+        "demo//x",
+        "Demo/*",
+        "demo/order/revenue/x",
+        "demo/*x",
+        "demo/a b",
+        "../x",
+        "demo",
+        "demo/order",
+    ],
 )
 def test_invalid_patterns(pattern: str) -> None:
     with pytest.raises(InvalidPatternError):
         validate_pattern(pattern)
+
+
+def test_entity_pattern_error_suggests_trailing_star() -> None:
+    with pytest.raises(InvalidPatternError, match=r"demo/order/\*"):
+        validate_pattern("demo/order")
