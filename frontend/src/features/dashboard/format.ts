@@ -33,8 +33,10 @@ export function deltaTone(deltaPct: number | null, good: 'up' | 'down'): Tone {
   return rising === (good === 'up') ? 'positive' : 'negative';
 }
 
-/** Arrow + magnitude, so color is never the only signal. */
+/** Arrow + magnitude, so color is never the only signal. No change has no arrow
+ * (its tone is neutral, so there is no direction to signal). */
 export function deltaLabel(deltaPct: number | null): string {
   if (deltaPct === null) return '';
+  if (deltaPct === 0) return '0.0%';
   return `${deltaPct >= 0 ? '▲' : '▼'} ${Math.abs(deltaPct).toFixed(1)}%`;
 }

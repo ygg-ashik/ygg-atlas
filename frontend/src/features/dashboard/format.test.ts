@@ -28,4 +28,9 @@ describe('dashboard format', () => {
     expect(deltaLabel(-2.3)).toBe('▼ 2.3%');
     expect(deltaLabel(null)).toBe('');
   });
+
+  it('no change has no arrow', () => {
+    expect(deltaLabel(0)).toBe('0.0%');
+    expect(deltaLabel(-0)).toBe('0.0%');
+  });
 });
