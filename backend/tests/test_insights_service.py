@@ -1,11 +1,13 @@
 from datetime import UTC, date, datetime
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.atlas import AtlasRegistry, AtlasTools
+from app.atlas import AtlasCaller, AtlasRegistry, AtlasTools
 from app.atlas.models import MetricDef
 from app.insights.service import InsightsService
+from tests.fakes import StaticPolicy, make_tools
 
 PROV = {
     "tool": "query_metric",
@@ -25,7 +27,11 @@ class ScriptedTools(AtlasTools):
     ) -> None:
         registry = AtlasRegistry(plugins={})
         registry.metrics = {m.id: m for m in metrics}
-        super().__init__(user_uid="u", surface="api", registry=registry)
+        super().__init__(
+            AtlasCaller(user_id=uuid4(), auth_method="test", surface="api"),
+            StaticPolicy(),
+            registry=registry,
+        )
         self.results = results
         self.calls: list[tuple[str, dict[str, Any]]] = []
 
@@ -41,7 +47,7 @@ def _metric(id_: str, scope: str = "range", breakdown: str | None = None) -> Met
 
 
 async def test_overview_over_seeded_demo_data(db: AsyncSession) -> None:
-    service = InsightsService(AtlasTools(user_uid="u", surface="api"))
+    service = InsightsService(make_tools(surface="api"))
     overview = await service.overview(7, datetime.now(UTC).date())
     revenue = next(k for k in overview.kpis if k.metric_id == "revenue")
     assert revenue.value == 10500.0
@@ -51,7 +57,7 @@ async def test_overview_over_seeded_demo_data(db: AsyncSession) -> None:
 
 
 async def test_catalog_validates_list_metrics(db: AsyncSession) -> None:
-    catalog = await InsightsService(AtlasTools(user_uid="u")).catalog()
+    catalog = await InsightsService(make_tools(surface="api")).catalog()
     assert any(s.id == "demo" for s in catalog.sources)
 
 

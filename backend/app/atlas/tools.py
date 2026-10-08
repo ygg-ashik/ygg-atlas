@@ -5,21 +5,35 @@ Every execution is audited. Every numeric result carries provenance.
 """
 
 import time
+from collections.abc import Collection
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from datetime import time as dt_time
 from typing import Any
-from uuid import UUID
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.atlas.models import EntityDef, MetricDef
+from app.atlas.models import EntityDef, FunnelDef, MetricDef
+from app.atlas.policy import (
+    AtlasCaller,
+    ResourcePolicy,
+    entity_resource,
+    funnel_resource,
+    metric_resource,
+)
 from app.atlas.provenance import build_provenance
 from app.atlas.registry import AtlasRegistry, get_registry
 from app.models.audit import AtlasAuditLog
 from app.sources import ConnectorError, ConnectorNotConfiguredError, get_connector
 
 logger = structlog.get_logger()
+
+SEARCH_LIMIT = 10
+SEARCH_POOL = 50  # search wider, then drop what the caller may not see
+ALLOW = "allow"
+DENY = "deny"
+MAX_DENY_REASON = 200
 
 DEFAULT_BREAKDOWN_LIMIT = 10
 MAX_BREAKDOWN_LIMIT = 50
@@ -30,6 +44,24 @@ class AtlasToolError(Exception):
 
     The agent should relay/explain it, not retry blindly.
     """
+
+
+class AtlasAccessDeniedError(AtlasToolError):
+    """The caller's policy denies a governed resource (spec §6, point 2)."""
+
+    def __init__(self, label: str, reason: str) -> None:
+        super().__init__(
+            f"{label} isn't available to you. Ask an atlas admin if you need it."
+        )
+        self.reason = reason
+
+
+@dataclass(frozen=True, slots=True)
+class _Outcome:
+    success: bool = True
+    error: str | None = None
+    decision: str = ALLOW
+    deny_reason: str | None = None
 
 
 def _parse_date(value: str, name: str) -> date:
@@ -54,25 +86,38 @@ def _range_params(start: str, end: str) -> dict[str, Any]:
 
 
 class AtlasTools:
-    """Tool executor bound to a user (for audit). db_session is the ygg-atlas DB."""
+    """Tool executor for one caller: filtered by their policy, audited per call."""
 
     def __init__(
         self,
-        user_uid: str,
-        surface: str = "chat",
-        session_id: UUID | None = None,
+        caller: AtlasCaller,
+        policy: ResourcePolicy,
         db: AsyncSession | None = None,
         registry: AtlasRegistry | None = None,
     ) -> None:
-        self.user_uid = user_uid
-        self.surface = surface
-        self.session_id = session_id
+        self.caller = caller
+        self._policy = policy
         self.db = db
         self._registry = registry
 
     @property
     def registry(self) -> AtlasRegistry:
         return self._registry if self._registry is not None else get_registry()
+
+    def visible_metrics(self) -> dict[str, MetricDef]:
+        """Metrics this caller may see (spec §6, enforcement point 1)."""
+        return {
+            mid: m
+            for mid, m in self.registry.metrics.items()
+            if self._policy.allows(metric_resource(m))
+        }
+
+    def visible_funnels(self) -> dict[str, FunnelDef]:
+        return {
+            fid: f
+            for fid, f in self.registry.funnels.items()
+            if self._policy.allows(funnel_resource(f))
+        }
 
     async def execute(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Dispatch + audit. Returns a JSON-safe dict; errors become {'error': ...}."""
@@ -89,48 +134,64 @@ class AtlasTools:
             return {"error": f"Unknown tool '{tool}'"}
 
         started = time.monotonic()
-        success, error = True, None
+        outcome = _Outcome()
         try:
             result = await handlers[tool](**arguments)
+        except AtlasAccessDeniedError as exc:
+            outcome = _Outcome(False, str(exc), DENY, exc.reason[:MAX_DENY_REASON])
+            result = {"error": str(exc)}
         except (AtlasToolError, ConnectorNotConfiguredError, ConnectorError) as exc:
-            success, error = False, str(exc)
+            outcome = _Outcome(False, str(exc))
             result = {"error": str(exc)}
         except TypeError as exc:
-            success, error = False, f"Invalid arguments: {exc}"
+            outcome = _Outcome(False, f"Invalid arguments: {exc}")
             result = {"error": f"Invalid arguments: {exc}"}
         except Exception as exc:  # unexpected — log loudly, keep the answer honest
             logger.exception("atlas.tool_failed", tool=tool)
-            success, error = False, str(exc)
+            outcome = _Outcome(False, str(exc))
             result = {"error": f"Internal error executing {tool}"}
 
-        await self._audit(
-            tool, arguments, success, error, int((time.monotonic() - started) * 1000)
-        )
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        await self._audit(tool, arguments, outcome, elapsed_ms)
         return result
 
     async def _audit(
         self,
         tool: str,
         arguments: dict[str, Any],
-        success: bool,
-        error: str | None,
+        outcome: _Outcome,
         duration_ms: int,
     ) -> None:
         if self.db is None:
             return
         self.db.add(
             AtlasAuditLog(
-                user_uid=self.user_uid,
-                session_id=self.session_id,
-                surface=self.surface,
+                user_uid=str(self.caller.user_id),
+                user_id=self.caller.user_id,
+                auth_method=self.caller.auth_method,
+                session_id=self.caller.session_id,
+                surface=self.caller.surface,
                 tool=tool,
                 arguments=arguments,
-                success=success,
-                error=error,
+                success=outcome.success,
+                error=outcome.error,
                 duration_ms=duration_ms,
+                decision=outcome.decision,
+                deny_reason=outcome.deny_reason,
             )
         )
         await self.db.commit()
+
+    def _authorize(self, resource: str, label: str) -> None:
+        if not self._policy.allows(resource):
+            raise AtlasAccessDeniedError(label, self._policy.deny_reason(resource))
+
+    def _entity_visible(self, entity: EntityDef) -> bool:
+        return (
+            self._policy.allows(entity_resource(entity))
+            or any(self._policy.allows(metric_resource(m)) for m in entity.metrics)
+            or any(self._policy.allows(funnel_resource(f)) for f in entity.funnels)
+        )
 
     # ---- helpers ---------------------------------------------------------
 
@@ -142,6 +203,7 @@ class AtlasTools:
                 "search_atlas; if nothing fits, ask the user a clarifying question "
                 "instead of guessing."
             )
+        self._authorize(metric_resource(metric), metric.name)
         return metric
 
     def _metric_params(
@@ -196,7 +258,7 @@ class AtlasTools:
                 "metrics": [],
                 "funnels": [],
             }
-        for m in self.registry.metrics.values():
+        for m in self.visible_metrics().values():
             sources[m.source]["metrics"].append(
                 {
                     "id": m.id,
@@ -208,7 +270,7 @@ class AtlasTools:
                     "has_breakdown": m.breakdown_query is not None,
                 }
             )
-        for f in self.registry.funnels.values():
+        for f in self.visible_funnels().values():
             sources[f.source]["funnels"].append(
                 {
                     "id": f.id,
@@ -277,6 +339,11 @@ class AtlasTools:
             raise AtlasToolError(
                 f"No entity '{entity_id}' in the atlas. Use search_atlas."
             )
+        if not self._entity_visible(entity):
+            raise AtlasAccessDeniedError(
+                entity.name, self._policy.deny_reason(entity_resource(entity))
+            )
+        metrics, funnels = self.visible_metrics(), self.visible_funnels()
         return {
             "id": entity.id,
             "name": entity.name,
@@ -284,8 +351,8 @@ class AtlasTools:
             "source": entity.source,
             "fields": entity.fields,
             "pii_fields": entity.pii_fields,
-            "metrics": [m.id for m in entity.metrics],
-            "funnels": [f.id for f in entity.funnels],
+            "metrics": [m.id for m in entity.metrics if m.id in metrics],
+            "funnels": [f.id for f in entity.funnels if f.id in funnels],
         }
 
     async def funnel_analyze(
@@ -296,6 +363,7 @@ class AtlasTools:
             raise AtlasToolError(
                 f"No funnel '{funnel_id}' in the atlas. Use list_metrics."
             )
+        self._authorize(funnel_resource(funnel), funnel.name)
         params = _range_params(start_date, end_date)
         connector = get_connector(funnel.source)
 
@@ -385,7 +453,19 @@ class AtlasTools:
         }
 
     async def search_atlas(self, query: str) -> dict[str, Any]:
-        results = self.registry.search(query)
+        entities = {
+            e.id for e in self.registry.entities.values() if self._entity_visible(e)
+        }
+        visible: dict[str, Collection[str]] = {
+            "metric": self.visible_metrics().keys(),
+            "funnel": self.visible_funnels().keys(),
+            "entity": entities,
+        }
+        results = [
+            r
+            for r in self.registry.search(query, limit=SEARCH_POOL)
+            if r["id"] in visible.get(r["kind"], ())
+        ][:SEARCH_LIMIT]
         return {
             "results": results,
             "hint": (

@@ -3,9 +3,9 @@
 import pytest
 
 from app.atlas.registry import AtlasRegistry
-from app.atlas.tools import AtlasTools
 from app.sources import get_plugins, reset_plugins
 from app.sources.deepsales.manifest import SOURCE, DeepSalesSettings
+from tests.fakes import make_tools
 
 
 def test_definitions_load_and_pass_table_lint():
@@ -46,9 +46,7 @@ def test_no_definition_selects_pii_contact_fields():
     reason="DEEPSALES_DB_URL_LIVE not configured",
 )
 async def test_live_smoke_total_accounts():
-    tools = AtlasTools(
-        user_uid="test", registry=AtlasRegistry(plugins={"deepsales": SOURCE})
-    )
+    tools = make_tools(registry=AtlasRegistry(plugins={"deepsales": SOURCE}))
     # monkeypatch-free: AtlasTools resolves the connector via global plugins;
     # ensure discovery ran with the live env present.
     reset_plugins()
