@@ -6,6 +6,7 @@ that fails validation prevents startup — bad metrics never reach the agent.
 """
 
 import re
+from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -105,8 +106,17 @@ class AtlasRegistry:
                 f"{sorted(illegal)}"
             )
 
-    def search(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
-        """Keyword search over entities, metrics, and funnels."""
+    def search(
+        self,
+        query: str,
+        limit: int = 10,
+        visible: Callable[[str, str], bool] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Keyword search over entities, metrics, and funnels.
+
+        `visible(kind, id)` drops what the caller may not see before ranking
+        and truncation, so hidden matches never crowd out visible ones.
+        """
         terms = [t for t in query.lower().split() if t]
         results: list[tuple[int, dict[str, Any]]] = []
 
@@ -162,6 +172,8 @@ class AtlasRegistry:
                     )
                 )
 
+        if visible is not None:
+            results = [r for r in results if visible(r[1]["kind"], r[1]["id"])]
         results.sort(key=lambda r: -r[0])
         return [r for _, r in results[:limit]]
 

@@ -42,6 +42,21 @@ def test_search_includes_source(db):
     assert any(r["id"] == "revenue" and r["source"] == "demo" for r in results)
 
 
+def test_search_applies_the_visibility_predicate_before_the_limit(db):
+    registry = AtlasRegistry()
+    everything = registry.search("revenue customers orders", limit=50)
+    hidden = {r["id"] for r in everything[:3]}
+
+    results = registry.search(
+        "revenue customers orders",
+        limit=3,
+        visible=lambda kind, id_: id_ not in hidden,
+    )
+
+    assert len(results) == min(3, len(everything) - len(hidden))
+    assert not hidden & {r["id"] for r in results}
+
+
 def test_search_no_match_returns_empty(db):
     assert AtlasRegistry().search("xyzzy nonexistent") == []
 
