@@ -155,4 +155,67 @@ describe('useChatTurn', () => {
     act(() => stream.finish());
     await waitFor(() => expect(result.current.isStreaming).toBe(false));
   });
+
+  it('records steps from tool_status and completes them on tokens', async () => {
+    const stream = deferredStream();
+    const { result } = renderHook(() => useChatTurn('sess-1'), { wrapper });
+    act(() => void result.current.send('q'));
+    await waitFor(() => expect(result.current.isStreaming).toBe(true));
+    expect(typeof result.current.draft?.startedAt).toBe('number');
+
+    act(() => stream.emit({ type: 'tool_status', tool: 'search_atlas' }));
+    act(() => stream.emit({ type: 'tool_status', tool: 'query_metric' }));
+    expect(result.current.draft?.steps).toEqual([
+      { tool: 'search_atlas', status: 'done' },
+      { tool: 'query_metric', status: 'running' },
+    ]);
+    act(() => stream.emit({ type: 'token', content: 'Revenue' }));
+    expect(result.current.draft?.steps.every((s) => s.status === 'done')).toBe(true);
+    act(() => stream.finish());
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+  });
+
+  it('keeps lastTurn (steps + duration) for the persisted message after done', async () => {
+    const stream = deferredStream();
+    const { result } = renderHook(() => useChatTurn('sess-1'), { wrapper });
+    act(() => void result.current.send('q'));
+    await waitFor(() => expect(result.current.isStreaming).toBe(true));
+    act(() => stream.emit({ type: 'tool_status', tool: 'query_metric' }));
+    act(() => stream.emit({ type: 'done', content: 'ok', provenance: [], message_id: 'm-9' }));
+    act(() => stream.finish());
+    await waitFor(() => expect(result.current.draft).toBeNull());
+    expect(result.current.lastTurn).toMatchObject({
+      messageId: 'm-9',
+      steps: [{ tool: 'query_metric', status: 'done' }],
+    });
+    expect(result.current.lastTurn?.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('keeps an error notice with retry text after the draft clears', async () => {
+    const stream = deferredStream();
+    const { result } = renderHook(() => useChatTurn('sess-1'), { wrapper });
+    act(() => void result.current.send('why did revenue drop?'));
+    await waitFor(() => expect(result.current.isStreaming).toBe(true));
+    act(() => stream.emit({ type: 'error', message: 'Something went wrong.' }));
+    act(() => stream.finish());
+    await waitFor(() => expect(result.current.draft).toBeNull());
+    expect(result.current.notice).toEqual({
+      kind: 'error',
+      message: 'Something went wrong.',
+      retryText: 'why did revenue drop?',
+    });
+  });
+
+  it('clears the notice on the next send', async () => {
+    const stream = deferredStream();
+    const { result } = renderHook(() => useChatTurn('sess-1'), { wrapper });
+    act(() => void result.current.send('a'));
+    await waitFor(() => expect(result.current.isStreaming).toBe(true));
+    act(() => stream.emit({ type: 'blocked', reason: 'Daily limit reached.' }));
+    act(() => stream.finish());
+    await waitFor(() => expect(result.current.notice?.kind).toBe('blocked'));
+    deferredStream();
+    act(() => void result.current.send('b'));
+    expect(result.current.notice).toBeNull();
+  });
 });
