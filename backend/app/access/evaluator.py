@@ -4,6 +4,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime
 from uuid import UUID
 
+import structlog
+
 from app.access.catalog import CAPABILITIES, role_capabilities
 from app.access.facts import (
     EFFECT_ALLOW,
@@ -11,21 +13,27 @@ from app.access.facts import (
     KIND_CAPABILITY,
     KIND_RESOURCE,
     STANDING_MANAGER,
+    STATUS_ACTIVE,
     SUBJECT_GROUP,
     SUBJECT_USER,
     GrantFacts,
     GroupFacts,
     PolicyInputs,
 )
+from app.access.patterns import InvalidPatternError, validate_pattern
 from app.access.policy import Policy, Rule
-from app.identity import UserStatus
 
 type Groups = Mapping[UUID, GroupFacts]
 
+logger = structlog.get_logger()
+
 
 def evaluate(inputs: PolicyInputs, now: datetime) -> Policy:
+    if now.tzinfo is None:
+        msg = "evaluate() needs an aware datetime"
+        raise ValueError(msg)
     user = inputs.user
-    if user.status != UserStatus.ACTIVE:
+    if user.status != STATUS_ACTIVE:
         return Policy.deny_all(user.id, user.tenant, inputs.policy_version, user.role)
     groups = {gid: g for gid, g in inputs.groups.items() if g.tenant == user.tenant}
     member_of = frozenset(gid for gid in inputs.memberships if gid in groups)
@@ -99,8 +107,10 @@ def _capabilities(role: str, grants: Sequence[GrantFacts]) -> frozenset[str]:
     return frozenset((role_capabilities(role) | allowed) - denied)
 
 
-def _rule_key(rule: Rule) -> tuple[str, str]:
-    return rule.pattern, str(rule.grant_id)
+def _rule_key(rule: Rule) -> tuple[int, str, str]:
+    """Most specific first: more segments, then pattern, then grant id."""
+    segments = len(rule.pattern.split("/"))
+    return -segments, rule.pattern, str(rule.grant_id)
 
 
 def _resource_rules(
@@ -119,6 +129,21 @@ def _resource_rules(
             if g.subject_type == SUBJECT_USER
             else f"group:{groups[g.subject_id].name}"
         )
+        try:
+            validate_pattern(g.target)
+        except InvalidPatternError:
+            if g.effect == EFFECT_DENY:
+                logger.warning(
+                    "access.invalid_deny_pattern", grant_id=str(g.id), target=g.target
+                )
+                deny.append(Rule("*", g.id, origin))
+            else:
+                logger.warning(
+                    "access.invalid_allow_pattern",
+                    grant_id=str(g.id),
+                    target=g.target,
+                )
+            continue
         (deny if g.effect == EFFECT_DENY else allow).append(
             Rule(g.target, g.id, origin)
         )

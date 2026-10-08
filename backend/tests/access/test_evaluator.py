@@ -4,6 +4,8 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
+import pytest
+
 from app.access.catalog import ADMIN_GROUPS, CHAT_USE, MCP_USE
 from app.access.evaluator import evaluate
 from app.access.facts import GrantFacts, GroupFacts, PolicyInputs, UserFacts
@@ -184,3 +186,150 @@ def test_admin_groups_capability_manages_any_group() -> None:
     assert admin.has(ADMIN_GROUPS)
     assert admin.can_manage_members(CHILD)
     assert not admin.allows(REVENUE)  # decision D2: no data bypass for admins
+
+
+# --- code review follow-ups -------------------------------------------------
+
+
+def test_invalid_stored_deny_pattern_denies_everything() -> None:
+    bad_deny = grant(USER, "demo/order", effect="deny")  # 2-segment literal: invalid
+    allow_all = grant(USER, "*")
+    p = policy(grants=[allow_all, bad_deny])
+    assert not p.allows(REVENUE)
+    assert p.deny_reason(REVENUE) == f"denied by grant {bad_deny.id} (user)"
+
+
+def test_invalid_stored_allow_pattern_grants_nothing() -> None:
+    bad_allow = grant(USER, "Demo/*")  # uppercase segment: invalid
+    p = policy(grants=[bad_allow])
+    assert not p.allows(REVENUE)
+    assert not p.has_data_access
+
+
+def test_user_resource_deny_beats_group_allow() -> None:
+    p = policy(
+        member_of={ROOT: "member"},
+        grants=[grant(ROOT, "demo/*"), grant(USER, REVENUE, effect="deny")],
+    )
+    assert not p.allows(REVENUE)
+
+
+def test_membership_in_unknown_group_grants_nothing() -> None:
+    unknown = uuid4()
+    p = policy(member_of={unknown: "manager"}, grants=[grant(unknown)])
+    assert not p.allows(REVENUE)
+    assert not p.can_manage_members(unknown)
+    assert p.group_ids == frozenset()
+
+
+def test_grant_on_other_tenant_parent_does_not_reach_child() -> None:
+    child_of_foreign_parent = GroupFacts(uuid4(), "sub", OTHER_TENANT, "ygg")
+    groups = {**GROUPS, child_of_foreign_parent.id: child_of_foreign_parent}
+    p = policy(
+        member_of={child_of_foreign_parent.id: "member"},
+        grants=[grant(OTHER_TENANT)],
+        groups=groups,
+    )
+    assert not p.allows(REVENUE)
+
+
+def test_expiring_deny_bounds_valid_until_then_expires() -> None:
+    soon = NOW + timedelta(minutes=5)
+    inputs = PolicyInputs(
+        user=UserFacts(USER, "viewer", "active", "ygg"),
+        groups=GROUPS,
+        memberships={},
+        grants=[
+            grant(USER, "demo/*"),
+            grant(USER, "demo/*", effect="deny", expires_at=soon),
+        ],
+        policy_version=7,
+    )
+    before = evaluate(inputs, NOW)
+    assert not before.allows(REVENUE)
+    assert before.valid_until == soon
+    after = evaluate(inputs, soon + timedelta(seconds=1))
+    assert after.allows(REVENUE)
+
+
+def test_expiry_at_exact_now_is_expired() -> None:
+    p = policy(grants=[grant(USER, expires_at=NOW)])
+    assert not p.allows(REVENUE)
+
+
+def test_user_capability_deny_wins_over_allow() -> None:
+    p = policy(
+        grants=[
+            grant(USER, MCP_USE, kind="capability", effect="deny"),
+            grant(USER, MCP_USE, kind="capability"),
+        ]
+    )
+    assert not p.has(MCP_USE)
+
+
+def test_admin_capability_deny_removes_manage_rights() -> None:
+    p = policy(
+        role="admin",
+        grants=[grant(USER, ADMIN_GROUPS, kind="capability", effect="deny")],
+    )
+    assert not p.has(ADMIN_GROUPS)
+    assert not p.can_manage_members(CHILD)
+
+
+def test_evaluation_is_deterministic_regardless_of_grant_order() -> None:
+    grants = [grant(USER, "demo/*"), grant(USER, "demo/order/*", effect="deny")]
+    inputs = PolicyInputs(
+        user=UserFacts(USER, "viewer", "active", "ygg"),
+        groups=GROUPS,
+        memberships={},
+        grants=grants,
+        policy_version=7,
+    )
+    reversed_inputs = PolicyInputs(
+        user=UserFacts(USER, "viewer", "active", "ygg"),
+        groups=GROUPS,
+        memberships={},
+        grants=list(reversed(grants)),
+        policy_version=7,
+    )
+    assert evaluate(inputs, NOW) == evaluate(reversed_inputs, NOW)
+
+
+def test_manager_over_a_cycle_terminates() -> None:
+    a, b = uuid4(), uuid4()
+    cyclic = {a: GroupFacts(a, "a", b, "ygg"), b: GroupFacts(b, "b", a, "ygg")}
+    p = policy(member_of={a: "manager"}, groups=cyclic)
+    assert p.can_manage_members(a)
+    assert p.can_manage_members(b)
+
+
+def test_manager_standing_in_other_tenant_group_manages_nothing() -> None:
+    p = policy(member_of={OTHER_TENANT: "manager"})
+    assert not p.can_manage_members(OTHER_TENANT)
+
+
+def test_unknown_status_gives_deny_all() -> None:
+    p = policy(status="pending")
+    assert not p.active
+    assert not p.has(CHAT_USE)
+    assert not p.allows(REVENUE)
+
+
+def test_evaluate_rejects_naive_datetime() -> None:
+    inputs = PolicyInputs(
+        user=UserFacts(USER, "viewer", "active", "ygg"),
+        groups=GROUPS,
+        memberships={},
+        grants=[],
+        policy_version=7,
+    )
+    naive = datetime(2026, 10, 9, 12, 0)  # noqa: DTZ001  # deliberately naive
+    with pytest.raises(ValueError, match="aware datetime"):
+        evaluate(inputs, naive)
+
+
+def test_more_specific_allow_rule_is_reported() -> None:
+    p = policy(grants=[grant(USER, "*"), grant(USER, "demo/order/*")])
+    decision = p.decide(REVENUE)
+    assert decision.rule is not None
+    assert decision.rule.pattern == "demo/order/*"

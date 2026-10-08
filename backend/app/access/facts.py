@@ -19,6 +19,7 @@ KIND_CLEARANCE: Final = "clearance"  # phase 3; ignored until then (decision D1)
 STANDING_MEMBER: Final = "member"
 STANDING_MANAGER: Final = "manager"
 DEFAULT_TENANT: Final = "ygg"
+STATUS_ACTIVE: Final = "active"
 
 
 @dataclass(frozen=True, slots=True)

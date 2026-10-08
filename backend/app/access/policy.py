@@ -82,9 +82,12 @@ class Policy:
 
     @property
     def has_data_access(self) -> bool:
+        """True when at least one allow rule exists (a deny may still cover it);
+        use allows() for decisions."""
         return self.active and bool(self.allow_rules)
 
     def can_manage_members(self, group_id: UUID) -> bool:
+        """Caller must ensure the group is in this policy's tenant."""
         if self.has(ADMIN_GROUPS):
             return True
         return self.active and group_id in self.managed_group_ids
