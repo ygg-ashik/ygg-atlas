@@ -84,3 +84,10 @@ class GrantCreate(BaseModel):
     target: str = Field(min_length=1, max_length=200)
     reason: str = Field(default="", max_length=500)
     expires_at: AwareDatetime | None = None
+
+
+class UserUpdate(BaseModel):
+    """Only the fields sent are changed; at least one must be present."""
+
+    role: str | None = None
+    status: Literal["active", "disabled"] | None = None

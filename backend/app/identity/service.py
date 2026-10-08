@@ -5,7 +5,6 @@ Data access goes through UserRepository; nothing here knows about HTTP.
 
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +14,7 @@ from app.identity.errors import ForbiddenError, UnauthenticatedError
 from app.identity.models import User, UserKind, UserStatus
 from app.identity.principal import AuthMethod, Principal
 from app.identity.repository import UserRepository
-from app.identity.tokens import TokenVerifier, VerifiedToken
+from app.identity.tokens import VerifiedToken
 
 logger = structlog.get_logger()
 
@@ -80,19 +79,6 @@ class IdentityService:
                 User(email=email, display_name="Dev User")
             )
         return to_principal(user, "dev")
-
-    async def disable_user(self, user_id: UUID, verifier: TokenVerifier) -> User:
-        """Block the user on the next request and end their Firebase sessions."""
-        user = await self._users.get(user_id)
-        if user is None:
-            msg = f"No user {user_id}"
-            raise LookupError(msg)
-        user.status = UserStatus.DISABLED
-        user = await self._users.save(user)
-        if user.firebase_uid:
-            await verifier.revoke(user.firebase_uid)
-        logger.info("identity.user_disabled", user_id=str(user.id))
-        return user
 
     def _check_sign_in(self, token: VerifiedToken) -> None:
         domain = self._settings.allowed_email_domain.lower()

@@ -21,7 +21,14 @@ import structlog
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import SQLModel
 
-from app.access.catalog import ADMIN_GROUPS, ADMIN_USERS, CAPABILITIES
+from app.access.catalog import (
+    ADMIN_AUDIT,
+    ADMIN_GROUPS,
+    ADMIN_USERS,
+    CAPABILITIES,
+    ROLES,
+    role_capabilities,
+)
 from app.access.errors import (
     AccessDeniedError,
     ConflictError,
@@ -43,9 +50,15 @@ from app.access.models import Grant, Group, GroupMember, RbacChange
 from app.access.patterns import InvalidPatternError, validate_pattern
 from app.access.policy import Policy
 from app.access.repository import AccessRepository
-from app.access.schemas import GrantCreate, GroupCreate, GroupUpdate, MemberOut
+from app.access.schemas import (
+    GrantCreate,
+    GroupCreate,
+    GroupUpdate,
+    MemberOut,
+    UserUpdate,
+)
 from app.access.service import AccessService
-from app.identity import TokenVerifier, User
+from app.identity import TokenVerifier, User, UserStatus
 
 logger = structlog.get_logger()
 
@@ -159,6 +172,55 @@ def _capability_target(payload: GrantCreate) -> str:
         msg = f"Unknown capability '{payload.target}'."
         raise InvalidChangeError(msg)
     return payload.target
+
+
+def _not_self(actor: Actor, user: User) -> None:
+    if actor.user_id is not None and actor.user_id == user.id:
+        msg = "You can't change your own role or status. Ask another admin."
+        raise ConflictError(msg)
+
+
+def _check_role_escalation(actor: Actor, role: str) -> None:
+    """D10: a role can only be assigned if its capabilities are within the
+    actor's own; the CLI actor (policy None) is unaffected."""
+    if actor.policy is None:
+        return
+    if not role_capabilities(role) <= actor.policy.capabilities:
+        msg = "You can't assign a role with more access than your own."
+        raise AccessDeniedError(msg)
+
+
+def _update_action(before: dict[str, Any]) -> str:
+    keys = set(before)
+    if keys == {"role"}:
+        return "user.role"
+    if keys == {"status"}:
+        return "user.status"
+    return "user.update"
+
+
+def _apply_user_update(
+    actor: Actor, user: User, payload: UserUpdate
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Stage role/status changes on `user`; return the (before, after) diff.
+
+    Empty dicts mean no-op: nothing in `payload` actually changed anything.
+    """
+    before: dict[str, Any] = {}
+    after: dict[str, Any] = {}
+    if payload.role is not None and payload.role != user.role:
+        if payload.role not in ROLES:
+            msg = f"Unknown role '{payload.role}'. Roles: {', '.join(ROLES)}."
+            raise InvalidChangeError(msg)
+        _check_role_escalation(actor, payload.role)
+        before["role"] = user.role
+        user.role = payload.role
+        after["role"] = payload.role
+    if payload.status is not None and payload.status != user.status:
+        before["status"] = user.status
+        user.status = payload.status
+        after["status"] = payload.status
+    return before, after
 
 
 class AccessAdmin:
@@ -390,6 +452,56 @@ class AccessAdmin:
             await self._commit(
                 _change(actor, "grant.revoke", ("grant", grant.id), before, None)
             )
+
+    # ---- users ----------------------------------------------------------
+
+    async def list_users(
+        self, actor: Actor, query: str = "", limit: int = 50
+    ) -> list[User]:
+        actor.require(ADMIN_USERS)
+        return await self._repo.list_users(actor.tenant, query.strip(), limit)
+
+    async def update_user(
+        self, actor: Actor, user_id: UUID, payload: UserUpdate
+    ) -> User:
+        actor.require(ADMIN_USERS)  # before any lookup: no probing for user ids
+        if payload.role is None and payload.status is None:
+            msg = "Nothing to change: send a role or a status."
+            raise InvalidChangeError(msg)
+        async with self._write():
+            await self._repo.lock_for_write()
+            user = await self._user(actor, user_id)
+            _not_self(actor, user)
+            before, after = _apply_user_update(actor, user, payload)
+            if not before:
+                await self._repo.commit()  # release the lock; nothing changed
+                return user
+            self._repo.add(user)
+            await self._commit(
+                _change(actor, _update_action(before), ("user", user.id), before, after)
+            )
+        if after.get("status") == UserStatus.DISABLED:
+            await self._end_firebase_sessions(user)
+        return user
+
+    async def effective_access(self, actor: Actor, user_id: UUID) -> Policy:
+        """The user's evaluated Policy, for the preview (spec §10)."""
+        actor.require(ADMIN_USERS)
+        user = await self._user(actor, user_id)
+        return await self._access.policy_for_user(user.id)
+
+    async def list_changes(self, actor: Actor, limit: int = 100) -> list[RbacChange]:
+        actor.require(ADMIN_AUDIT)
+        return await self._repo.list_changes(limit)
+
+    async def _end_firebase_sessions(self, user: User) -> None:
+        if self._verifier is None or not user.firebase_uid:
+            return
+        try:
+            await self._verifier.revoke(user.firebase_uid)
+        except Exception:
+            # Status is enforced on every request; revocation only ends sessions sooner.
+            logger.exception("access.revoke_failed", user_id=str(user.id))
 
     # ---- helpers ------------------------------------------------------------
 

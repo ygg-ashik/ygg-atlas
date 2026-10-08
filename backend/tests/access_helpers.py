@@ -23,6 +23,7 @@ async def make_user(
     role: str = "viewer",
     status: str = "active",
     kind: str = "human",
+    firebase_uid: str | None = None,
 ) -> User:
     """Get or create. AUTH_DISABLED may already have created this email
     (the dev user) before a test gets a chance to, so this upserts rather
@@ -32,11 +33,14 @@ async def make_user(
     ).scalar_one_or_none()
     existed = user is not None
     if user is None:
-        user = User(email=email, role=role, status=status, kind=kind)
+        user = User(
+            email=email, role=role, status=status, kind=kind, firebase_uid=firebase_uid
+        )
     else:
         user.role = role
         user.status = status
         user.kind = kind
+        user.firebase_uid = firebase_uid
     db.add(user)
     await db.commit()
     if existed:

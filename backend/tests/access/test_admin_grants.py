@@ -161,7 +161,7 @@ async def test_revoking_records_the_old_grant(db) -> None:
     await admin.revoke_grant(actor, grant_id)
 
     assert await admin.list_grants(actor, "group", group_id) == []
-    changes = await admin.list_changes(actor)  # type: ignore[attr-defined]  # arrives in Task 9
+    changes = await admin.list_changes(actor)
     assert changes[0].action == "grant.revoke"
     assert changes[0].before is not None
     assert changes[0].before["target"] == "demo/*"

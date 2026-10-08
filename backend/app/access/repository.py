@@ -24,7 +24,14 @@ from app.access.facts import (
     UserFacts,
     as_utc,
 )
-from app.access.models import Capability, Grant, Group, GroupMember, PolicyState
+from app.access.models import (
+    Capability,
+    Grant,
+    Group,
+    GroupMember,
+    PolicyState,
+    RbacChange,
+)
 from app.identity import User
 
 
@@ -265,6 +272,39 @@ class AccessRepository:
 
     async def user(self, user_id: UUID) -> User | None:
         return await self._db.get(User, user_id, populate_existing=True)
+
+    async def user_by_email(self, email: str) -> User | None:
+        stmt = (
+            select(User)
+            .where(col(User.email) == email.strip().lower())
+            .execution_options(populate_existing=True)
+        )
+        return (await self._db.execute(stmt)).scalar_one_or_none()
+
+    async def list_users(self, tenant: str, query: str, limit: int) -> list[User]:
+        stmt = select(User).where(col(User.tenant) == tenant)
+        if query:
+            stmt = stmt.where(
+                or_(
+                    col(User.email).icontains(query, autoescape=True),
+                    col(User.display_name).icontains(query, autoescape=True),
+                )
+            )
+        stmt = (
+            stmt.order_by(col(User.email))
+            .limit(limit)
+            .execution_options(populate_existing=True)
+        )
+        return list((await self._db.execute(stmt)).scalars().all())
+
+    async def list_changes(self, limit: int) -> list[RbacChange]:
+        stmt = (
+            select(RbacChange)
+            .order_by(col(RbacChange.at).desc())
+            .limit(limit)
+            .execution_options(populate_existing=True)
+        )
+        return list((await self._db.execute(stmt)).scalars().all())
 
     async def grant(self, grant_id: UUID) -> Grant | None:
         return await self._db.get(Grant, grant_id, populate_existing=True)
