@@ -40,3 +40,4 @@ export {
   springMomentum,
   withReducedMotion,
 } from './motion';
+export { PresetCard, type PresetPreview } from './preset-card';
