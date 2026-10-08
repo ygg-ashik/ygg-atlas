@@ -22,11 +22,15 @@ vi.mock('@/api/hooks/use-chat-sessions', () => ({
 // The api client boots Firebase on import; the panel never talks to the network here.
 vi.mock('@/api/chat', () => ({ setMessageFeedback: vi.fn() }));
 
-function renderPanel() {
+function renderPanel(initialQuestion?: string) {
   const qc = new QueryClient();
   const ui = (
     <QueryClientProvider client={qc}>
-      <ChatPanel sessionId={null} ensureSession={async () => 's1'} />
+      <ChatPanel
+        sessionId={null}
+        ensureSession={async () => 's1'}
+        initialQuestion={initialQuestion}
+      />
     </QueryClientProvider>
   );
   const result = render(ui);
@@ -38,6 +42,13 @@ describe('ChatPanel', () => {
     send.mockReset();
     turn.draft = null;
     turn.messages = [];
+  });
+
+  it('sends a ?q= question exactly once', () => {
+    const { rerenderSame } = renderPanel('What was revenue?');
+    rerenderSame();
+    expect(send).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledWith('What was revenue?');
   });
 
   it('empty state: serif greeting, preset gallery, centered composer', async () => {

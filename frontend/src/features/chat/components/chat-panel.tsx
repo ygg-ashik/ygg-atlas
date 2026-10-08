@@ -19,6 +19,8 @@ import { StoredMessage } from './stored-message';
 interface ChatPanelProps {
   sessionId: string | null;
   ensureSession?: () => Promise<string>;
+  /** A `/ask?q=` question to send once, as soon as the panel can send. */
+  initialQuestion?: string | null;
 }
 
 /** Refetched history lands before the draft clears: never render a turn twice. */
@@ -62,7 +64,7 @@ function Conversation({ messages, draft, notice, lastTurn, onRetry }: Conversati
 
 /** Chat layout: empty state with a centered composer, or the conversation with
  * the composer floating at the bottom. The composer glides between the two. */
-export function ChatPanel({ sessionId, ensureSession }: ChatPanelProps) {
+export function ChatPanel({ sessionId, ensureSession, initialQuestion }: ChatPanelProps) {
   const { data: messages = [] } = useChatMessages(sessionId);
   const { draft, isStreaming, send, abort, notice, lastTurn } = useChatTurn(
     sessionId,
@@ -76,6 +78,15 @@ export function ChatPanel({ sessionId, ensureSession }: ChatPanelProps) {
   useStickToBottom(scrollRef, [messages.length, draft?.assistantText, draft?.steps.length, notice]);
 
   const canSend = !!(sessionId || ensureSession);
+
+  // Each distinct prefill is sent once; one arriving mid-stream waits for the turn to end.
+  const sentInitial = useRef<string | null>(null);
+  useEffect(() => {
+    if (!initialQuestion || initialQuestion === sentInitial.current) return;
+    if (!canSend || isStreaming) return;
+    sentInitial.current = initialQuestion;
+    void send(initialQuestion);
+  }, [initialQuestion, canSend, isStreaming, send]);
   const sendText = (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || isStreaming || !canSend) return;
