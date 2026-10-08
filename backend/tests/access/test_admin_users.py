@@ -312,3 +312,48 @@ async def test_a_builder_with_admin_users_cannot_disable_an_admin(db) -> None:
 
     with pytest.raises(AccessDeniedError, match="more access than your own"):
         await admin_for(db).update_user(actor, victim.id, UserUpdate(status="disabled"))
+
+
+# ---- D10 also judges a disabled target by the access they'd regain ----------
+
+
+async def test_a_builder_cannot_re_enable_a_disabled_admin(db) -> None:
+    admin_actor = await actor_with(db)
+    victim = await make_user(db, "victim@yougotagift.com", role="admin")
+    victim_id = victim.id  # captured before any call that may expire the row
+    await admin_for(db).update_user(
+        admin_actor, victim_id, UserUpdate(status="disabled")
+    )
+    builder = await _actor_with_capabilities(db, "admin:users")
+
+    with pytest.raises(AccessDeniedError, match="more access than your own"):
+        await admin_for(db).update_user(builder, victim_id, UserUpdate(status="active"))
+
+
+async def test_a_builder_cannot_change_a_disabled_admins_role(db) -> None:
+    admin_actor = await actor_with(db)
+    victim = await make_user(db, "victim@yougotagift.com", role="admin")
+    victim_id = victim.id
+    await admin_for(db).update_user(
+        admin_actor, victim_id, UserUpdate(status="disabled")
+    )
+    builder = await _actor_with_capabilities(db, "admin:users")
+
+    with pytest.raises(AccessDeniedError, match="more access than your own"):
+        await admin_for(db).update_user(builder, victim_id, UserUpdate(role="viewer"))
+
+
+async def test_a_builder_can_re_enable_a_disabled_viewer(db) -> None:
+    admin_actor = await actor_with(db)
+    victim = await make_user(db, "victim@yougotagift.com", role="viewer")
+    victim_id = victim.id
+    await admin_for(db).update_user(
+        admin_actor, victim_id, UserUpdate(status="disabled")
+    )
+    builder = await _actor_with_capabilities(db, "admin:users")
+
+    user = await admin_for(db).update_user(
+        builder, victim_id, UserUpdate(status="active")
+    )
+
+    assert user.status == "active"

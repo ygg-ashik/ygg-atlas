@@ -7,6 +7,7 @@ from sqlmodel import col
 
 from app.access import service as service_module
 from app.access.cache import PolicyCache
+from app.access.catalog import role_capabilities
 from app.access.errors import PolicyUnavailableError
 from app.access.models import Grant, PolicyState
 from app.access.repository import AccessRepository
@@ -153,3 +154,39 @@ async def test_a_real_db_failure_fails_closed(db) -> None:
     await db.commit()
     with pytest.raises(PolicyUnavailableError):
         await _service(db).policy_for_user(user.id)
+
+
+# ---- capabilities_if_active: judge a disabled user by the access they'd regain --
+
+
+async def test_capabilities_if_active_reflects_a_disabled_admins_bundle(db) -> None:
+    admin = await make_user(
+        db, "admin@yougotagift.com", role="admin", status="disabled"
+    )
+
+    capabilities = await _service(db).capabilities_if_active(admin.id)
+
+    assert capabilities == role_capabilities("admin")
+
+
+async def test_capabilities_if_active_includes_a_disabled_users_direct_grant(
+    db,
+) -> None:
+    user = await make_user(db, "sara@yougotagift.com", status="disabled")
+    await add_grant(db, user, "export:data", kind="capability")
+
+    capabilities = await _service(db).capabilities_if_active(user.id)
+
+    assert "export:data" in capabilities
+
+
+async def test_capabilities_if_active_for_an_unknown_user_is_empty(db) -> None:
+    assert await _service(db).capabilities_if_active(uuid4()) == frozenset()
+
+
+async def test_capabilities_if_active_fails_closed(db) -> None:
+    user = await make_user(db, "sara@yougotagift.com")
+    await db.execute(text("DROP TABLE grants"))
+    await db.commit()
+    with pytest.raises(PolicyUnavailableError):
+        await _service(db).capabilities_if_active(user.id)

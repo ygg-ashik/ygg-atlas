@@ -498,11 +498,16 @@ class AccessAdmin:
 
     async def _check_not_above_actor(self, actor: Actor, user: User) -> None:
         """D10: nobody changes the role or status of a user whose effective
-        capabilities exceed their own (the CLI actor, policy None, is unaffected)."""
+        capabilities exceed their own (the CLI actor, policy None, is unaffected).
+
+        Judged by the capabilities the target would have if active: a disabled
+        user's real Policy is deny_all with empty capabilities, which would
+        otherwise let anyone with admin:users re-enable or re-role them.
+        """
         if actor.policy is None:
             return
-        target_policy = await self._access.policy_for_user(user.id)
-        if not target_policy.capabilities <= actor.policy.capabilities:
+        target_capabilities = await self._access.capabilities_if_active(user.id)
+        if not target_capabilities <= actor.policy.capabilities:
             msg = "You can't change a user with more access than your own."
             raise AccessDeniedError(msg)
 

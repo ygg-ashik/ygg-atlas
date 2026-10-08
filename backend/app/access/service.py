@@ -1,6 +1,7 @@
 """Resolves a caller's Policy (spec §5.4, §8). Fails closed (spec §12)."""
 
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -10,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.access.cache import PolicyCache, shared_cache
 from app.access.errors import PolicyUnavailableError
 from app.access.evaluator import evaluate
-from app.access.facts import PolicyInputs
+from app.access.facts import STATUS_ACTIVE, PolicyInputs
 from app.access.policy import Policy
 from app.access.repository import AccessRepository
 from app.access.schemas import GroupRefOut, MeAccessOut
@@ -71,6 +72,37 @@ class AccessService:
         policy = evaluate(inputs, now)
         self._cache.put(policy)
         return policy
+
+    async def capabilities_if_active(self, user_id: UUID) -> frozenset[str]:
+        """The capabilities this user would have if active (D10: a disabled
+        user is judged by the access they'd regain, never by deny_all's empty
+        set). Not cached: the user's current status is not what this answers."""
+        try:
+            return await self._resolve_if_active(user_id)
+        except PolicyUnavailableError:
+            logger.exception("access.policy_unavailable", user_id=str(user_id))
+            raise
+        except Exception as exc:
+            logger.exception("access.policy_failed", user_id=str(user_id))
+            msg = "The access check failed"
+            raise PolicyUnavailableError(msg) from exc
+
+    async def _resolve_if_active(self, user_id: UUID) -> frozenset[str]:
+        version = await self._repo.policy_version()
+        now = self._clock()
+        user = await self._repo.user_facts(user_id)
+        if user is None:
+            return frozenset()
+        user = replace(user, status=STATUS_ACTIVE)
+        groups = await self._repo.tenant_groups(user.tenant)
+        inputs = PolicyInputs(
+            user=user,
+            groups=groups,
+            memberships=await self._repo.memberships(user_id),
+            grants=await self._repo.grants_for(user_id, groups),
+            policy_version=version,
+        )
+        return evaluate(inputs, now).capabilities
 
     async def describe(self, policy: Policy) -> MeAccessOut:
         """What /me/access shows: role, capabilities, groups, any data at all.
