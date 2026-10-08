@@ -2,73 +2,97 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Neutral enterprise palette with a single teal accent ("atlas" green-blue).
-   All colors are HSL triplets consumed as hsl(var(--x)) by tailwind.config.js. */
+/* Atlas Hybrid Glass tokens. Source of truth: /DESIGN.md.
+   Colors are HSL triplets consumed as hsl(var(--x) / <alpha>) by tailwind.config.js.
+   Glass values are full colors (rgba) consumed directly. */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 224 18% 12%;
+    /* DESIGN.md names */
+    --canvas: 48 33.3% 97.1%;
+    --surface: 39 38.9% 92.9%;
+    --card-2: 38 40.7% 94.7%;
+    --ink: 60 2.6% 7.6%;
+    --body: 60 2.5% 23.3%;
+    --muted-2: 45 5% 53.3%;
+    --primary-text: 15 53.8% 45.9%;
+    --positive: 135 33% 36.9%;
+    --negative: 10 58.6% 44.5%;
+    --warning: 36 71% 42%;
 
+    /* shadcn names remapped onto DESIGN.md */
+    --background: var(--canvas);
+    --foreground: var(--ink);
     --card: 0 0% 100%;
-    --card-foreground: 224 18% 12%;
-
+    --card-foreground: var(--ink);
     --popover: 0 0% 100%;
-    --popover-foreground: 224 18% 12%;
+    --popover-foreground: var(--ink);
+    --primary: 15 53.8% 45.9%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: var(--card-2);
+    --secondary-foreground: var(--ink);
+    --muted: var(--card-2);
+    --muted-foreground: 45 3.8% 40.8%;
+    --accent: 20 45% 93%;
+    --accent-foreground: 15 53.8% 35%;
+    --destructive: var(--negative);
+    --destructive-foreground: 0 0% 100%;
+    --border: 40 12% 88%;
+    --input: 40 12% 84%;
+    --ring: var(--primary);
+    --radius: 0.75rem;
 
-    --primary: 174 62% 28%;
-    --primary-foreground: 168 60% 97%;
-
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 224 18% 16%;
-
-    --muted: 220 14% 96%;
-    --muted-foreground: 222 10% 44%;
-
-    --accent: 174 40% 94%;
-    --accent-foreground: 174 62% 20%;
-
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 98%;
-
-    --border: 220 13% 90%;
-    --input: 220 13% 87%;
-    --ring: 174 62% 28%;
-
-    --radius: 0.5rem;
+    /* glass material */
+    --glass: rgba(255, 255, 255, 0.62);
+    --glass-heavy: rgba(255, 255, 255, 0.72);
+    --glass-edge: rgba(255, 255, 255, 0.8);
+    --glass-shadow: 0 1px 1px rgba(20, 20, 19, 0.04), 0 10px 30px rgba(20, 20, 19, 0.08);
+    --glass-spec: inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 -1px 0 rgba(20, 20, 19, 0.03);
+    --wash:
+      radial-gradient(60% 50% at 15% -10%, rgba(232, 165, 90, 0.16), transparent 70%),
+      radial-gradient(50% 40% at 95% 0%, rgba(180, 85, 54, 0.1), transparent 70%);
   }
 
   .dark {
-    --background: 224 22% 8%;
-    --foreground: 216 16% 92%;
+    --canvas: 40 6.1% 9.6%;
+    --surface: 36 8.2% 12%;
+    --card-2: 40 7.5% 15.7%;
+    --ink: 40 27.3% 93.5%;
+    --body: 40 12.8% 81.6%;
+    --muted-2: 42 4.2% 47.1%;
+    --primary-text: 16 63.1% 59.6%;
+    --positive: 134 36.5% 62.4%;
+    --negative: 13 67.9% 67.1%;
+    --warning: 38 70.8% 58.4%;
 
-    --card: 224 20% 10%;
-    --card-foreground: 216 16% 92%;
+    --background: var(--canvas);
+    --foreground: var(--ink);
+    --card: 36 7.2% 13.5%;
+    --card-foreground: var(--ink);
+    --popover: 36 7.2% 13.5%;
+    --popover-foreground: var(--ink);
+    --primary: 15 53.8% 45.9%;
+    --secondary: var(--card-2);
+    --secondary-foreground: var(--ink);
+    --muted: var(--card-2);
+    --muted-foreground: 42 5% 60.8%;
+    --accent: 15 25% 20%;
+    --accent-foreground: 16 63% 75%;
+    --destructive: var(--negative);
+    --destructive-foreground: 0 0% 100%;
+    --border: 40 5% 20%;
+    --input: 40 5% 24%;
+    --ring: var(--primary-text);
 
-    --popover: 224 20% 10%;
-    --popover-foreground: 216 16% 92%;
-
-    --primary: 172 55% 45%;
-    --primary-foreground: 180 60% 7%;
-
-    --secondary: 222 16% 16%;
-    --secondary-foreground: 216 16% 92%;
-
-    --muted: 222 16% 15%;
-    --muted-foreground: 218 11% 62%;
-
-    --accent: 174 35% 17%;
-    --accent-foreground: 170 45% 80%;
-
-    --destructive: 0 62% 45%;
-    --destructive-foreground: 0 0% 98%;
-
-    --border: 222 14% 19%;
-    --input: 222 14% 23%;
-    --ring: 172 55% 45%;
+    --glass: rgba(40, 38, 34, 0.55);
+    --glass-heavy: rgba(36, 35, 32, 0.7);
+    --glass-edge: rgba(255, 255, 255, 0.1);
+    --glass-shadow: 0 1px 1px rgba(0, 0, 0, 0.3), 0 12px 36px rgba(0, 0, 0, 0.45);
+    --glass-spec: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+    --wash:
+      radial-gradient(60% 50% at 15% -10%, rgba(232, 165, 90, 0.09), transparent 70%),
+      radial-gradient(50% 40% at 95% 0%, rgba(217, 122, 87, 0.07), transparent 70%);
   }
-}
 
-@layer base {
   * {
     @apply border-border;
   }
@@ -78,12 +102,92 @@
     height: 100%;
   }
   body {
-    @apply bg-background text-foreground antialiased;
-    font-family:
-      -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    @apply bg-background font-sans text-foreground antialiased;
+    background-image: var(--wash);
+    transition:
+      background-color 450ms cubic-bezier(0.22, 1, 0.36, 1),
+      color 450ms cubic-bezier(0.22, 1, 0.36, 1);
   }
   code,
-  pre {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  pre,
+  kbd {
+    @apply font-mono;
+  }
+}
+
+@layer components {
+  /* Floating functional layer only (DESIGN.md › Elevation & Depth). Never under data. */
+  .glass {
+    position: relative;
+    background: var(--glass);
+    -webkit-backdrop-filter: saturate(180%) blur(22px);
+    backdrop-filter: saturate(180%) blur(22px);
+    border: 1px solid var(--glass-edge);
+    box-shadow: var(--glass-shadow), var(--glass-spec);
+  }
+  .glass-heavy {
+    background: var(--glass-heavy);
+  }
+  .glass-specular::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: radial-gradient(
+      180px 100px at var(--spec-x, 50%) var(--spec-y, -30%),
+      rgba(255, 255, 255, 0.55),
+      transparent 65%
+    );
+    mix-blend-mode: soft-light;
+  }
+  /* Scroll-edge effect: soft blur where content meets floating chrome (no hard dividers). */
+  .scroll-edge-top,
+  .scroll-edge-bottom {
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+  .scroll-edge-top {
+    -webkit-mask-image: linear-gradient(#000 30%, transparent);
+    mask-image: linear-gradient(#000 30%, transparent);
+  }
+  .scroll-edge-bottom {
+    -webkit-mask-image: linear-gradient(to top, #000 35%, transparent);
+    mask-image: linear-gradient(to top, #000 35%, transparent);
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass,
+  .glass-heavy {
+    background: hsl(var(--card));
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .glass-specular::after,
+  .scroll-edge-top,
+  .scroll-edge-bottom {
+    display: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .glass,
+  .glass-heavy {
+    background: hsl(var(--card));
+    border-color: hsl(var(--ink));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
   }
 }
