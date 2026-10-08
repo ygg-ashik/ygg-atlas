@@ -1,5 +1,7 @@
 from functools import lru_cache
+from typing import Literal, Self
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +20,11 @@ class Settings(BaseSettings):
     firebase_project_id: str = ""
     allowed_email_domain: str = "yougotagift.com"
     auth_disabled: bool = False
+    environment: Literal["development", "test", "production"] = "development"
+    # Comma-separated emails made admin at startup (idempotent). Spec §3.3.
+    bootstrap_admins: str = ""
+    # Web sessions are capped server-side from the token's auth_time. Spec §3.1.
+    session_max_age_hours: int = 24
 
     # Source-specific config lives in each plugin's Settings
     # (app/sources/<id>/manifest.py)
@@ -33,6 +40,19 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def bootstrap_admin_list(self) -> list[str]:
+        return [
+            e.strip().lower() for e in self.bootstrap_admins.split(",") if e.strip()
+        ]
+
+    @model_validator(mode="after")
+    def _forbid_auth_bypass_in_production(self) -> Self:
+        if self.environment == "production" and self.auth_disabled:
+            msg = "AUTH_DISABLED=true is not allowed when ENVIRONMENT=production"
+            raise ValueError(msg)
+        return self
 
     @property
     def llm_provider(self) -> str:
