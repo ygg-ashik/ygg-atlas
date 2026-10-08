@@ -30,4 +30,10 @@ describe('MarkdownMessage', () => {
     const { container } = render(<MarkdownMessage text={'| a | b |\n| - | - |\n| 1 | 2 |'} />);
     expect(container.querySelector('table')).not.toBeNull();
   });
+
+  it('keeps the DESIGN.md type scale (streamdown must not merge custom sizes away)', () => {
+    const { container } = render(<MarkdownMessage text="## Revenue" />);
+    const prose = container.firstElementChild;
+    expect(prose).toHaveClass('text-answer', 'text-body', '[&_h2]:text-title', '[&_th]:text-label');
+  });
 });

@@ -55,21 +55,24 @@ const COMPONENTS: Components = {
   table: ({ children }) => <ScrollTable>{children}</ScrollTable>,
 };
 
-/** Assistant prose: GFM, no raw HTML, safe links. Text already on screen never re-animates. */
+/** Assistant prose: GFM, sanitized HTML, safe links. Text already on screen never re-animates.
+ * The type scale sits on a wrapper: streamdown's own tailwind-merge doesn't know the
+ * DESIGN.md sizes and would drop `text-answer` as a clash with `text-body`. */
 export function MarkdownMessage({ text, streaming = false }: MarkdownMessageProps) {
   const reduced = useReducedMotion();
   return (
-    <Streamdown
-      mode={streaming ? 'streaming' : 'static'}
-      isAnimating={streaming}
-      parseIncompleteMarkdown
-      animated={streaming && !reduced ? STREAM_ANIMATION : false}
-      caret={streaming ? 'circle' : undefined}
-      controls={{ table: false, code: { copy: true } }}
-      className={PROSE}
-      components={COMPONENTS}
-    >
-      {text}
-    </Streamdown>
+    <div className={PROSE}>
+      <Streamdown
+        mode={streaming ? 'streaming' : 'static'}
+        isAnimating={streaming}
+        parseIncompleteMarkdown
+        animated={streaming && !reduced ? STREAM_ANIMATION : false}
+        caret={streaming ? 'circle' : undefined}
+        controls={{ table: false, code: { copy: true } }}
+        components={COMPONENTS}
+      >
+        {text}
+      </Streamdown>
+    </div>
   );
 }
