@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Loader2, Orbit } from 'lucide-react';
-import { Button } from '@/ui';
+import { motion, useReducedMotion } from 'motion/react';
+import { Loader2 } from 'lucide-react';
+import { BrandMark, Button, Glass, materialize, springDefault, withReducedMotion } from '@/ui';
 import { useAuth } from './auth-context';
 
 /* eslint-disable no-restricted-syntax -- official Google "G" brand colors, not design tokens */
 const GoogleMark = () => (
-  <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" aria-hidden="true">
     <path
       fill="#4285F4"
       d="M23.5 12.27c0-.85-.08-1.66-.22-2.45H12v4.64h6.45a5.52 5.52 0 0 1-2.39 3.62v3h3.87c2.26-2.09 3.57-5.16 3.57-8.81z"
@@ -27,8 +28,22 @@ const GoogleMark = () => (
 );
 /* eslint-enable no-restricted-syntax */
 
+/** Firebase error codes → a plain next step (DESIGN.md › sign-in-panel). Null = not an error. */
+function signInErrorMessage(error: unknown): string | null {
+  const code = error instanceof Error ? error.message : '';
+  if (/popup-closed|cancelled-popup|user-cancelled/i.test(code)) return null;
+  if (/popup-blocked/i.test(code))
+    return 'Your browser blocked the sign-in window. Allow pop-ups and try again.';
+  if (/unauthorized-domain/i.test(code)) {
+    return "This address isn't approved for Google sign-in. Ask an Atlas admin to add it.";
+  }
+  return "Sign-in didn't complete. Check your connection and try again.";
+}
+
+/** /login: the sign-in panel, one glass surface on the canvas wash. */
 export default function LoginPage() {
   const { isAuthenticated, isLoading, signInWithGoogle } = useAuth();
+  const reduced = useReducedMotion();
   const [error, setError] = useState<string | null>(null);
   const [signingIn, setSigningIn] = useState(false);
 
@@ -40,48 +55,54 @@ export default function LoginPage() {
     try {
       await signInWithGoogle();
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Sign-in failed. Please try again.';
-      // Popup dismissed by the user is not an error worth surfacing loudly.
-      setError(/popup-closed|cancelled/i.test(message) ? null : message);
+      setError(signInErrorMessage(e));
     } finally {
       setSigningIn(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="w-full max-w-sm rounded-xl border bg-card p-8 shadow-sm">
-        <div className="mb-8 flex flex-col items-center text-center">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Orbit className="h-6 w-6" />
-          </div>
-          <h1 className="text-xl font-semibold tracking-tight">Atlas</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            YouGotAGift data intelligence. Ask about revenue, orders, funnels — every number carries
-            provenance.
+    <main className="flex min-h-screen items-center justify-center px-4 py-10">
+      <motion.div
+        className="w-full max-w-[380px]"
+        initial={materialize.initial}
+        animate={materialize.animate}
+        transition={withReducedMotion(springDefault, reduced)}
+      >
+        <Glass specular className="rounded-feature px-8 pb-7 pt-9 text-center">
+          <BrandMark size="display" className="justify-center" />
+          <h1 className="mt-7 font-serif text-title text-ink">Welcome back</h1>
+          <p className="mx-auto mt-2 max-w-[34ch] text-balance text-sm text-body">
+            Ask about revenue, orders and funnels. Every number shows where it came from.
           </p>
-        </div>
 
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={() => void handleSignIn()}
-          disabled={signingIn || isLoading}
-        >
-          {signingIn ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleMark />}
-          Continue with Google
-        </Button>
+          <Button
+            size="lg"
+            className="mt-7 h-11 w-full"
+            onClick={() => void handleSignIn()}
+            disabled={signingIn || isLoading}
+          >
+            {signingIn ? (
+              <Loader2 className="animate-spin" />
+            ) : (
+              <span className="grid size-5 place-items-center rounded-full bg-white">
+                <GoogleMark />
+              </span>
+            )}
+            Continue with Google
+          </Button>
 
-        {error && (
-          <p role="alert" className="mt-3 text-center text-xs text-destructive">
-            {error}
+          {error && (
+            <p role="alert" className="mt-3 text-label text-negative">
+              {error}
+            </p>
+          )}
+
+          <p className="mt-6 text-balance text-caption text-muted-foreground">
+            @yougotagift.com Google accounts only · sessions last 24 hours
           </p>
-        )}
-
-        <p className="mt-6 text-center text-[11px] text-muted-foreground">
-          Restricted to @yougotagift.com accounts. Sessions expire after 24 hours.
-        </p>
-      </div>
-    </div>
+        </Glass>
+      </motion.div>
+    </main>
   );
 }

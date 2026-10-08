@@ -84,6 +84,9 @@ Backend:
 ```bash
 cd backend && uv sync
 uv run uvicorn app.main:app --reload --port 8081
+uv run alembic upgrade head        # apply migrations (also run by the Docker image at start)
+uv run alembic revision -m "..."   # new migration in migrations/versions/
+TEST_PG_URL=postgresql+asyncpg://… uv run pytest tests/test_alembic_postgres.py   # migrations on a disposable Postgres
 uv run pytest --cov=app            # >80% coverage on new code
 uv run ruff check . && uv run ruff format --check .
 ```

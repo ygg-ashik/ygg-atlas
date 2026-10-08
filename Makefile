@@ -2,7 +2,7 @@
 # PNPM can be overridden, e.g. `make check PNPM=pnpm` where pnpm is installed globally.
 PNPM ?= COREPACK_INTEGRITY_KEYS=0 corepack pnpm
 
-.PHONY: check check-backend check-frontend format format-backend format-frontend audit audit-backend audit-frontend install hooks
+.PHONY: check check-backend check-frontend format format-backend format-frontend audit audit-backend audit-frontend install hooks migrate
 
 check: check-backend check-frontend ## Run every gate (backend + frontend)
 
@@ -38,6 +38,9 @@ audit-frontend:
 install: ## Install backend + frontend dependencies
 	cd backend && uv sync
 	cd frontend && $(PNPM) install --frozen-lockfile
+
+migrate: ## Apply database migrations (backend/.env DATABASE_URL)
+	cd backend && uv run alembic upgrade head
 
 hooks: ## Install the git pre-commit hooks
 	uvx pre-commit install

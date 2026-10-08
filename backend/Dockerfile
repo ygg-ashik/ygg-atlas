@@ -11,4 +11,5 @@ COPY . .
 RUN uv sync --no-dev
 
 EXPOSE 8081
-CMD ["uv", "run", "--no-dev", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8081"]
+# Migrations run before the server so the schema always matches the code.
+CMD ["sh", "-c", "uv run --no-dev alembic upgrade head && exec uv run --no-dev uvicorn app.main:app --host 0.0.0.0 --port 8081"]

@@ -30,7 +30,8 @@ app.agent                          LLM loop, prompts, guardrails, providers
 app.atlas                          governed semantic layer: tools, registry, provenance
 app.sources                        source plugins (leaves)
 ─────────────────────────────────────────────────────────────────────
-platform: app.models · app.database · app.middleware · app.config   (+ app.core, new)
+identity: app.identity (who is calling; depends only on platform) · app.middleware = deprecated shim
+platform: app.models · app.database · app.config   (+ app.core, new)
 ```
 
 | Rule | Enforced by (import-linter contract) |
@@ -41,6 +42,8 @@ platform: app.models · app.database · app.middleware · app.config   (+ app.co
 | Plugins never import each other | "Source plugins are independent" |
 | Platform modules never import features | "Platform modules never depend on features" |
 | Agent and atlas never use HTTP auth middleware | "Agent and atlas never use HTTP-layer auth" |
+| Identity imports only platform modules | "Identity depends only on platform modules" |
+| Identity follows the §2.2 module anatomy | "Identity module layering" (layers contract) |
 
 New top-level packages must be added to the contracts in `backend/pyproject.toml` in the same
 change. The plugin independence contract lists plugins by name: **a new source plugin must be
@@ -193,11 +196,12 @@ Each item is removed by the change that touches the code, and the matching rule 
 
 | Debt | Target |
 |---|---|
-| `app/api/chat.py` queries the database directly | Split into `app/chat/{router,service,repository}` (auth/RBAC phase 1) |
-| Schema changes applied by create_all + startup ALTER (`chat_messages.blocks`, `app/models/migrations.py`) | Replaced by the Alembic baseline in auth/RBAC phase 1 |
-| `app/config.py`, `app/database.py` and `app/middleware/` predate `app/core` | Move into `app/core/` and `app/identity/` when next modified |
-| `[tool.pyright].strict` is empty | Each new module (identity, access) joins it on creation |
+| `app/api/chat.py` queries the database directly | Split into `app/chat/{router,service,repository}` on the next chat change |
+| `app/config.py` and `app/database.py` predate `app/core` | Move into `app/core/` when next modified |
+| `app.middleware` is a deprecated shim over `app.identity` | Remove once `app.insights.dependencies` imports `get_principal` |
+| `chat_sessions.user_uid` mirrors `user_id` as text for guardrails and audit | Drop in auth/RBAC phase 2, when guardrails and atlas tools take a `Principal` |
+| `atlas_audit_log.user_uid` holds the Firebase uid (or `dev-user`) before migration 0002 and the atlas user id after; the append-only log is not rewritten | Join old rows via `users.firebase_uid`; add `user_id` to audit rows when atlas tools take a `Principal` (phase 2) |
+| `[tool.pyright].strict` covers only new modules (`insights`, `identity`) | Each new module (e.g. access) joins it on creation |
 | Frontend features are flat files | Split per §3.2 when a feature passes about 8 files |
-| No per-module layering contract yet | Added with the first module that follows §2.2 |
 | An x86_64 macOS toolchain (an Intel Mac, or the x86_64 uv/Python under Rosetta used on the current M1 dev machine) gets `cryptography` 48.0.1, because no newer x86_64 macOS wheels exist; 3 advisories apply to that local venv only, so `make audit-backend` is expected red there. Linux (CI, Docker, EC2) and arm64 macOS use the patched 50.x | Switch dev machines to a native arm64 uv and Python, then drop the platform pin |
 | `@grpc/grpc-js` is forced to ^1.13.6 by a pnpm override (Firebase's Firestore pins a vulnerable 1.9.x; atlas uses only Firebase auth in the browser) | Remove when Firebase ships a fixed Firestore |

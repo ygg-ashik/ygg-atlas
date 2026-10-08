@@ -162,6 +162,19 @@ components:
     typography: "{typography.label}"
     rounded: "{rounded.feature}"
     padding: 10px
+  brand-mark:
+    backgroundColor: "{colors.canvas}"
+    textColor: "{colors.ink}"
+    typography: "{typography.section}"
+    rounded: "{rounded.sm}"
+    size: 10px
+  sign-in-panel:
+    backgroundColor: "{colors.glass}"
+    textColor: "{colors.body}"
+    typography: "{typography.body}"
+    rounded: "{rounded.feature}"
+    padding: 36px 32px 28px
+    width: 380px
   briefing-card:
     backgroundColor: "{colors.glass}"
     textColor: "{colors.body}"
@@ -315,7 +328,7 @@ why it moved**. The design serves that in four layers, each borrowed from a prod
 | **Trust: Atlas-native** | ygg-atlas guardrails | Provenance chip on every number, clarify instead of guess, denial stated as fact, freshness warnings |
 
 **Key characteristics**
-- Glass is a *floating functional layer*: sidebar, toolbar, composer, popovers, palette, toasts, briefing. Content (charts, tables, KPIs, answers) sits on **solid** cards or the canvas.
+- Glass is a *floating functional layer*: sidebar, toolbar, composer, popovers, palette, toasts, briefing, sign-in panel. Content (charts, tables, KPIs, answers) sits on **solid** cards or the canvas.
 - One accent color, **clay** (`{colors.primary}`). It marks the primary action, focus, selection and data series. No second brand color.
 - Serif for headings, sans for everything people *read quickly or compare*, tabular figures for every number.
 - Motion says what happened and where things came from. It's never decoration.
@@ -339,7 +352,7 @@ why it moved**. The design serves that in four layers, each borrowed from a prod
 - **Data series**: a single series uses the accent. For multiple series, use accent opacity steps (100/70/45/30%) before introducing new hues. Ask before adding a categorical palette.
 
 ### Dark mode
-Every token has a `-dark` twin. Theme changes cross-fade over 450ms, with no flash. Filled controls keep `{colors.primary}` with white text. Text, links and chart lines on dark surfaces use `{colors.primary-on-dark}` (#d97a57, 5.7:1).
+Every token has a `-dark` twin. **Light is the default theme**; dark and system are opt-in from the theme menu, and the choice persists per browser. Theme changes cross-fade over 450ms, with no flash. Filled controls keep `{colors.primary}` with white text. Text, links and chart lines on dark surfaces use `{colors.primary-on-dark}` (#d97a57, 5.7:1).
 
 ## Typography
 
@@ -406,6 +419,9 @@ Bigger surfaces get bigger radii. Corners nest concentrically: inner radius = ou
 - **`glass-popover`**: anchored to its trigger (transform-origin = trigger), enters with blur + scale + fade. Used for the jobs tray, provenance definitions and menus.
 - **`command-palette`** (⌘K, `cmdk`): searches metrics, artifacts, threads and "Ask …". Opens with a scrim and blurs into place.
 - **`toast`** (`sonner`): glass, bottom-right, stacking. Only for completions that happen *away* from the trigger (export ready, schedule saved).
+
+- **`brand-mark`**: the Atlas mark, a `{colors.primary}` diamond (a 10px square with 3px corners, rotated 45°; it scales with the wordmark) beside the serif wordmark "Atlas". The diamond is decorative (`aria-hidden`); the wordmark carries the name. One component used by the sidebar, the sign-in panel and the favicon (`frontend/public/favicon.svg`, clay on light, `{colors.primary-on-dark}` on dark).
+- **`sign-in-panel`** (`/login`): one centered glass panel on the canvas wash, materializing on load (opacity + scale + blur), with the specular highlight. Contents, top to bottom: the brand mark at display size, a one-line serif greeting, a body-text sentence on what Atlas is, the primary clay pill "Continue with Google" (the official Google "G" sits on a white disc inside it), and a caption with the access rules ("@yougotagift.com Google accounts only · sessions last 24 hours"). Errors render inline under the button in `{colors.negative}` text with a plain next step; a dismissed popup is not an error. No data, numbers or charts ever appear on it.
 
 ### Answers (Claude + Codex)
 - **`user-bubble`**: right-aligned, `{colors.card-2}`, tail corner 6px bottom-right.

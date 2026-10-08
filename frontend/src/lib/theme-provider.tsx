@@ -14,13 +14,14 @@ interface ThemeProviderState {
 }
 
 const ThemeProviderContext = createContext<ThemeProviderState>({
-  theme: 'system',
+  theme: 'light',
   setTheme: () => null,
 });
 
 export function ThemeProvider({
   children,
-  defaultTheme = 'system',
+  // DESIGN.md › Dark mode: light by default; dark and system are opt-in.
+  defaultTheme = 'light',
   storageKey = 'ygg-atlas-theme',
 }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(

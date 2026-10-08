@@ -49,7 +49,9 @@ async def test_session_crud(api):
         await api.post("/api/v1/chat/sessions", json={"title": "Weekly numbers"})
     ).json()
     assert created["title"] == "Weekly numbers"
-    assert created["user_uid"] == "dev-user"
+    me = (await api.get("/api/v1/me")).json()
+    assert created["user_id"] == me["user_id"]
+    assert created["user_uid"] == me["user_id"]  # owner key mirrors the atlas id
 
     sessions = (await api.get("/api/v1/chat/sessions")).json()
     assert any(s["id"] == created["id"] for s in sessions)
