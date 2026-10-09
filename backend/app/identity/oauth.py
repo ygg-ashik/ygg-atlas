@@ -48,6 +48,7 @@ from app.identity.api_tokens import (
     REVOKED_REFRESH_REUSE,
     REVOKED_ROTATED,
     REVOKED_USER_DISABLED,
+    UNNAMED_CLIENT,
     CredentialActor,
     TokenKind,
     display_prefix,
@@ -72,7 +73,6 @@ logger = structlog.get_logger()
 INVALID_REQUEST: Final = "invalid_request"
 INVALID_GRANT: Final = "invalid_grant"
 RegistrationErrorCode = Literal["invalid_redirect_uri", "invalid_client_metadata"]
-UNNAMED_CLIENT: Final = "Unnamed client"
 
 MAX_REDIRECT_URIS: Final = 5
 MAX_CLIENT_NAME: Final = 100
@@ -222,6 +222,14 @@ class RefreshGrant:
     resource: str
     expires_at: datetime
     display: str  # display prefix only (D28)
+
+
+@dataclass(frozen=True, slots=True)
+class AccessTokenRef:
+    """An OAuth access token as RFC 7009 revocation needs it: whose it is."""
+
+    token_id: UUID
+    client_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -1024,6 +1032,17 @@ class OAuthService:
             )
         )
         await self._creds.commit()
+
+    async def find_access_token(self, raw_access: str) -> AccessTokenRef | None:
+        """RFC 7009 lookup of an OAuth access token: expired, revoked or owned by a
+        disabled user alike, and without touching `last_used_at` (unlike the bearer
+        door), so a client can always revoke what it holds. None for anything else."""
+        if kind_of(raw_access) is not TokenKind.OAUTH_ACCESS:
+            return None
+        row = await self._creds.token_by_hash(hash_secret(raw_access))
+        if row is None or row.kind != TokenKind.OAUTH_ACCESS or row.client_id is None:
+            return None
+        return AccessTokenRef(token_id=row.id, client_id=row.client_id)
 
     async def revoke_by_token_id(self, token_id: UUID) -> None:
         """RFC 7009: revokes the token's whole family. Unknown and non-OAuth tokens

@@ -21,7 +21,7 @@ from app.identity.credentials import authenticate_bearer, principal_for_user
 from app.identity.errors import ForbiddenError
 from app.identity.models import ApiToken, User
 from app.identity.repository import CredentialRepository
-from app.identity.tokens import InvalidTokenError
+from app.identity.tokens import ExpiredTokenError, InvalidTokenError
 from tests.access_helpers import make_user
 from tests.identity.credential_helpers import (
     assert_no_secret,
@@ -204,6 +204,7 @@ async def test_disabled_user_is_forbidden(db) -> None:
     with pytest.raises(ForbiddenError) as caught:
         await authenticate_bearer(db, raw)
     assert str(caught.value) == DISABLED_TEXT
+    assert caught.value.reason == "user_disabled"
 
 
 async def test_disabled_service_account_is_forbidden(db) -> None:
@@ -310,3 +311,32 @@ async def test_principal_for_user_maps_kind_and_refuses_inactive_users(db) -> No
     assert as_service.auth_method == "service"
     assert await principal_for_user(db, disabled.id) is None
     assert await principal_for_user(db, uuid4()) is None
+
+
+async def test_expiry_alone_is_reported_as_expired(db) -> None:
+    """The door tells the MCP edge that a real, unrevoked bearer merely expired
+    (ruling E1), still with the one generic message."""
+    user = await _human(db)
+    _, raw = await insert_token(
+        db, user, TokenKind.PAT, expires_in=timedelta(seconds=-1)
+    )
+    with pytest.raises(ExpiredTokenError, match=r"^invalid token$"):
+        await authenticate_bearer(db, raw)
+
+
+@pytest.mark.parametrize("revoked", [True, False])
+async def test_other_rejections_are_not_expired(db, revoked: bool) -> None:
+    user = await _human(db)
+    if revoked:
+        _, raw = await insert_token(
+            db,
+            user,
+            TokenKind.PAT,
+            expires_in=timedelta(seconds=-1),
+            revoked_reason="user_revoked",
+        )
+    else:
+        raw = mint(TokenKind.PAT)
+    with pytest.raises(InvalidTokenError) as caught:
+        await authenticate_bearer(db, raw)
+    assert not isinstance(caught.value, ExpiredTokenError)

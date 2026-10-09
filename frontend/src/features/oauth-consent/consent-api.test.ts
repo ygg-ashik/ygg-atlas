@@ -42,14 +42,19 @@ describe('consent-api', () => {
     });
   });
 
-  it('keeps a string detail for classification', async () => {
+  it('never keeps backend text: a string detail has no code', async () => {
     get.mockRejectedValue(httpError(403, { detail: 'Use your @yougotagift.com account.' }));
     const e = await caught(getConsentPrompt('t'));
-    expect([e.status, e.reason, e.detail]).toEqual([
-      403,
-      null,
-      'Use your @yougotagift.com account.',
-    ]);
+    expect([e.status, e.reason]).toEqual([403, null]);
+    expect(JSON.stringify(e)).not.toMatch(/yougotagift/);
+  });
+
+  it('reads an identity refusal code', async () => {
+    get.mockRejectedValue(
+      httpError(403, { detail: { reason: 'user_disabled', message: 'Your atlas access…' } }),
+    );
+    const e = await caught(getConsentPrompt('t'));
+    expect([e.status, e.reason]).toEqual([403, 'user_disabled']);
   });
 
   it('reads the reason from a structured detail', async () => {
@@ -57,18 +62,18 @@ describe('consent-api', () => {
       httpError(403, { detail: { reason: 'no_mcp_use', message: 'Your role…' } }),
     );
     const e = await caught(submitConsent('t', 'approve'));
-    expect([e.status, e.reason, e.detail]).toEqual([403, 'no_mcp_use', null]);
+    expect([e.status, e.reason]).toEqual([403, 'no_mcp_use']);
   });
 
   it('tolerates a body without detail', async () => {
     get.mockRejectedValue(httpError(500, '<html>oops</html>'));
     const e = await caught(getConsentPrompt('t'));
-    expect([e.status, e.reason, e.detail]).toEqual([500, null, null]);
+    expect([e.status, e.reason]).toEqual([500, null]);
   });
 
   it('maps a non-HTTP failure to a status-less error', async () => {
     post.mockRejectedValue(new TypeError('network down'));
     const e = await caught(submitConsent('t', 'deny'));
-    expect([e.status, e.reason, e.detail]).toEqual([null, null, null]);
+    expect([e.status, e.reason]).toEqual([null, null]);
   });
 });

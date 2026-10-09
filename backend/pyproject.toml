@@ -221,6 +221,19 @@ layers = [
     "catalog | patterns | facts | errors",
 ]
 
+[[tool.importlinter.contracts]]
+name = "MCP module layering (ARCHITECTURE.md §2.2)"
+type = "layers"
+containers = ["app.mcp"]
+exhaustive = true
+layers = [
+    "server | cli",
+    "router",
+    "oauth_routes | dependencies",
+    "oauth_provider",
+    "auth | ratelimit | schemas | access_log",
+]
+
 [tool.coverage.run]
 source = ["app"]
 omit = ["migrations/*"]

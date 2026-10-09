@@ -39,6 +39,7 @@ from app.identity import (
     REVOKED_BY_USER,
     ConnectedApp,
     CredentialActor,
+    ForbiddenError,
     IssuedToken,
     OAuthService,
     Principal,
@@ -55,6 +56,7 @@ from app.mcp.dependencies import (
     require_tenant_user,
     transaction_gone,
 )
+from app.mcp.ratelimit import CONSENT, rate_limit
 from app.mcp.schemas import (
     AdminTokenKind,
     AuthMethodsOut,
@@ -87,12 +89,6 @@ _ADMIN_KINDS: Final[dict[AdminTokenKind | None, tuple[TokenKind, ...]]] = {
     "oauth": (TokenKind.OAUTH_ACCESS, TokenKind.OAUTH_REFRESH),
 }
 _NO_MCP_USE: Final = "Your role doesn't include MCP access yet."
-# get_principal's refusals carry text only; the consent page needs a code. These two
-# are identity's fixed messages; its other refusals are all about the Google account.
-_DOOR_REFUSALS: Final[dict[str, ConsentRefusal]] = {
-    "Your atlas access is disabled. Contact an admin.": "user_disabled",
-    "This account can't sign in.": "service_account",
-}
 
 
 class _QuietValidationRoute(APIRoute):
@@ -121,7 +117,8 @@ class _QuietValidationRoute(APIRoute):
 
 class _ConsentRoute(_QuietValidationRoute):
     """Every consent 403 says why as `detail.reason` (ConsentRefusal), including the
-    identity door's own refusals, so the page never parses message text."""
+    identity door's own refusals (`ForbiddenError.reason`, chained by get_principal),
+    so the page never parses message text."""
 
     def get_route_handler(self) -> Handler:
         handler = super().get_route_handler()
@@ -132,12 +129,16 @@ class _ConsentRoute(_QuietValidationRoute):
             except HTTPException as exc:
                 # Starlette types `detail` as str; ours (no_mcp_use) is a dict.
                 detail = cast(object, exc.detail)
-                if exc.status_code != 403 or not isinstance(detail, str):
+                refused = exc.__cause__
+                if (
+                    exc.status_code != 403
+                    or not isinstance(detail, str)
+                    or not isinstance(refused, ForbiddenError)
+                ):
                     raise
-                reason = _DOOR_REFUSALS.get(detail, "not_company_account")
-                logger.info("mcp.consent_refused", reason=reason)
+                logger.info("mcp.consent_refused", reason=refused.reason)
                 raise HTTPException(
-                    403, _refusal(reason, detail), headers=exc.headers
+                    403, _refusal(refused.reason, detail), headers=exc.headers
                 ) from None
 
         return handle
@@ -250,9 +251,21 @@ async def disconnect_my_app(
 # CSRF: the Firebase bearer is required and a browser never attaches it on its own,
 # so a cross-site form or a cookie cannot approve. The code is bound to the bearer's
 # user; client, redirect, PKCE and audience come from the stored request.
+# Both routes share one budget per signed-in user (D16: 10/min).
 
 
-@_consent.get("/oauth/consent/{txn}", response_model=ConsentPromptOut)
+async def _consent_user_key(principal: Principal = Depends(get_principal)) -> str:
+    return str(principal.user_id)
+
+
+_consent_limit = rate_limit(CONSENT, _consent_user_key)
+
+
+@_consent.get(
+    "/oauth/consent/{txn}",
+    response_model=ConsentPromptOut,
+    dependencies=[Depends(_consent_limit)],
+)
 async def consent_prompt(
     txn: str,
     principal: Principal = Depends(get_principal),
@@ -276,7 +289,9 @@ async def consent_prompt(
     )
 
 
-@_consent.post("/oauth/consent", response_model=ConsentOut)
+@_consent.post(
+    "/oauth/consent", response_model=ConsentOut, dependencies=[Depends(_consent_limit)]
+)
 async def decide_consent(
     payload: ConsentDecision,
     principal: Principal = Depends(get_principal),

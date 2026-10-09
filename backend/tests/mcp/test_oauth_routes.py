@@ -1,11 +1,13 @@
 """The OAuth routes and discovery documents over HTTP (D1, D2, D8, D9, D10, D29)."""
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, func, select
 from structlog.testing import capture_logs
@@ -59,6 +61,16 @@ async def _user(db: AsyncSession) -> User:
     return await make_user(db, f"u-{uuid4().hex[:8]}@yougotagift.com", role="analyst")
 
 
+async def _row(db: AsyncSession, raw: str) -> ApiToken:
+    return (
+        await db.execute(
+            select(ApiToken)
+            .where(col(ApiToken.token_hash) == hash_secret(raw))
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+
+
 async def _request_rows(db: AsyncSession) -> int:
     return (
         await db.execute(select(func.count()).select_from(OAuthAuthorizationRequest))
@@ -109,6 +121,29 @@ async def test_protected_resource_metadata(store: Store, db: AsyncSession) -> No
     assert body["bearer_methods_supported"] == ["header"]
     assert "scopes_supported" not in body
     assert response.headers["cache-control"] == "public, max-age=300"
+
+
+@pytest.mark.parametrize("path", [PRM, AS_ROOT])
+async def test_root_discovery_answers_cors_preflight(
+    store: Store, db: AsyncSession, path: str
+) -> None:
+    async with http(oauth_test_app(store).app) as client:
+        response = await client.options(
+            path,
+            headers={
+                "Origin": "https://claude.ai",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "mcp-protocol-version",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "*"
+    assert "GET" in response.headers["access-control-allow-methods"]
+    assert (
+        "mcp-protocol-version"
+        in response.headers["access-control-allow-headers"].lower()
+    )
 
 
 async def test_discovery_follows_atlas_public_url(
@@ -308,15 +343,18 @@ async def test_wrong_pkce_verifier_is_invalid_grant(
     user = await _user(db)
     async with http(oauth_test_app(store).app) as client:
         client_id = (await register(client))["client_id"]
-        _, challenge = pkce()
+        verifier, challenge = pkce()
         code, _ = await approve_directly(
             store, await authorize(client, client_id, challenge), user
         )
         response = await exchange(client, client_id, code, pkce()[0])
+        # A failed PKCE check does not burn the code: the real verifier still works.
+        retried = await exchange(client, client_id, code, verifier)
 
     assert response.status_code == 400
     assert response.json()["error"] == "invalid_grant"
     assert_no_secret(code, response.text)
+    assert retried.status_code == 200, retried.text
 
 
 async def test_missing_pkce_verifier_is_invalid_request(
@@ -470,6 +508,44 @@ async def test_revocation_by_another_client_is_a_no_op(
         )
         is not None
     )
+
+
+async def test_an_expired_access_token_can_still_revoke_its_family(
+    store: Store, db: AsyncSession
+) -> None:
+    user = await _user(db)
+    async with http(oauth_test_app(store).app) as client:
+        client_id, tokens = await tokens_for(store, client, user)
+        access = await _row(db, tokens["access_token"])
+        await db.execute(
+            update(ApiToken)
+            .where(col(ApiToken.id) == access.id)
+            .values(expires_at=datetime.now(UTC) - timedelta(minutes=5))
+        )
+        await db.commit()
+        response = await revoke(client, client_id, tokens["access_token"])
+        refreshed = await refresh(client, client_id, tokens["refresh_token"])
+
+    assert response.status_code == 200
+    assert refreshed.status_code == 400
+    assert refreshed.json()["error"] == "invalid_grant"
+    after = await _row(db, tokens["access_token"])
+    assert after.revoked_reason == "oauth_revoke"
+    assert after.last_used_at == access.last_used_at  # never touched by the lookup
+
+
+async def test_unknown_token_type_hints_are_ignored(
+    store: Store, db: AsyncSession
+) -> None:
+    user = await _user(db)
+    async with http(oauth_test_app(store).app) as client:
+        client_id, tokens = await tokens_for(store, client, user)
+        response = await revoke(
+            client, client_id, tokens["refresh_token"], hint="device_code"
+        )
+
+    assert response.status_code == 200
+    assert (await _row(db, tokens["refresh_token"])).revoked_at is not None
 
 
 async def test_revoke_requires_form_encoding_and_a_token(

@@ -24,14 +24,14 @@ export interface ConsentResult {
 }
 
 /**
- * A failed consent call, reduced to what the page may reason about. `detail` is kept only to
- * classify a 403; it is never rendered (the page shows its own copy).
+ * A failed consent call, reduced to what the page may reason about: the status and, for a 403,
+ * the refusal code (backend `ConsentRefusal` in `detail.reason`: no_mcp_use, user_disabled,
+ * not_company_account, service_account). Backend text is never read or rendered.
  */
 export class ConsentApiError extends Error {
   constructor(
     readonly status: number | null,
     readonly reason: string | null,
-    readonly detail: string | null,
   ) {
     super(`consent request failed (${status ?? 'network'})`);
     this.name = 'ConsentApiError';
@@ -45,12 +45,10 @@ function field(value: unknown, name: string): unknown {
 }
 
 function toConsentError(error: unknown): ConsentApiError {
-  if (!isAxiosError(error)) return new ConsentApiError(null, null, null);
+  if (!isAxiosError(error)) return new ConsentApiError(null, null);
   const status = error.response?.status ?? null;
-  const detail = field(error.response?.data, 'detail');
-  if (typeof detail === 'string') return new ConsentApiError(status, null, detail);
-  const reason = field(detail, 'reason');
-  return new ConsentApiError(status, typeof reason === 'string' ? reason : null, null);
+  const reason = field(field(error.response?.data, 'detail'), 'reason');
+  return new ConsentApiError(status, typeof reason === 'string' ? reason : null);
 }
 
 export async function getConsentPrompt(txn: string): Promise<ConsentPrompt> {

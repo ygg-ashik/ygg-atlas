@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 from structlog.testing import capture_logs
 
-from app.identity import UNNAMED_CLIENT, oauth
+from app.identity import UNNAMED_CLIENT
 from app.identity.api_tokens import (
     EVENT_FAMILY_REVOKED,
     EVENT_TOKEN_CREATED,
@@ -524,8 +524,3 @@ async def test_tenant_of_user_ignores_status(db) -> None:
     assert await tenant_of_user(db, active.id) == active.tenant
     assert await tenant_of_user(db, disabled.id) == disabled.tenant
     assert await tenant_of_user(db, uuid4()) is None
-
-
-def test_oauth_and_connected_apps_share_one_unnamed_client_name() -> None:
-    # oauth.py keeps its own copy until it imports the api_tokens one.
-    assert oauth.UNNAMED_CLIENT == UNNAMED_CLIENT

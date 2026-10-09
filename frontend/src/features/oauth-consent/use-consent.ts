@@ -13,7 +13,7 @@ export type ConsentState =
   | { kind: 'sign-in' }
   | { kind: 'loading' }
   | { kind: 'expired' }
-  | { kind: 'blocked'; message: string } // 403 from get_principal: our own copy, never the body
+  | { kind: 'blocked'; message: string } // 403 refusal code → our own copy, never the body
   | { kind: 'ineligible'; prompt: ConsentPrompt }
   | { kind: 'ready'; prompt: ConsentPrompt }
   | { kind: 'done'; decision: ConsentDecision }
@@ -24,24 +24,29 @@ const RATE_LIMITED = 'Too many attempts. Wait a minute, then start again from yo
 const BAD_REDIRECT =
   "Atlas couldn't confirm where to send this approval, so it stopped. Start again from your MCP client.";
 
-/** Maps a 403 from the identity door to fixed copy. The backend text is matched, never shown. */
-function blockedMessage(detail: string | null): string {
-  if (detail && /disabled/i.test(detail)) {
-    return 'Your Atlas access is disabled. Contact an Atlas admin.';
+const BLOCKED_FALLBACK = "This account can't approve MCP access. Contact an Atlas admin.";
+
+/** Maps a 403's refusal code to fixed copy. Unknown or missing codes get the fallback. */
+function blockedMessage(reason: string | null): string {
+  switch (reason) {
+    case 'user_disabled':
+      return 'Your Atlas access is disabled. Contact an Atlas admin.';
+    case 'not_company_account':
+      return 'Atlas only accepts @yougotagift.com Google accounts.';
+    case 'service_account':
+      return 'Service accounts use tokens, not sign-in. Sign in with your own Google account.';
+    default:
+      return BLOCKED_FALLBACK;
   }
-  if (detail && /@|google account/i.test(detail)) {
-    return 'Atlas only accepts @yougotagift.com Google accounts.';
-  }
-  return "This account can't approve MCP access. Contact an Atlas admin.";
 }
 
 function stateFromError(error: unknown, prompt: ConsentPrompt | null): ConsentState {
-  const e = error instanceof ConsentApiError ? error : new ConsentApiError(null, null, null);
+  const e = error instanceof ConsentApiError ? error : new ConsentApiError(null, null);
   if (e.status === 401) return { kind: 'sign-in' };
   if (e.status === 404) return { kind: 'expired' };
   if (e.status === 403 && e.reason === 'no_mcp_use' && prompt)
     return { kind: 'ineligible', prompt };
-  if (e.status === 403) return { kind: 'blocked', message: blockedMessage(e.detail) };
+  if (e.status === 403) return { kind: 'blocked', message: blockedMessage(e.reason) };
   if (e.status === 429) return { kind: 'error', message: RATE_LIMITED };
   return { kind: 'error', message: GENERIC_ERROR };
 }

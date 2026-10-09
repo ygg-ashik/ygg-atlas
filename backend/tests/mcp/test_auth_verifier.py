@@ -9,12 +9,18 @@ from mcp.server.auth.middleware.bearer_auth import BearerAuthBackend
 from pydantic import AnyHttpUrl
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.requests import HTTPConnection
+from starlette.types import Message, Receive, Scope, Send
 from structlog.testing import capture_logs
 
 from app.database import get_session_factory
 from app.identity import REVOKED_BY_USER, TokenKind, User
 from app.identity.api_tokens import mint
-from app.mcp.auth import AtlasTokenVerifier, last_bearer_rejection
+from app.mcp.auth import (
+    AtlasTokenVerifier,
+    BearerRejectionScope,
+    bearer_unrecognised,
+    last_bearer_rejection,
+)
 from tests.access_helpers import make_user
 from tests.identity.credential_helpers import (
     assert_no_secret,
@@ -190,8 +196,16 @@ async def test_disabled_owner_is_none_and_not_counted_as_guessing(db) -> None:
     user = await _user(db, status="disabled")
     _, raw = await insert_token(db, user, TokenKind.PAT)
 
-    assert await AtlasTokenVerifier(RESOURCE).verify_token(raw) is None
-    assert last_bearer_rejection() == "unavailable"
+    with capture_logs() as logs:
+        assert await AtlasTokenVerifier(RESOURCE).verify_token(raw) is None
+    assert last_bearer_rejection() == "refused"
+    assert not bearer_unrecognised()
+    # A clean rejection: no error-level failure log for a disabled owner.
+    assert not [e for e in logs if e["log_level"] == "error"]
+    assert {"event": "mcp.bearer_refused", "reason": "user_disabled"}.items() <= (
+        logs[-1].items()
+    )
+    assert_no_secret(raw, logs)
 
 
 async def test_verifier_fails_closed_on_unexpected_errors(
@@ -245,3 +259,49 @@ async def test_each_check_runs_on_a_fresh_session(db) -> None:
 
     assert await verifier.verify_token(raw) is None
     assert len(opened) == 2
+
+
+async def test_rejection_scope_keeps_a_verdict_inside_its_request(db) -> None:
+    """Two requests in one task: a bad bearer, then none. The second never sees
+    the first's verdict, and nothing leaks past either request (ruling E1)."""
+    verifier = AtlasTokenVerifier(RESOURCE)
+    seen: list[str | None] = []
+
+    async def bad_bearer(scope: Scope, receive: Receive, send: Send) -> None:
+        await verifier.verify_token(mint(TokenKind.PAT))
+        seen.append(last_bearer_rejection())
+
+    async def no_bearer(scope: Scope, receive: Receive, send: Send) -> None:
+        seen.append(last_bearer_rejection())
+
+    async def receive() -> Message:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(_message: Message) -> None:
+        return None
+
+    scope: Scope = {"type": "http", "headers": []}
+    await BearerRejectionScope(bad_bearer)(scope, receive, send)
+    assert last_bearer_rejection() is None
+    await BearerRejectionScope(no_bearer)(scope, receive, send)
+
+    assert seen == ["unrecognised", None]
+    assert last_bearer_rejection() is None
+
+
+async def test_rejection_scope_clears_a_stale_verdict(db) -> None:
+    await AtlasTokenVerifier(RESOURCE).verify_token("garbage")
+    assert bearer_unrecognised()
+    seen: list[str | None] = []
+
+    async def inner(scope: Scope, receive: Receive, send: Send) -> None:
+        seen.append(last_bearer_rejection())
+
+    async def receive() -> Message:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(_message: Message) -> None:
+        return None
+
+    await BearerRejectionScope(inner)({"type": "http", "headers": []}, receive, send)
+    assert seen == [None]

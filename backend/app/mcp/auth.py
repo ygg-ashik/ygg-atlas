@@ -10,13 +10,12 @@ prefix, so no repr or log line can leak the bearer.
 
 Why a bearer failed is kept per request task (`last_bearer_rejection`) for the
 failed-bearer limiter (ruling E1): only bearers the door does not recognise count,
-never a real token that merely expired.
+never a real token that merely expired. `BearerRejectionScope` bounds that verdict to
+one request.
 """
 
-import hashlib
 from collections.abc import Callable
 from contextvars import ContextVar
-from datetime import UTC, datetime
 from typing import Final, Literal
 from uuid import UUID
 
@@ -24,16 +23,15 @@ import structlog
 from mcp.server.auth.provider import AccessToken
 from pydantic import ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlmodel import col, select
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.database import get_session_factory
 from app.identity import (
-    TOKEN_PREFIXES,
-    ApiToken,
     AuthenticatedBearer,
+    ExpiredTokenError,
+    ForbiddenError,
     InvalidTokenError,
     Principal,
-    TokenKind,
     authenticate_bearer,
 )
 
@@ -46,9 +44,10 @@ SessionFactory = Callable[[], async_sessionmaker[AsyncSession]]
 #   InvalidTokenError). The only kind the failed-bearer limiter counts.
 # - "expired": a real, unrevoked bearer past its expiry. The client must
 #   re-authenticate; not evidence of guessing.
-# - "unavailable": anything else: the check failed (database down) or the door
-#   refused a real token's owner (disabled). Not evidence of guessing.
-BearerRejection = Literal["unrecognised", "expired", "unavailable"]
+# - "refused": a real, live bearer whose owner may not use atlas (disabled).
+# - "unavailable": the check itself failed (database down).
+# Only "unrecognised" is evidence of guessing.
+BearerRejection = Literal["unrecognised", "expired", "refused", "unavailable"]
 
 _REJECTION: Final[ContextVar[BearerRejection | None]] = ContextVar(
     "atlas_bearer_rejection", default=None
@@ -60,6 +59,28 @@ def last_bearer_rejection() -> BearerRejection | None:
     or none ran. The bearer middleware runs in the request's own task, so an ASGI
     wrapper around it reads the verdict of exactly this request."""
     return _REJECTION.get()
+
+
+def bearer_unrecognised() -> bool:
+    """The failed-bearer limiter's predicate (E1): count only unrecognised bearers."""
+    return _REJECTION.get() == "unrecognised"
+
+
+class BearerRejectionScope:
+    """Pure ASGI: clears the bearer verdict before the request and restores it after,
+    so a verdict never outlives its request (several requests can share one task).
+    Runs in the request's task, like the SDK's AuthenticationMiddleware inside it,
+    so a wrapper outside it reads exactly this request's verdict."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self._app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        token = _REJECTION.set(None)
+        try:
+            await self._app(scope, receive, send)
+        finally:
+            _REJECTION.reset(token)
 
 
 class AtlasAccessToken(AccessToken):
@@ -110,34 +131,15 @@ class AtlasTokenVerifier:
             async with self._sessions()() as db:
                 try:
                     return await authenticate_bearer(db, token)
+                except ExpiredTokenError:
+                    _REJECTION.set("expired")
                 except InvalidTokenError:
-                    expired = await _merely_expired(db, token)
-                    _REJECTION.set("expired" if expired else "unrecognised")
+                    _REJECTION.set("unrecognised")
+                except ForbiddenError as exc:  # a real token, its owner disabled
+                    _REJECTION.set("refused")
+                    logger.info("mcp.bearer_refused", reason=exc.reason)
         except Exception as exc:  # fail closed: 401, never a 500 holding the token
             _REJECTION.set("unavailable")
             # Not logger.exception: dev tracebacks render locals (the raw bearer).
             logger.error("mcp.bearer_check_failed", error=type(exc).__name__)
         return None
-
-
-async def _merely_expired(db: AsyncSession, raw: str) -> bool:
-    """Whether a rejected bearer is a real, unrevoked bearer row past its expiry.
-
-    The door raises one InvalidTokenError for every reason (by design: callers
-    learn nothing), so this read tells E1's two cases apart. The digest is the
-    door's own storage hash (SHA-256 hex of the stripped bearer); a drift would
-    only make expired tokens count as unrecognised, and the verifier tests pin it.
-    """
-    candidate = raw.strip()
-    if not candidate.startswith(tuple(TOKEN_PREFIXES.values())):
-        return False  # malformed: no row can match, skip the read
-    digest = hashlib.sha256(candidate.encode("utf-8")).hexdigest()
-    row = (
-        await db.execute(select(ApiToken).where(col(ApiToken.token_hash) == digest))
-    ).scalar_one_or_none()
-    if row is None or row.revoked_at is not None or row.kind == TokenKind.OAUTH_REFRESH:
-        return False
-    expires_at = row.expires_at
-    if expires_at.tzinfo is None:  # SQLite returns naive UTC
-        expires_at = expires_at.replace(tzinfo=UTC)
-    return expires_at <= datetime.now(UTC)

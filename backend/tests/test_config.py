@@ -201,3 +201,13 @@ def test_pat_day_bounds(default_days: int, max_days: int) -> None:
                 "pat_max_days": max_days,
             }
         )
+
+
+def test_shared_mcp_token_settings_are_gone(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Spec §11.5: the shared token is retired; a leftover env var is ignored.
+    monkeypatch.setenv("ATLAS_MCP_TOKEN", "s3cret")
+    monkeypatch.setenv("MCP_SERVICE_EMAIL", "mcp-shared@atlas.internal")
+    settings = Settings.model_validate({"environment": "test"})
+    assert "atlas_mcp_token" not in Settings.model_fields
+    assert "mcp_service_email" not in Settings.model_fields
+    assert "s3cret" not in settings.model_dump_json()

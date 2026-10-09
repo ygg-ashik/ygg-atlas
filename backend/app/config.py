@@ -35,10 +35,6 @@ class Settings(BaseSettings):
     agent_max_tool_rounds: int = 6
     max_input_chars: int = 4000
 
-    atlas_mcp_token: str = ""
-    # MCP calls run as this service user until per-user MCP auth (spec phase 4).
-    mcp_service_email: str = "mcp-shared@atlas.internal"
-
     # MCP auth (phase 4). The URL users type into their MCP client: scheme, host and
     # optional port, no path. Issuer, resource and consent URLs derive from it.
     atlas_public_url: str = "http://localhost:8080"

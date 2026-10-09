@@ -40,6 +40,7 @@ from starlette.requests import Request
 from app.access import MCP_USE, policy_for
 from app.database import get_session_factory
 from app.identity import (
+    AccessTokenRef,
     AuthorizationRequestData,
     ClientRegistration,
     CodeGrant,
@@ -302,8 +303,18 @@ class AtlasOAuthProvider(
 
     async def revoke_token(self, token: AtlasAccessToken | AtlasRefreshToken) -> None:
         """RFC 7009: the whole family. The caller has checked the client matches."""
+        await self.revoke_family_of(token.token_id)
+
+    async def revoke_family_of(self, token_id: UUID) -> None:
+        """Revokes the family of an OAuth token by id (non-OAuth ids are ignored)."""
         async with self._sessions()() as db:
-            await OAuthService(db, self._config).revoke_by_token_id(token.token_id)
+            await OAuthService(db, self._config).revoke_by_token_id(token_id)
+
+    async def find_access_token(self, raw: str) -> AccessTokenRef | None:
+        """An OAuth access token for revocation: no bearer checks, no side effects
+        (unlike `load_access_token`), so expired tokens can still be revoked."""
+        async with self._sessions()() as db:
+            return await OAuthService(db, self._config).find_access_token(raw)
 
     async def eligible(self, user_id: UUID) -> bool:
         """Active and holds mcp:use. Any error is False (fail closed)."""

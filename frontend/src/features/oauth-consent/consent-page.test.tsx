@@ -154,7 +154,7 @@ describe('ConsentPage', () => {
   });
 
   it('approve refused for no mcp:use switches to the ineligible page', async () => {
-    submit.mockRejectedValue(new ConsentApiError(403, 'no_mcp_use', null));
+    submit.mockRejectedValue(new ConsentApiError(403, 'no_mcp_use'));
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: 'Approve' }));
     expect(await screen.findByRole('link', { name: 'Request access' })).toBeInTheDocument();
@@ -162,31 +162,29 @@ describe('ConsentPage', () => {
   });
 
   it('expired or used request shows the start-again message', async () => {
-    prompt.mockRejectedValue(new ConsentApiError(404, null, 'Not found'));
+    prompt.mockRejectedValue(new ConsentApiError(404, null));
     renderPage();
     expect(await screen.findByText(/expired or was already used/i)).toBeInTheDocument();
     expect(screen.getByText(/start again from your MCP client/i)).toBeInTheDocument();
     expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('blocked account shows the backend message and no buttons', async () => {
-    prompt.mockRejectedValue(
-      new ConsentApiError(403, null, 'Your atlas access is disabled. Contact an admin.'),
-    );
+  it('disabled account sees the disabled message and no buttons', async () => {
+    prompt.mockRejectedValue(new ConsentApiError(403, 'user_disabled'));
     renderPage();
     expect(await screen.findByText(/access is disabled/i)).toBeInTheDocument();
     expect(screen.queryByRole('button')).toBeNull();
   });
 
   it('non-company account sees the company-account message and no buttons', async () => {
-    prompt.mockRejectedValue(new ConsentApiError(403, null, 'Use your @yougotagift.com account.'));
+    prompt.mockRejectedValue(new ConsentApiError(403, 'not_company_account'));
     renderPage();
     expect(await screen.findByText(/only accepts @yougotagift\.com/i)).toBeInTheDocument();
     expect(screen.queryByRole('button')).toBeNull();
   });
 
   it('never shows a raw error body', async () => {
-    prompt.mockRejectedValue(new ConsentApiError(500, null, 'Traceback (most recent call last)'));
+    prompt.mockRejectedValue(new ConsentApiError(500, null));
     renderPage();
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(screen.queryByText(/Traceback/)).toBeNull();

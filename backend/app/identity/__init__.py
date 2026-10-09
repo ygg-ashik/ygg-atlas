@@ -12,6 +12,7 @@ from app.identity.api_tokens import (
     CredentialActor,
     CredentialVia,
     TokenKind,
+    hash_secret,
 )
 from app.identity.bootstrap import ensure_service_user
 from app.identity.credentials import (
@@ -30,6 +31,8 @@ from app.identity.errors import (
     CredentialLimitError,
     CredentialNotFoundError,
     CredentialRuleError,
+    ForbiddenError,
+    ForbiddenReason,
 )
 from app.identity.models import (
     ApiToken,
@@ -42,6 +45,7 @@ from app.identity.models import (
     UserStatus,
 )
 from app.identity.oauth import (
+    AccessTokenRef,
     AuthorizationRequestData,
     AuthorizationRequestNotFoundError,
     ClientRegistration,
@@ -65,8 +69,7 @@ from app.identity.oauth import (
 )
 from app.identity.principal import Principal
 from app.identity.router import router as identity_router
-from app.identity.service import service_principal
-from app.identity.tokens import InvalidTokenError, TokenVerifier
+from app.identity.tokens import ExpiredTokenError, InvalidTokenError, TokenVerifier
 
 __all__ = [
     "REVOKED_APP_DISCONNECTED",
@@ -76,6 +79,7 @@ __all__ = [
     "REVOKED_USER_DISABLED",
     "TOKEN_PREFIXES",
     "UNNAMED_CLIENT",
+    "AccessTokenRef",
     "ApiToken",
     "AuthenticatedBearer",
     "AuthorizationRequestData",
@@ -91,6 +95,9 @@ __all__ = [
     "CredentialRuleError",
     "CredentialVia",
     "Eligibility",
+    "ExpiredTokenError",
+    "ForbiddenError",
+    "ForbiddenReason",
     "GcReport",
     "InvalidTokenError",
     "IssuedToken",
@@ -118,13 +125,13 @@ __all__ = [
     "ensure_service_user",
     "get_principal",
     "get_token_verifier",
+    "hash_secret",
     "identity_router",
     "is_loopback_redirect",
     "principal_for_user",
     "redirect_allowed",
     "revoke_user_tokens",
     "service_account_email",
-    "service_principal",
     "tenant_of_user",
     "with_query",
 ]

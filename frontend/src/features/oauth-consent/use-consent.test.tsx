@@ -85,14 +85,14 @@ describe('useConsent', () => {
   });
 
   it('401 → sign-in', async () => {
-    prompt.mockRejectedValue(new ConsentApiError(401, null, 'Invalid or expired token'));
+    prompt.mockRejectedValue(new ConsentApiError(401, null));
     const { result } = renderHook(() => useConsent(TXN, session()));
     await waitFor(() => expect(result.current.state).toEqual({ kind: 'sign-in' }));
   });
 
   it('signing in again after a 401 re-checks the request', async () => {
     const s = session();
-    prompt.mockRejectedValueOnce(new ConsentApiError(401, null, null)).mockResolvedValue(PROMPT);
+    prompt.mockRejectedValueOnce(new ConsentApiError(401, null)).mockResolvedValue(PROMPT);
     const { result } = renderHook(() => useConsent(TXN, s));
     await waitFor(() => expect(result.current.state).toEqual({ kind: 'sign-in' }));
     await act(() => result.current.signIn());
@@ -101,15 +101,13 @@ describe('useConsent', () => {
   });
 
   it('404 → expired', async () => {
-    prompt.mockRejectedValue(new ConsentApiError(404, null, 'Not found'));
+    prompt.mockRejectedValue(new ConsentApiError(404, null));
     const { result } = renderHook(() => useConsent(TXN, session()));
     await waitFor(() => expect(result.current.state).toEqual({ kind: 'expired' }));
   });
 
-  it('403 for a disabled user → blocked with our own copy', async () => {
-    prompt.mockRejectedValue(
-      new ConsentApiError(403, null, 'Your atlas access is disabled. Contact an admin.'),
-    );
+  it('403 user_disabled → blocked with our own copy', async () => {
+    prompt.mockRejectedValue(new ConsentApiError(403, 'user_disabled'));
     const { result } = renderHook(() => useConsent(TXN, session()));
     await waitFor(() => expect(result.current.state.kind).toBe('blocked'));
     expect(result.current.state).toEqual({
@@ -118,8 +116,8 @@ describe('useConsent', () => {
     });
   });
 
-  it('403 for a non-company account → blocked with the company-account copy', async () => {
-    prompt.mockRejectedValue(new ConsentApiError(403, null, 'Use your @yougotagift.com account.'));
+  it('403 not_company_account → blocked with the company-account copy', async () => {
+    prompt.mockRejectedValue(new ConsentApiError(403, 'not_company_account'));
     const { result } = renderHook(() => useConsent(TXN, session()));
     await waitFor(() => expect(result.current.state.kind).toBe('blocked'));
     expect(result.current.state).toEqual({
@@ -128,15 +126,31 @@ describe('useConsent', () => {
     });
   });
 
-  it('an unknown 403 never echoes the backend body', async () => {
-    prompt.mockRejectedValue(new ConsentApiError(403, null, '<script>secret internals</script>'));
+  it('403 service_account → blocked with the service-account copy', async () => {
+    prompt.mockRejectedValue(new ConsentApiError(403, 'service_account'));
     const { result } = renderHook(() => useConsent(TXN, session()));
     await waitFor(() => expect(result.current.state.kind).toBe('blocked'));
-    expect(JSON.stringify(result.current.state)).not.toMatch(/secret internals/);
+    expect(result.current.state).toEqual({
+      kind: 'blocked',
+      message: 'Service accounts use tokens, not sign-in. Sign in with your own Google account.',
+    });
   });
 
+  it.each([null, 'something_new', '<script>secret internals</script>'])(
+    'a 403 with an unknown code (%s) → the fixed fallback copy',
+    async (reason) => {
+      prompt.mockRejectedValue(new ConsentApiError(403, reason));
+      const { result } = renderHook(() => useConsent(TXN, session()));
+      await waitFor(() => expect(result.current.state.kind).toBe('blocked'));
+      expect(result.current.state).toEqual({
+        kind: 'blocked',
+        message: "This account can't approve MCP access. Contact an Atlas admin.",
+      });
+    },
+  );
+
   it('an unexpected failure → a generic error', async () => {
-    prompt.mockRejectedValue(new ConsentApiError(500, null, 'Traceback: boom'));
+    prompt.mockRejectedValue(new ConsentApiError(500, null));
     const { result } = renderHook(() => useConsent(TXN, session()));
     await waitFor(() => expect(result.current.state.kind).toBe('error'));
     expect(JSON.stringify(result.current.state)).not.toMatch(/Traceback/);
@@ -155,7 +169,7 @@ describe('useConsent', () => {
 
   it('approve 403 no_mcp_use → ineligible, no navigation', async () => {
     prompt.mockResolvedValue(PROMPT);
-    submit.mockRejectedValue(new ConsentApiError(403, 'no_mcp_use', null));
+    submit.mockRejectedValue(new ConsentApiError(403, 'no_mcp_use'));
     const { result } = renderHook(() => useConsent(TXN, session()));
     await waitFor(() => expect(result.current.state.kind).toBe('ready'));
     await act(() => result.current.decide('approve'));
@@ -165,7 +179,7 @@ describe('useConsent', () => {
 
   it('approve 404 → expired', async () => {
     prompt.mockResolvedValue(PROMPT);
-    submit.mockRejectedValue(new ConsentApiError(404, null, null));
+    submit.mockRejectedValue(new ConsentApiError(404, null));
     const { result } = renderHook(() => useConsent(TXN, session()));
     await waitFor(() => expect(result.current.state.kind).toBe('ready'));
     await act(() => result.current.decide('approve'));

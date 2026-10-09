@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, Request
 from httpx import ASGITransport, AsyncClient
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.types import Receive, Scope, Send
+from structlog.testing import capture_logs
 
 from app.mcp.ratelimit import (
     AUTHORIZE,
@@ -16,6 +17,7 @@ from app.mcp.ratelimit import (
     CONSENT,
     MCP_CALLS,
     REGISTER,
+    REVOKE,
     TOKEN,
     FailedBearerGuard,
     PrincipalRateLimit,
@@ -62,8 +64,14 @@ async def _status_app(scope: Scope, receive: Receive, send: Send) -> None:
     await PlainTextResponse("x", status_code=status)(scope, receive, send)
 
 
-def _client(app: object) -> AsyncClient:
-    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")  # type: ignore[arg-type]  # ASGITransport accepts any ASGI callable
+PUBLIC_PEER = "8.8.4.4"  # a public address: per-source limits key it as itself
+
+
+def _client(app: object, peer: str = PUBLIC_PEER) -> AsyncClient:
+    return AsyncClient(
+        transport=ASGITransport(app=app, client=(peer, 4321)),  # type: ignore[arg-type]  # ASGITransport accepts any ASGI callable
+        base_url="http://test",
+    )
 
 
 # --- the limiter ------------------------------------------------------------
@@ -184,8 +192,9 @@ def test_policies_match_the_design() -> None:
     assert (REGISTER.limit, REGISTER.window_seconds) == (10, 3600)
     assert (BEARER_FAILURES.limit, BEARER_FAILURES.window_seconds) == (20, 60)
     assert (CONSENT.limit, CONSENT.window_seconds) == (10, 60)
-    names = {p.name for p in (MCP_CALLS, TOKEN, AUTHORIZE, REGISTER, BEARER_FAILURES)}
-    assert len(names | {CONSENT.name}) == 6
+    assert (REVOKE.limit, REVOKE.window_seconds) == (30, 60)
+    policies = (MCP_CALLS, TOKEN, AUTHORIZE, REGISTER, BEARER_FAILURES, CONSENT, REVOKE)
+    assert len({p.name for p in policies}) == 7
 
 
 def test_process_wide_limiter_is_one_per_policy(clock: FakeClock) -> None:
@@ -209,9 +218,33 @@ def test_429_response_shape() -> None:
     assert "atl_" not in body
 
 
-def test_source_key_uses_client_host_or_unknown() -> None:
-    assert source_key({"type": "http", "client": ("10.0.0.5", 4321)}) == "10.0.0.5"
-    assert source_key({"type": "http", "client": None}) == "unknown"
+def test_source_key_uses_a_public_client_host() -> None:
+    assert source_key({"type": "http", "client": ("8.8.4.4", 4321)}) == "8.8.4.4"
+    assert source_key({"type": "http", "client": ("2606:4700::1", 1)}) == "2606:4700::1"
+
+
+@pytest.mark.parametrize(
+    "client",
+    [
+        ("172.18.0.5", 4321),  # the nginx container on the compose network
+        ("10.0.0.5", 1),
+        ("192.168.1.2", 1),
+        ("127.0.0.1", 1),
+        ("::1", 1),
+        ("fd00::1", 1),
+        ("fe80::1", 1),
+        ("169.254.1.1", 1),
+        ("::ffff:10.0.0.1", 1),
+        ("not-an-ip", 1),
+        (),
+        None,
+        "garbage",
+    ],
+)
+def test_source_key_treats_proxies_and_malformed_peers_as_unknown(
+    client: object,
+) -> None:
+    assert source_key({"type": "http", "client": client}) == "unknown"
     assert source_key({"type": "http"}) == "unknown"
 
 
@@ -339,3 +372,144 @@ async def test_fastapi_dependency_raises_429_with_retry_after(clock: FakeClock) 
         assert refused.json()["detail"]["error"] == "rate_limited"
         assert "u1" not in refused.text
         assert (await client.post("/consent", headers=u2)).status_code == 200
+
+
+# --- Task 6: E1, policy-keyed registry, streaming ---------------------------
+
+
+def test_policies_sharing_a_name_never_share_a_budget(clock: FakeClock) -> None:
+    tight, loose = RateLimitPolicy("same", 1, 60), RateLimitPolicy("same", 5, 60)
+    assert limiter(tight) is not limiter(loose)
+    assert limiter(tight).hit("k").allowed
+    assert not limiter(tight).hit("k").allowed
+    assert limiter(loose).hit("k").allowed
+
+
+async def test_failed_bearer_guard_counts_only_what_counts_says(
+    clock: FakeClock,
+) -> None:
+    unrecognised = [False]
+    app = FailedBearerGuard(_status_app, _small(2), counts=lambda: unrecognised[0])
+    bearer = {"Authorization": f"Bearer {RAW_TOKEN}"}
+    async with _client(app) as client:
+        for _ in range(5):  # e.g. expired tokens: refused, never counted
+            assert (await client.get("/deny", headers=bearer)).status_code == 401
+        assert (await client.get("/ok", headers=bearer)).status_code == 200
+        unrecognised[0] = True
+        for _ in range(2):
+            assert (await client.get("/deny", headers=bearer)).status_code == 401
+        assert (await client.get("/ok", headers=bearer)).status_code == 429
+
+
+async def test_failed_bearer_guard_never_blocks_an_unknown_source(
+    clock: FakeClock,
+) -> None:
+    calls: list[int] = []
+
+    async def deny(scope: Scope, receive: Receive, send: Send) -> None:
+        calls.append(1)
+        await PlainTextResponse("x", status_code=401)(scope, receive, send)
+
+    app = FailedBearerGuard(deny, _small(1))
+    sent: list[dict[str, object]] = []
+
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message: dict[str, object]) -> None:
+        sent.append(message)
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/deny",
+        "headers": [(b"authorization", f"Bearer {RAW_TOKEN}".encode())],
+        "query_string": b"",
+        "client": None,
+    }
+    with capture_logs() as logs:
+        for _ in range(5):
+            await app(scope, receive, send)  # type: ignore[arg-type]  # minimal ASGI stubs
+    statuses = [m["status"] for m in sent if m["type"] == "http.response.start"]
+    assert statuses == [401] * 5
+    assert len(calls) == 5
+    assert len(limiter(_small(1))) == 0
+    unattributed = [
+        e for e in logs if e["event"] == "ratelimit.bearer_failure_unattributed"
+    ]
+    assert len(unattributed) == 5
+    assert RAW_TOKEN not in str(logs)
+
+
+async def test_wrappers_pass_multi_chunk_streams_through(clock: FakeClock) -> None:
+    async def stream(scope: Scope, receive: Receive, send: Send) -> None:
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/event-stream")],
+            }
+        )
+        for chunk in (b"data: one\n\n", b"data: two\n\n", b"data: three\n\n"):
+            await send({"type": "http.response.body", "body": chunk, "more_body": True})
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+    policy = _small(100)
+    bearer = {"Authorization": "Bearer whatever", "x-token-id": "t1"}
+    for wrapper in (
+        RateLimitedEndpoint(stream, policy),
+        FailedBearerGuard(stream, policy),
+        PrincipalRateLimit(stream, policy, key=lambda _s: "k"),
+    ):
+        async with (
+            _client(wrapper) as client,
+            client.stream("GET", "/sse", headers=bearer) as response,
+        ):
+            chunks = [c async for c in response.aiter_bytes()]
+        assert response.status_code == 200
+        assert b"".join(chunks) == b"data: one\n\ndata: two\n\ndata: three\n\n"
+
+
+async def test_fastapi_dependency_key_may_depend_on_other_dependencies(
+    clock: FakeClock,
+) -> None:
+    async def caller(request: Request) -> str:
+        return request.headers.get("x-user", "anon")
+
+    async def by_caller(user: str = Depends(caller)) -> str:
+        return f"user:{user}"
+
+    api = FastAPI()
+
+    @api.get("/c", dependencies=[Depends(rate_limit(_small(1, 60), by_caller))])
+    async def c() -> Response:  # pyright: ignore[reportUnusedFunction]  # registered by decorator
+        return JSONResponse({"ok": True})
+
+    async with _client(api) as client:
+        assert (await client.get("/c", headers={"x-user": "u1"})).status_code == 200
+        assert (await client.get("/c", headers={"x-user": "u1"})).status_code == 429
+        assert (await client.get("/c", headers={"x-user": "u2"})).status_code == 200
+
+
+async def test_failed_bearer_guard_never_blocks_a_private_peer(
+    clock: FakeClock,
+) -> None:
+    app = FailedBearerGuard(_status_app)
+    headers = {"Authorization": f"Bearer {RAW_TOKEN}"}
+    async with _client(app, peer="172.18.0.5") as client:
+        for _ in range(25):
+            assert (await client.get("/deny", headers=headers)).status_code == 401
+        assert (await client.get("/ok", headers=headers)).status_code == 200
+
+
+async def test_failed_bearer_guard_blocks_a_public_peer_after_20(
+    clock: FakeClock,
+) -> None:
+    app = FailedBearerGuard(_status_app)
+    headers = {"Authorization": f"Bearer {RAW_TOKEN}"}
+    async with _client(app, peer="8.8.4.4") as client:
+        for _ in range(20):
+            assert (await client.get("/deny", headers=headers)).status_code == 401
+        assert (await client.get("/deny", headers=headers)).status_code == 429
+    async with _client(app, peer="2606:4700::1") as other:
+        assert (await other.get("/ok", headers=headers)).status_code == 200

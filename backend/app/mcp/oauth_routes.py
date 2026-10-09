@@ -13,7 +13,8 @@ and logs only the exception type, never a traceback or token material.
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Annotated, Final, Literal
+from typing import Annotated, Final
+from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends
@@ -29,7 +30,11 @@ from mcp.server.transport_security import (
     DEFAULT_MAX_REQUEST_BODY_SIZE,
     RequestBodyLimitMiddleware,
 )
-from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
+from mcp.shared.auth import (
+    OAuthClientInformationFull,
+    OAuthMetadata,
+    ProtectedResourceMetadata,
+)
 from pydantic import AnyHttpUrl, BaseModel, ValidationError
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
@@ -39,11 +44,13 @@ from starlette.types import ASGIApp
 
 from app.config import Settings, get_settings
 from app.identity import OAuthConfig
-from app.mcp.auth import AtlasAccessToken
-from app.mcp.oauth_provider import (
-    AtlasOAuthProvider,
-    AtlasRefreshToken,
-    HashedClientAuthenticator,
+from app.mcp.oauth_provider import AtlasOAuthProvider, HashedClientAuthenticator
+from app.mcp.ratelimit import (
+    AUTHORIZE,
+    REGISTER,
+    REVOKE,
+    TOKEN,
+    RateLimitedEndpoint,
 )
 
 logger = structlog.get_logger()
@@ -56,6 +63,13 @@ _NO_STORE: Final = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 _DISCOVERY_HEADERS: Final = {
     "Cache-Control": "public, max-age=300",
     "Access-Control-Allow-Origin": "*",
+}
+# What the SDK's own discovery routes answer to a CORS preflight (cors_middleware).
+_PREFLIGHT_HEADERS: Final = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": MCP_PROTOCOL_VERSION_HEADER,
+    "Access-Control-Max-Age": "600",
 }
 _SERVER_ERROR: Final = "The authorization server could not handle the request."
 _REFRESH_HINT: Final = "refresh_token"
@@ -127,10 +141,11 @@ def _form_only(endpoint: Endpoint) -> Endpoint:
 
 
 class _RevocationRequest(BaseModel):
-    """RFC 7009 §2.1. Unlike the SDK's model, `client_secret` is optional (C2)."""
+    """RFC 7009 §2.1. Unlike the SDK's model, `client_secret` is optional (C2), and
+    an unknown `token_type_hint` is accepted and ignored (§2.1: it is only a hint)."""
 
     token: str
-    token_type_hint: Literal["access_token", "refresh_token"] | None = None
+    token_type_hint: str | None = None
     client_id: str
     client_secret: str | None = None
 
@@ -139,7 +154,12 @@ class _RevocationRequest(BaseModel):
 class AtlasRevocationHandler:
     """RFC 7009 revocation (D29). Revokes the token's family only when the token
     was issued to the authenticated client; always 200 otherwise, including for
-    unknown tokens."""
+    unknown tokens.
+
+    Access tokens are found without the bearer door (no `last_used_at` write, no
+    owner checks), so an expired access token still revokes its family. A refresh
+    token presented by another client revokes its family anyway: `load_refresh`
+    treats that as cross-client reuse (an intentional fail-safe)."""
 
     provider: AtlasOAuthProvider
     authenticator: HashedClientAuthenticator
@@ -153,24 +173,38 @@ class AtlasRevocationHandler:
             body = _RevocationRequest.model_validate(dict(await request.form()))
         except ValidationError:
             return _oauth_error(400, "invalid_request", "token is required.")
-        token = await self._load(client.client_id or "", body)
-        if token is not None and token.client_id == client.client_id:
-            await self.provider.revoke_token(token)
+        token_id = await self._owned_token_id(client, body)
+        if token_id is not None:
+            await self.provider.revoke_family_of(token_id)
         return Response(status_code=200, headers=_NO_STORE)
 
-    async def _load(
-        self, client_id: str, body: _RevocationRequest
-    ) -> AtlasAccessToken | AtlasRefreshToken | None:
-        client = await self.provider.get_client(client_id)
-        if client is None:
-            return None
+    async def _owned_token_id(
+        self, client: OAuthClientInformationFull, body: _RevocationRequest
+    ) -> UUID | None:
+        """The id of the presented token when it was issued to `client`."""
         if body.token_type_hint == _REFRESH_HINT:
-            return await self.provider.load_refresh_token(
+            return await self._refresh_id(client, body.token) or await self._access_id(
                 client, body.token
-            ) or await self.provider.load_access_token(body.token)
-        return await self.provider.load_access_token(
-            body.token
-        ) or await self.provider.load_refresh_token(client, body.token)
+            )
+        return await self._access_id(client, body.token) or await self._refresh_id(
+            client, body.token
+        )
+
+    async def _access_id(
+        self, client: OAuthClientInformationFull, raw: str
+    ) -> UUID | None:
+        found = await self.provider.find_access_token(raw)
+        if found is None or found.client_id != client.client_id:
+            return None
+        return found.token_id
+
+    async def _refresh_id(
+        self, client: OAuthClientInformationFull, raw: str
+    ) -> UUID | None:
+        found = await self.provider.load_refresh_token(client, raw)
+        if found is None or found.client_id != client.client_id:
+            return None
+        return found.token_id
 
 
 def _cors(app: ASGIApp) -> ASGIApp:
@@ -192,7 +226,11 @@ def _body_limited(endpoint: Endpoint) -> ASGIApp:
 def build_oauth_routes(
     provider: AtlasOAuthProvider, config: OAuthConfig
 ) -> list[Route]:
-    """Routes relative to the `/mcp-server` mount (issuer `<url>/mcp-server`)."""
+    """Routes relative to the `/mcp-server` mount (issuer `<url>/mcp-server`).
+
+    `/authorize`, `/token`, `/register` and `/revoke` are rate limited per source
+    (D16; `/revoke` 30/min, a review addition), inside
+    CORS so a refusal still carries the CORS headers and a preflight never counts."""
     validate_issuer_url(AnyHttpUrl(config.issuer))
     metadata = build_oauth_metadata(config)
     authenticator = HashedClientAuthenticator(provider)
@@ -210,23 +248,36 @@ def build_oauth_routes(
         ),
         Route(
             "/authorize",  # no CORS: clients redirect the browser here
-            endpoint=_body_limited(_guarded(authorize.handle, "authorize")),
+            endpoint=RateLimitedEndpoint(
+                _body_limited(_guarded(authorize.handle, "authorize")), AUTHORIZE
+            ),
             methods=["GET", "POST"],
         ),
         Route(
             "/token",
-            endpoint=_cors(_body_limited(_guarded(_form_only(token.handle), "token"))),
+            endpoint=_cors(
+                RateLimitedEndpoint(
+                    _body_limited(_guarded(_form_only(token.handle), "token")), TOKEN
+                )
+            ),
             methods=["POST", "OPTIONS"],
         ),
         Route(
             "/register",
-            endpoint=_cors(_body_limited(_guarded(register.handle, "register"))),
+            endpoint=_cors(
+                RateLimitedEndpoint(
+                    _body_limited(_guarded(register.handle, "register")), REGISTER
+                )
+            ),
             methods=["POST", "OPTIONS"],
         ),
         Route(
             "/revoke",
             endpoint=_cors(
-                _body_limited(_guarded(_form_only(revoke.handle), "revoke"))
+                RateLimitedEndpoint(
+                    _body_limited(_guarded(_form_only(revoke.handle), "revoke")),
+                    REVOKE,
+                )
             ),
             methods=["POST", "OPTIONS"],
         ),
@@ -238,7 +289,18 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 discovery_router = APIRouter(tags=["mcp-discovery"])
 
 
-@discovery_router.get("/.well-known/oauth-protected-resource/mcp-server/mcp")
+_PRM_PATH: Final = "/.well-known/oauth-protected-resource/mcp-server/mcp"
+_AS_PATH: Final = "/.well-known/oauth-authorization-server/mcp-server"
+
+
+@discovery_router.options(_PRM_PATH)
+@discovery_router.options(_AS_PATH)
+async def discovery_preflight() -> Response:
+    """CORS preflight for browser-based clients, as the SDK's discovery routes do."""
+    return Response(status_code=200, headers=_PREFLIGHT_HEADERS)
+
+
+@discovery_router.get(_PRM_PATH)
 async def protected_resource(settings: SettingsDep) -> JSONResponse:
     """RFC 9728 §3.1: path-inserted for the resource `<url>/mcp-server/mcp`."""
     metadata = build_protected_resource_metadata(settings)
@@ -247,7 +309,7 @@ async def protected_resource(settings: SettingsDep) -> JSONResponse:
     )
 
 
-@discovery_router.get("/.well-known/oauth-authorization-server/mcp-server")
+@discovery_router.get(_AS_PATH)
 async def authorization_server(settings: SettingsDep) -> JSONResponse:
     """RFC 8414 §3.1: path-inserted for the issuer `<url>/mcp-server`."""
     metadata = build_oauth_metadata(OAuthConfig.from_settings(settings))

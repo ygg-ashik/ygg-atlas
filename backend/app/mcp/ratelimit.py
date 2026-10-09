@@ -11,17 +11,23 @@ echoes the key.
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import math
 import time
 from collections import OrderedDict, deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import cast
 
-from fastapi import HTTPException, Request
+import structlog
+from fastapi import Depends, HTTPException
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+logger = structlog.get_logger()
+
 Clock = Callable[[], float]
+UNKNOWN_SOURCE = "unknown"
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +47,7 @@ AUTHORIZE = RateLimitPolicy("oauth_authorize", 30, 60)
 REGISTER = RateLimitPolicy("oauth_register", 10, 3600)
 BEARER_FAILURES = RateLimitPolicy("bearer_failures", 20, 60)
 CONSENT = RateLimitPolicy("oauth_consent", 10, 60)
+REVOKE = RateLimitPolicy("oauth_revoke", 30, 60)
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,22 +135,23 @@ class SlidingWindowLimiter:
 
 
 class _Registry:
-    """Process-wide limiters, one per policy name, sharing one clock."""
+    """Process-wide limiters, one per policy, sharing one clock."""
 
     def __init__(self) -> None:
         self.clock: Clock = time.monotonic
-        self.limiters: dict[str, SlidingWindowLimiter] = {}
+        self.limiters: dict[RateLimitPolicy, SlidingWindowLimiter] = {}
 
 
 _registry = _Registry()
 
 
 def limiter(policy: RateLimitPolicy) -> SlidingWindowLimiter:
-    """The process-wide limiter for ``policy`` (one per policy name)."""
-    found = _registry.limiters.get(policy.name)
+    """The process-wide limiter for ``policy``. Keyed by the whole frozen policy, so
+    two policies that share a name never share (or misreport) a budget."""
+    found = _registry.limiters.get(policy)
     if found is None:
         found = SlidingWindowLimiter(policy, clock=_registry.clock)
-        _registry.limiters[policy.name] = found
+        _registry.limiters[policy] = found
     return found
 
 
@@ -175,11 +183,27 @@ def too_many_requests(decision: RateDecision) -> JSONResponse:
 
 
 def source_key(scope: Scope) -> str:
-    """The ASGI client host, or ``"unknown"`` (global behind a proxy, C15)."""
-    client = scope.get("client")
-    if not client:
-        return "unknown"
-    return str(client[0])
+    """The ASGI client's public IP, or ``"unknown"``.
+
+    A loopback, private (RFC 1918, IPv6 ULA), link-local or unparsable peer is
+    ``"unknown"``: in 4a every caller arrives through nginx or the SSH tunnel, so
+    such a peer is our own proxy and says nothing about who is calling (C15, ruling
+    E1). Per-source limits are then global, and the failed-bearer guard only logs.
+    A public IP (4b, via trusted proxy headers) is keyed as itself.
+    """
+    client: object = scope.get("client")
+    if not isinstance(client, (tuple, list)) or not client:
+        return UNKNOWN_SOURCE
+    host = str(cast(tuple[object, ...], client)[0])
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return UNKNOWN_SOURCE
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        address = address.ipv4_mapped
+    if address.is_private or address.is_loopback or address.is_link_local:
+        return UNKNOWN_SOURCE
+    return host
 
 
 def _has_bearer(scope: Scope) -> bool:
@@ -214,33 +238,64 @@ class RateLimitedEndpoint:
         await self._app(scope, receive, send)
 
 
+def _always() -> bool:
+    return True
+
+
 class FailedBearerGuard:
     """Blocks a source after too many 401s on requests that carried a bearer.
 
     Requests without a bearer are never counted, so the first 401 of the OAuth
-    handshake is free; successful bearers are never counted either.
+    handshake is free; successful bearers are never counted either. ``counts`` is
+    asked when a 401 starts whether this failure is evidence of guessing (ruling E1:
+    only unrecognised bearers, never a real token that expired); it runs in the
+    request's own task, inside the authentication that decided the 401.
+
+    A source of ``"unknown"`` is never blocked (E1): behind a proxy without trusted
+    client addresses every caller shares that key (C15), so blocking it would lock
+    everyone out. Its failures are logged instead. Guessing a 256-bit token is moot.
     """
 
-    def __init__(self, app: ASGIApp, policy: RateLimitPolicy = BEARER_FAILURES) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        policy: RateLimitPolicy = BEARER_FAILURES,
+        *,
+        counts: Callable[[], bool] = _always,
+    ) -> None:
         self._app = app
         self._policy = policy
+        self._counts = counts
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http" or not _has_bearer(scope):
             await self._app(scope, receive, send)
             return
         source = source_key(scope)
-        decision = limiter(self._policy).peek(source)
-        if not decision.allowed:
-            await too_many_requests(decision)(scope, receive, send)
-            return
+        if source != UNKNOWN_SOURCE:
+            decision = limiter(self._policy).peek(source)
+            if not decision.allowed:
+                await too_many_requests(decision)(scope, receive, send)
+                return
 
         async def watch(message: Message) -> None:
-            if message["type"] == "http.response.start" and message["status"] == 401:
-                limiter(self._policy).record(source)
+            if (
+                message["type"] == "http.response.start"
+                and message["status"] == 401
+                and self._counts()
+            ):
+                self._failed(source)
             await send(message)
 
         await self._app(scope, receive, watch)
+
+    def _failed(self, source: str) -> None:
+        if source == UNKNOWN_SOURCE:
+            logger.info(
+                "ratelimit.bearer_failure_unattributed", policy=self._policy.name
+            )
+            return
+        limiter(self._policy).record(source)
 
 
 class PrincipalRateLimit:
@@ -272,12 +327,15 @@ class PrincipalRateLimit:
 
 def rate_limit(
     policy: RateLimitPolicy,
-    key: Callable[[Request], Awaitable[str]],
+    key: Callable[..., Awaitable[str]],
 ) -> Callable[..., Awaitable[None]]:
-    """A FastAPI dependency that raises 429 with ``Retry-After`` when over the limit."""
+    """A FastAPI dependency that raises 429 with ``Retry-After`` when over the limit.
 
-    async def dependency(request: Request) -> None:
-        decision = limiter(policy).hit(await key(request))
+    ``key`` is itself a dependency (it may take the ``Request`` or depend on the
+    caller's principal), resolved once per request by FastAPI."""
+
+    async def dependency(value: str = Depends(key)) -> None:
+        decision = limiter(policy).hit(value)
         if not decision.allowed:
             raise HTTPException(
                 status_code=429,

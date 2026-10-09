@@ -8,6 +8,12 @@ class InvalidTokenError(Exception):
     """The bearer token is malformed, expired, revoked or not for this project."""
 
 
+class ExpiredTokenError(InvalidTokenError):
+    """A real, unrevoked bearer whose only fault is its expiry. Same generic message
+    for the caller; edges may tell it apart (a client to re-authenticate, not a
+    guess: ruling E1)."""
+
+
 @dataclass(frozen=True, slots=True)
 class VerifiedToken:
     uid: str

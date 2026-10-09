@@ -45,7 +45,7 @@ from app.identity.models import ApiToken, CredentialEvent, User, UserKind, UserS
 from app.identity.principal import AuthMethod, Principal
 from app.identity.repository import CredentialRepository, UserRepository
 from app.identity.service import to_principal
-from app.identity.tokens import InvalidTokenError
+from app.identity.tokens import ExpiredTokenError, InvalidTokenError
 
 logger = structlog.get_logger()
 
@@ -55,6 +55,7 @@ _SLUG_MIN, _SLUG_MAX = 3, 40
 _NAME_MAX: Final = 100
 # The only things a rejected bearer is ever told (conventions, invariant 2).
 _INVALID: Final = "invalid token"
+_EXPIRED: Final = "expired"
 _DISABLED: Final = "Your atlas access is disabled. Contact an admin."
 _NO_TOKEN: Final = "No such token."  # noqa: S105  # a message, not a secret
 _AUTH_METHOD: Final[dict[TokenKind, AuthMethod]] = {
@@ -120,9 +121,9 @@ def service_account_email(name: str) -> str | None:
 async def authenticate_bearer(
     db: AsyncSession, raw: str, now: datetime | None = None
 ) -> AuthenticatedBearer:
-    """Raises InvalidTokenError (unknown, expired, revoked, wrong kind, refresh token,
-    revoked client) or ForbiddenError (user disabled). Never includes token material
-    in the message."""
+    """Raises InvalidTokenError (unknown, revoked, wrong kind, refresh token, revoked
+    client), its subtype ExpiredTokenError (expiry is the only fault) or
+    ForbiddenError (user disabled). Never includes token material in the message."""
     moment = now or _utcnow()
     candidate = raw.strip()
     kind = kind_of(candidate)  # rejected before any DB work (D3)
@@ -149,8 +150,11 @@ async def authenticate_bearer(
 
 
 def _rejected(reason: str, prefix: str | None) -> InvalidTokenError:
-    """The one rejection: the reason goes to the log, never to the caller."""
+    """The one rejection: the reason goes to the log, never to the caller. Expiry
+    of an otherwise live bearer is the one subtype (`ExpiredTokenError`), same text."""
     logger.info("identity.bearer_rejected", reason=reason, prefix=prefix)
+    if reason == _EXPIRED:
+        return ExpiredTokenError(_INVALID)
     return InvalidTokenError(_INVALID)
 
 
@@ -160,7 +164,7 @@ def _dead_reason(row: ApiToken, kind: TokenKind, moment: datetime) -> str | None
     if row.revoked_at is not None:
         return "revoked"
     if _as_utc(row.expires_at) <= moment:
-        return "expired"
+        return _EXPIRED
     return None
 
 
@@ -169,7 +173,7 @@ def _active_owner(user: User | None, kind: TokenKind, prefix: str) -> User:
         raise _rejected("no_user", prefix)
     if user.status != UserStatus.ACTIVE:
         logger.info("identity.bearer_rejected", reason="user_disabled", prefix=prefix)
-        raise ForbiddenError(_DISABLED)
+        raise ForbiddenError(_DISABLED, "user_disabled")
     expected = UserKind.SERVICE if kind is TokenKind.SERVICE else UserKind.HUMAN
     if user.kind != expected:
         raise _rejected("user_kind", prefix)
