@@ -11,7 +11,8 @@
 
 Deploy only together with the phase-3 code: an older backend ignores
 grants.row_scope, so a scoped grant would read as an all-rows grant. The backend
-runs this migration at container start.
+runs this migration at container start. The downgrade refuses to run while any
+scoped or clearance grant exists: revoke those first.
 
 Revision ID: 0004
 Revises: 0003
@@ -102,7 +103,37 @@ def _seed() -> None:
     )
 
 
+_grants = sa.table(
+    "grants",
+    sa.column("target_kind", sa.String()),
+    sa.column("row_scope", sa.JSON()),
+)
+
+
+def _refuse_while_phase_3_grants_exist() -> None:
+    """Older code ignores row_scope and clearance grants: dropping row_scope
+    would turn a scoped allow into an all-rows allow (fail open)."""
+    rows = op.get_bind().execute(
+        sa.select(_grants.c.target_kind, _grants.c.row_scope).where(
+            sa.or_(
+                _grants.c.row_scope.is_not(None),
+                _grants.c.target_kind == "clearance",
+            )
+        )
+    )
+    # A JSON null (what the ORM writes for None) is an all-rows grant.
+    blocking = [
+        r for r in rows if r.target_kind == "clearance" or r.row_scope is not None
+    ]
+    if blocking:
+        raise RuntimeError(
+            f"0004 downgrade refused: {len(blocking)} grant(s) have a row_scope or "
+            "target_kind='clearance'; revoke them first (README, deploy notes)"
+        )
+
+
 def downgrade() -> None:
+    _refuse_while_phase_3_grants_exist()
     with op.batch_alter_table("atlas_audit_log") as batch:
         batch.drop_column("masking")
         batch.drop_column("scope")

@@ -346,6 +346,8 @@ def test_tenant_is_a_reserved_dimension(tmp_path) -> None:
         ("channel", "x; drop", False),
         ("channel", "a.b.c", False),
         ("channel", "1col", False),
+        ("a" * 65, "channel", False),
+        ("a" * 64, "channel", True),
         ("csm", "c.csm_name", True),
         ("csm", "assignee_name", True),
     ],

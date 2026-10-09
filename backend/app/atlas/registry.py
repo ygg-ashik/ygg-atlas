@@ -36,7 +36,7 @@ _TABLE_REF = re.compile(r"\b(?:from|join)\s+([a-zA-Z_][a-zA-Z0-9_.]*)", re.IGNOR
 # Every label class a breakdown may declare: 'category' plus each maskable class.
 LABEL_CLASSES: tuple[str, ...] = (CATEGORY, *sorted(CLEARANCE_FOR_CLASS))
 RESERVED_DIMENSIONS = frozenset({"tenant"})
-_DIMENSION = re.compile(r"^[a-z][a-z0-9_]*$")
+_DIMENSION = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _ATTRIBUTE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _PLACEHOLDER = re.compile(r"\{\{.*?\}\}", re.DOTALL)
 

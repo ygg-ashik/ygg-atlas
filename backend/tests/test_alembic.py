@@ -404,3 +404,69 @@ def test_bad_label_mode_is_rejected(
             )
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("target_kind", "target", "row_scope"),
+    [
+        ("resource", "deepsales/*", '{"csm": ["Sara"]}'),
+        ("resource", "deepsales/*", "{}"),
+        ("clearance", "fields:people_names", None),
+    ],
+    ids=["scoped", "empty_scope", "clearance"],
+)
+def test_row_field_downgrade_refuses_while_phase_3_grants_exist(
+    tmp_path: Path, target_kind: str, target: str, row_scope: str | None
+) -> None:
+    # Older code ignores row_scope and clearance grants, so dropping them would
+    # turn a scoped allow into an all-rows allow (fail open).
+    db = tmp_path / "m.db"
+    config = _config(f"sqlite+aiosqlite:///{db}")
+    command.upgrade(config, "head")
+    engine = sa.create_engine(f"sqlite:///{db}")
+    with engine.begin() as conn:
+        conn.execute(
+            sa.text(
+                "INSERT INTO grants (id, subject_type, subject_id, effect, "
+                "target_kind, target, reason, created_at, row_scope) VALUES (:id, "
+                "'user', :subject, 'allow', :kind, :target, '', CURRENT_TIMESTAMP, "
+                ":scope)"
+            ),
+            {
+                "id": uuid4().hex,
+                "subject": uuid4().hex,
+                "kind": target_kind,
+                "target": target,
+                "scope": row_scope,
+            },
+        )
+    engine.dispose()
+
+    with pytest.raises(RuntimeError, match="revoke"):
+        command.downgrade(config, "0003")
+
+    assert "row_scope" in _column_order(f"sqlite:///{db}", "grants")
+
+
+def test_row_field_downgrade_allows_unscoped_grants(tmp_path: Path) -> None:
+    db = tmp_path / "m.db"
+    config = _config(f"sqlite+aiosqlite:///{db}")
+    command.upgrade(config, "head")
+    engine = sa.create_engine(f"sqlite:///{db}")
+    with engine.begin() as conn:
+        # A JSON null (what the ORM writes for None) is an all-rows grant.
+        for scope in (None, "null"):
+            conn.execute(
+                sa.text(
+                    "INSERT INTO grants (id, subject_type, subject_id, effect, "
+                    "target_kind, target, reason, created_at, row_scope) VALUES "
+                    "(:id, 'user', :subject, 'allow', 'resource', '*', '', "
+                    "CURRENT_TIMESTAMP, :scope)"
+                ),
+                {"id": uuid4().hex, "subject": uuid4().hex, "scope": scope},
+            )
+    engine.dispose()
+
+    command.downgrade(config, "0003")
+
+    assert "row_scope" not in _column_order(f"sqlite:///{db}", "grants")
