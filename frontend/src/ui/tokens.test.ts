@@ -67,6 +67,15 @@ describe('design tokens (DESIGN.md contract)', () => {
     expect(block('.dark')).toMatch(/--primary-text:\s*16 63\.1% 59\.6%;/);
   });
 
+  it('defines the modal scrim (DESIGN.md colors.scrim)', () => {
+    expect(block(':root')).toMatch(/--scrim:\s*rgba\(0, 0, 0, 0\.18\);/);
+    expect(block('.dark')).toMatch(/--scrim:\s*rgba\(0, 0, 0, 0\.4\);/);
+  });
+
+  it('defines the second-series hatch pattern', () => {
+    expect(css).toMatch(/\.series-hatch\s*\{[^}]*repeating-linear-gradient/);
+  });
+
   it('falls back to solid surfaces for reduced transparency', () => {
     expect(css).toContain('@media (prefers-reduced-transparency: reduce)');
   });

@@ -5,6 +5,8 @@ import { cn } from './utils';
 
 interface ToolbarProps {
   title: React.ReactNode;
+  /** Muted mono route on the right (DESIGN.md › route-label); hidden below 1000px. */
+  route?: string;
   children?: React.ReactNode;
   className?: string;
 }
@@ -13,7 +15,7 @@ interface ToolbarProps {
  * blur beneath it. Place inside a `relative` page container; content below
  * reserves 84px (`pt-[84px]`) so nothing hides under the glass at rest. An ancestor may
  * set `--toolbar-lead` to make room for floating chrome at the left (the nav button). */
-export function Toolbar({ title, children, className }: ToolbarProps) {
+export function Toolbar({ title, route, children, className }: ToolbarProps) {
   return (
     <>
       <div
@@ -29,6 +31,14 @@ export function Toolbar({ title, children, className }: ToolbarProps) {
         )}
       >
         <h1 className="min-w-0 flex-1 truncate font-serif text-section text-ink">{title}</h1>
+        {route && (
+          <span
+            data-route-label
+            className="max-w-[46%] truncate whitespace-nowrap font-mono text-[11px] text-muted-foreground max-[999px]:hidden"
+          >
+            {route}
+          </span>
+        )}
         {children}
       </Glass>
     </>

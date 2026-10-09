@@ -16,4 +16,11 @@ describe('Toolbar', () => {
     expect(bar).toHaveClass('glass', 'glass-specular', 'rounded-glass');
     expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument();
   });
+
+  it('shows an optional mono route label that hides below 1000px', () => {
+    render(<Toolbar title="Users" route="/admin/users" />);
+    const route = screen.getByText('/admin/users');
+    expect(route).toHaveAttribute('data-route-label');
+    expect(route).toHaveClass('font-mono', 'max-[999px]:hidden');
+  });
 });
