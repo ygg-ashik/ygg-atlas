@@ -8,10 +8,19 @@ fields:
   id: Order id
   customer_id: Purchasing customer
   channel: "'b2c' consumer storefront or 'b2b' corporate portal"
+  sales_rep: Sales rep credited with the order
   amount: Order value in AED
   status: "'paid' | 'refunded' | 'failed'"
   created_at: Order creation time (UTC)
-freshness_query: SELECT MAX(created_at) AS freshest FROM demo_orders
+scope_dimensions:
+  channel:
+    column: channel
+    description: Sales channel ('b2c' or 'b2b')
+  sales_rep:
+    column: sales_rep
+    self: rep_name
+    description: Sales rep credited with the order ($self = the user's rep_name)
+freshness_query: SELECT MAX(created_at) AS freshest FROM demo_orders WHERE TRUE {{scope}}
 metrics:
   - id: revenue
     name: Total revenue
@@ -22,10 +31,12 @@ metrics:
     query: >
       SELECT COALESCE(SUM(amount), 0) AS value FROM demo_orders
       WHERE status = 'paid' AND created_at >= :start AND created_at <= :end
+      {{scope}}
     breakdown_label_class: category
     breakdown_query: >
       SELECT channel AS label, SUM(amount) AS value FROM demo_orders
       WHERE status = 'paid' AND created_at >= :start AND created_at <= :end
+      {{scope}}
       GROUP BY channel ORDER BY value DESC LIMIT :limit
   - id: orders_count
     name: Paid orders
@@ -34,6 +45,23 @@ metrics:
     query: >
       SELECT COUNT(*) AS value FROM demo_orders
       WHERE status = 'paid' AND created_at >= :start AND created_at <= :end
+      {{scope}}
+  - id: orders_by_rep
+    name: Paid orders by sales rep
+    description: >
+      Number of successfully paid orders. Breakdown available by the sales rep
+      credited with each order.
+    unit: orders
+    query: >
+      SELECT COUNT(*) AS value FROM demo_orders
+      WHERE status = 'paid' AND created_at >= :start AND created_at <= :end
+      {{scope}}
+    breakdown_label_class: person_name
+    breakdown_query: >
+      SELECT sales_rep AS label, COUNT(*) AS value FROM demo_orders
+      WHERE status = 'paid' AND created_at >= :start AND created_at <= :end
+      {{scope}}
+      GROUP BY sales_rep ORDER BY value DESC LIMIT :limit
   - id: aov
     name: Average order value
     description: Average paid order amount in AED.
@@ -41,6 +69,7 @@ metrics:
     query: >
       SELECT COALESCE(AVG(amount), 0) AS value FROM demo_orders
       WHERE status = 'paid' AND created_at >= :start AND created_at <= :end
+      {{scope}}
   - id: refund_amount
     name: Refunded amount
     description: Sum of refunded order amounts in AED. Lower is better.
@@ -49,6 +78,7 @@ metrics:
     query: >
       SELECT COALESCE(SUM(amount), 0) AS value FROM demo_orders
       WHERE status = 'refunded' AND created_at >= :start AND created_at <= :end
+      {{scope}}
   - id: b2b_revenue
     name: Corporate (B2B) revenue
     description: Paid revenue from the corporate portal channel only.
@@ -57,3 +87,4 @@ metrics:
       SELECT COALESCE(SUM(amount), 0) AS value FROM demo_orders
       WHERE status = 'paid' AND channel = 'b2b'
         AND created_at >= :start AND created_at <= :end
+      {{scope}}

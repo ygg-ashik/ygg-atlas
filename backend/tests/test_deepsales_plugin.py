@@ -2,8 +2,11 @@
 
 import pytest
 
+from app.atlas import RowScope
 from app.atlas.registry import AtlasRegistry
+from app.atlas.scope import SCOPE_TOKEN, compile_scope
 from app.sources import get_plugins, reset_plugins
+from app.sources.base import assert_read_only
 from app.sources.deepsales.manifest import SOURCE, DeepSalesSettings
 from tests.fakes import make_tools
 
@@ -32,13 +35,68 @@ def test_definitions_load_and_pass_table_lint():
 def test_no_definition_selects_pii_contact_fields():
     registry = AtlasRegistry(plugins={"deepsales": SOURCE})
     forbidden = ("contact_email", "contact_phone", "email", "phone")
-    for metric in registry.metrics.values():
-        for query in filter(None, (metric.query, metric.breakdown_query)):
-            for column in forbidden:
-                # allow substrings inside other identifiers (e.g. email_domain not used)
-                assert f" {column}" not in query.lower(), (
-                    f"{metric.id} selects PII column {column}"
-                )
+    queries = [
+        (metric.id, query)
+        for metric in registry.metrics.values()
+        for query in (metric.query, metric.breakdown_query)
+    ]
+    queries += [
+        (f"{funnel.id}/{step.id}", step.query)
+        for funnel in registry.funnels.values()
+        for step in funnel.steps
+    ]
+    queries += [
+        (f"{entity.id} freshness", entity.freshness_query)
+        for entity in registry.entities.values()
+    ]
+    for what, query in queries:
+        if query is None:
+            continue
+        for column in forbidden:
+            # allow substrings inside other identifiers (e.g. email_domain not used)
+            assert f" {column}" not in query.lower(), (
+                f"{what} selects PII column {column}"
+            )
+
+
+def test_deepsales_scoped_entities():
+    """D3.13 with C1-C3: CSM-owned data is scoped by `csm` ($self = csm_name),
+    leads by `owner` ($self = csm_email); every query carries {{scope}} and
+    compiles to read-only SQL under a restricted scope."""
+    registry = AtlasRegistry(plugins={"deepsales": SOURCE})
+    catalog = registry.scope_catalog()
+    assert [row[:4] for row in catalog] == [
+        ("deepsales", "ds_account", "csm", "csm_name"),
+        ("deepsales", "ds_lead", "owner", "csm_email"),
+        ("deepsales", "ds_revenue", "csm", "csm_name"),
+        ("deepsales", "ds_task", "csm", "csm_name"),
+    ]
+    assert all(row[4] for row in catalog), "every dimension is described"
+    columns_by_entity = {
+        "ds_account": {"csm": "csm_name"},
+        "ds_lead": {"owner": "owner_email"},
+        "ds_revenue": {"csm": "c.csm_name"},
+        "ds_task": {"csm": "assignee_name"},
+    }
+    for entity_id, expected in columns_by_entity.items():
+        entity = registry.entities[entity_id]
+        columns = {d: v.column for d, v in entity.scope_dimensions.items()}
+        assert columns == expected, entity_id
+        queries = [q for m in entity.metrics for q in (m.query, m.breakdown_query)]
+        queries += [s.query for f in entity.funnels for s in f.steps]
+        queries.append(entity.freshness_query)
+        scope: RowScope = ({next(iter(columns)): frozenset({"Jane Doe"})},)
+        for query in filter(None, queries):
+            assert SCOPE_TOKEN in query, f"{entity_id}: {query}"
+            compiled = compile_scope(query, columns, scope)
+            assert compiled.params == {"scope_0_0": "Jane Doe"}
+            assert_read_only(compiled.sql)
+            if entity_id == "ds_revenue":
+                # U1/C3: revenue is scoped through the corporate's CSM.
+                assert "JOIN corporate c ON c.id = m.corporate_id" in " ".join(
+                    query.split()
+                ), query
+                assert "c.csm_name IN (:scope_0_0)" in compiled.sql
 
 
 @pytest.mark.skipif(

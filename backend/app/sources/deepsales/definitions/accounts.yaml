@@ -16,7 +16,13 @@ fields:
   avg_order_value: Typical transaction size
   active_rate: Engagement rate 0-1
   analyzed_at: Last analysis time (NULL = never analyzed)
-freshness_query: SELECT MAX(last_synced_at) AS freshest FROM account_profiles
+scope_dimensions:
+  csm:
+    column: csm_name
+    self: csm_name
+    description: Customer success manager owning the account ($self = the user's csm_name)
+freshness_query: >
+  SELECT MAX(last_synced_at) AS freshest FROM account_profiles WHERE TRUE {{scope}}
 metrics:
   - id: ds_total_accounts
     name: Analyzed portfolio accounts
@@ -27,11 +33,11 @@ metrics:
     time_scope: snapshot
     query: >
       SELECT COUNT(*) AS value FROM account_profiles
-      WHERE analyzed_at IS NOT NULL
+      WHERE analyzed_at IS NOT NULL {{scope}}
     breakdown_label_class: category
     breakdown_query: >
       SELECT COALESCE(health_v2_status, 'Unscored') AS label, COUNT(*) AS value
-      FROM account_profiles WHERE analyzed_at IS NOT NULL
+      FROM account_profiles WHERE analyzed_at IS NOT NULL {{scope}}
       GROUP BY 1 ORDER BY value DESC LIMIT :limit
   - id: ds_at_risk_accounts
     name: At-risk accounts
@@ -43,12 +49,12 @@ metrics:
     good_direction: down
     query: >
       SELECT COUNT(*) AS value FROM account_profiles
-      WHERE analyzed_at IS NOT NULL AND health_v2_status = 'Red'
+      WHERE analyzed_at IS NOT NULL AND health_v2_status = 'Red' {{scope}}
     breakdown_label_class: business_name
     breakdown_query: >
       SELECT account_name AS label, COALESCE(health_v2_score, 0) AS value
       FROM account_profiles
-      WHERE analyzed_at IS NOT NULL AND health_v2_status = 'Red'
+      WHERE analyzed_at IS NOT NULL AND health_v2_status = 'Red' {{scope}}
       ORDER BY revenue_ytd DESC NULLS LAST LIMIT :limit
   - id: ds_portfolio_revenue_ytd
     name: Portfolio revenue YTD
@@ -59,11 +65,11 @@ metrics:
     time_scope: snapshot
     query: >
       SELECT COALESCE(SUM(revenue_ytd), 0) AS value FROM account_profiles
-      WHERE analyzed_at IS NOT NULL
+      WHERE analyzed_at IS NOT NULL {{scope}}
     breakdown_label_class: business_name
     breakdown_query: >
       SELECT account_name AS label, revenue_ytd AS value FROM account_profiles
-      WHERE analyzed_at IS NOT NULL AND revenue_ytd IS NOT NULL
+      WHERE analyzed_at IS NOT NULL AND revenue_ytd IS NOT NULL {{scope}}
       ORDER BY revenue_ytd DESC LIMIT :limit
   - id: ds_avg_order_value
     name: Portfolio average order value
@@ -72,7 +78,7 @@ metrics:
     time_scope: snapshot
     query: >
       SELECT COALESCE(AVG(avg_order_value), 0) AS value FROM account_profiles
-      WHERE analyzed_at IS NOT NULL AND avg_order_value IS NOT NULL
+      WHERE analyzed_at IS NOT NULL AND avg_order_value IS NOT NULL {{scope}}
   - id: ds_avg_active_rate
     name: Portfolio average active rate
     description: Mean engagement rate (0-1) across analyzed accounts.
@@ -80,4 +86,4 @@ metrics:
     time_scope: snapshot
     query: >
       SELECT COALESCE(AVG(active_rate), 0) AS value FROM account_profiles
-      WHERE analyzed_at IS NOT NULL AND active_rate IS NOT NULL
+      WHERE analyzed_at IS NOT NULL AND active_rate IS NOT NULL {{scope}}

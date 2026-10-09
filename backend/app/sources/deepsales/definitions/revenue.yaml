@@ -8,7 +8,18 @@ fields:
   month: Month bucket (first of month)
   revenue_aed: Revenue normalized to AED
   transaction_count: Orders in the month
-freshness_query: SELECT MAX(computed_at) AS freshest FROM corporate_revenue_monthly
+scope_dimensions:
+  csm:
+    column: c.csm_name
+    self: csm_name
+    description: >
+      Customer success manager owning the corporate ($self = the user's
+      csm_name); joined through corporate
+freshness_query: >
+  SELECT MAX(m.computed_at) AS freshest
+  FROM corporate_revenue_monthly m
+  JOIN corporate c ON c.id = m.corporate_id
+  WHERE TRUE {{scope}}
 metrics:
   - id: ds_revenue_aed
     name: Corporate revenue (AED)
@@ -17,19 +28,26 @@ metrics:
       Breakdown gives top corporates by revenue in the same range.
     unit: AED
     query: >
-      SELECT COALESCE(SUM(revenue_aed), 0) AS value FROM corporate_revenue_monthly
-      WHERE month >= CAST(:start AS date) AND month <= CAST(:end AS date)
+      SELECT COALESCE(SUM(m.revenue_aed), 0) AS value
+      FROM corporate_revenue_monthly m
+      JOIN corporate c ON c.id = m.corporate_id
+      WHERE m.month >= CAST(:start AS date) AND m.month <= CAST(:end AS date)
+      {{scope}}
     breakdown_label_class: business_name
     breakdown_query: >
       SELECT c.corporate_name AS label, SUM(m.revenue_aed) AS value
       FROM corporate_revenue_monthly m
       JOIN corporate c ON c.id = m.corporate_id
       WHERE m.month >= CAST(:start AS date) AND m.month <= CAST(:end AS date)
+      {{scope}}
       GROUP BY c.corporate_name ORDER BY value DESC LIMIT :limit
   - id: ds_transactions
     name: Corporate transactions
     description: Total order/transaction count across corporates for months in the range.
     unit: orders
     query: >
-      SELECT COALESCE(SUM(transaction_count), 0) AS value FROM corporate_revenue_monthly
-      WHERE month >= CAST(:start AS date) AND month <= CAST(:end AS date)
+      SELECT COALESCE(SUM(m.transaction_count), 0) AS value
+      FROM corporate_revenue_monthly m
+      JOIN corporate c ON c.id = m.corporate_id
+      WHERE m.month >= CAST(:start AS date) AND m.month <= CAST(:end AS date)
+      {{scope}}

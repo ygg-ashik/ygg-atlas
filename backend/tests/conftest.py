@@ -59,7 +59,7 @@ def _test_env(tmp_path_factory):
 DEMO_DDL = [
     """CREATE TABLE IF NOT EXISTS demo_orders (
         id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER, channel TEXT,
-        amount NUMERIC, status TEXT, created_at TIMESTAMP)""",
+        amount NUMERIC, status TEXT, created_at TIMESTAMP, sales_rep TEXT)""",
     """CREATE TABLE IF NOT EXISTS demo_customers (
         id INTEGER PRIMARY KEY AUTOINCREMENT, segment TEXT, created_at TIMESTAMP)""",
     """CREATE TABLE IF NOT EXISTS demo_events (
@@ -76,10 +76,19 @@ FUNNEL_COUNTS = [
 ]
 
 
+def sales_rep(position: int, channel: str) -> str:
+    """Deterministic rep for the order at `position` in a day's order list."""
+    if channel == "b2b":
+        return "Lina Saab"
+    return "Aisha Khan" if position % 2 == 0 else "Omar Haddad"
+
+
 async def seed_demo(conn, days: int = 10) -> None:
     """Deterministic demo rows.
 
-    Per day: 5x100 paid b2c + 2x500 paid b2b + 1x50 refunded.
+    Per day: 5x100 paid b2c + 2x500 paid b2b + 1x50 refunded. Sales reps: b2b
+    orders are "Lina Saab"; b2c orders alternate "Aisha Khan" (even positions)
+    and "Omar Haddad" (odd), so per day paid: Aisha 3, Omar 2, Lina 2.
     """
     for stmt in DEMO_DDL:
         await conn.execute(text(stmt))
@@ -100,8 +109,8 @@ async def seed_demo(conn, days: int = 10) -> None:
             await conn.execute(
                 text(
                     "INSERT INTO demo_orders"
-                    " (customer_id, channel, amount, status, created_at)"
-                    " VALUES (:c, :ch, :a, :s, :t)"
+                    " (customer_id, channel, amount, status, created_at, sales_rep)"
+                    " VALUES (:c, :ch, :a, :s, :t, :r)"
                 ),
                 {
                     "c": day_offset * 10 + i,
@@ -109,6 +118,7 @@ async def seed_demo(conn, days: int = 10) -> None:
                     "a": amount,
                     "s": status,
                     "t": noon,
+                    "r": sales_rep(i, channel),
                 },
             )
         for segment in ("consumer", "consumer", "corporate"):
