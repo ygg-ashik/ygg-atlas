@@ -11,6 +11,7 @@ postgresql+asyncpg://atlas:atlas@localhost:55436/scratch.
 import asyncio
 import contextlib
 import os
+from datetime import UTC, date, datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -26,6 +27,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlmodel import col, func, select
 
+from app.access import admin as admin_module
 from app.access.admin import Actor
 from app.access.catalog import CAPABILITIES
 from app.access.errors import AccessError, ConflictError, InvalidChangeError
@@ -48,6 +50,7 @@ from app.access.schemas import (
 )
 from app.access.startup import prepare_access
 from app.identity.models import User
+from app.models.audit import AtlasAuditLog
 from tests.access_helpers import admin_for, policy_of, policy_version, requests_for
 from tests.pg_guard import PG_XDIST_GROUP, is_disposable
 
@@ -356,3 +359,42 @@ async def test_concurrent_creates_respect_the_cap(
             )
         ).one()[0]
     assert pending == 20
+
+
+# ---- audit summary (phase 5) --------------------------------------------------
+
+
+async def test_summary_buckets_by_utc_day_whatever_the_session_time_zone(
+    factory: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Postgres's date() of a timestamptz follows the session time zone; the
+    summary must bucket by UTC day regardless (22:30 UTC is 02:30 in Dubai)."""
+    clock = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
+    monkeypatch.setattr(admin_module, "_utcnow", lambda: clock)
+    late = datetime(2026, 10, 8, 22, 30, tzinfo=UTC)
+    async with factory() as db:
+        user = User(email="sara@yougotagift.com", display_name="Sara")
+        db.add(user)
+        await db.commit()
+        db.add(
+            AtlasAuditLog(
+                user_uid=str(user.id),
+                user_id=user.id,
+                tool="query_metric",
+                decision="deny",
+                deny_reason="no grant",
+                created_at=late,
+            )
+        )
+        await db.commit()
+
+    async with factory() as db:
+        await db.execute(text("SET TIME ZONE 'Asia/Dubai'"))
+        zone = (await db.execute(text("SHOW TIME ZONE"))).scalar_one()
+        summary = await admin_for(db).audit_summary(Actor.cli(), 7)
+
+    assert zone == "Asia/Dubai"
+    per_day = {d.date: (d.allow, d.deny) for d in summary.per_day}
+    assert per_day[date(2026, 10, 8)] == (0, 1)
+    assert per_day[date(2026, 10, 9)] == (0, 0)
+    assert summary.top_denied_users[0].count == 1

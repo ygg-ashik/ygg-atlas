@@ -13,6 +13,8 @@ from app.access.cursor import (
     decode_cursor,
     decode_time_cursor,
     encode_cursor,
+    encode_time_cursor,
+    time_page,
 )
 from app.access.schemas import Page
 
@@ -44,6 +46,7 @@ def test_time_cursor_keeps_a_non_utc_offset_aware() -> None:
     at = datetime(2026, 10, 9, 16, 30, tzinfo=timezone(timedelta(hours=4)))
     decoded_at, _ = decode_time_cursor(encode_cursor(at.isoformat(), ROW_ID))
     assert decoded_at == at
+    assert decoded_at.tzinfo == UTC
 
 
 @pytest.mark.parametrize(
@@ -106,3 +109,30 @@ def test_page_defaults_to_the_last_page() -> None:
     page = Page[int](items=[1, 2])
     assert page.next_cursor is None
     assert page.model_dump() == {"items": [1, 2], "next_cursor": None}
+
+
+def test_naive_time_is_encoded_as_utc() -> None:
+    aware = datetime(2026, 10, 9, 12, 30, tzinfo=UTC)
+    naive = aware.replace(tzinfo=None)  # as SQLite returns it
+    at, row_id = decode_time_cursor(encode_time_cursor(naive, ROW_ID))
+    assert at == aware
+    assert row_id == ROW_ID
+
+
+def _rows(n: int) -> list[tuple[datetime, UUID]]:
+    start = datetime(2026, 10, 9, tzinfo=UTC)
+    return [(start - timedelta(minutes=i), uuid4()) for i in range(n)]
+
+
+def test_time_page_with_a_spare_row_links_the_next_page() -> None:
+    rows = _rows(3)
+    page, cursor = time_page(rows, 2, lambda r: r)
+    assert page == rows[:2]
+    assert cursor is not None
+    assert decode_time_cursor(cursor) == rows[1]
+
+
+@pytest.mark.parametrize("n", [0, 1, 2])
+def test_time_page_without_a_spare_row_is_the_last(n: int) -> None:
+    rows = _rows(n)
+    assert time_page(rows, 2, lambda r: r) == (rows, None)

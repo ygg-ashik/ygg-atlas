@@ -14,9 +14,10 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, SQLModel, col
 
 from app.access.facts import DEFAULT_TENANT, STANDING_MEMBER
+from app.models.audit import AtlasAuditLog
 
 
 def _utcnow() -> datetime:
@@ -182,3 +183,15 @@ class AccessRequest(SQLModel, table=True):
     created_at: datetime = Field(
         default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True)
     )
+
+
+# Keyset paging and the summary window of the admin decision log (phase 5) read
+# atlas_audit_log by (created_at, id). The index is declared here, not in
+# app/models/audit.py, because that table's module is shared with phases 3 and 4
+# (contracts.md); access owns the only reader that needs it. Migration 0006
+# creates it.
+Index(
+    "ix_atlas_audit_log_created_at_id",
+    col(AtlasAuditLog.created_at),
+    col(AtlasAuditLog.id),
+)

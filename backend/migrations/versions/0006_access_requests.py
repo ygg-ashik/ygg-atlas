@@ -5,6 +5,8 @@
 - A partial unique index allows at most one *pending* request per
   (user_id, kind, target): the database, not a race-prone pre-check, holds that rule.
   Decided and cancelled rows never block a new request.
+- New index on atlas_audit_log (created_at, id): keyset paging and the summary
+  window of the admin decision log.
 
 Revision ID: 0006
 Revises: 0003 (set to the chain predecessor at integration)
@@ -58,9 +60,13 @@ def upgrade() -> None:
         "access_requests",
         ["tenant", "status", "created_at"],
     )
+    op.create_index(
+        "ix_atlas_audit_log_created_at_id", "atlas_audit_log", ["created_at", "id"]
+    )
 
 
 def downgrade() -> None:
+    op.drop_index("ix_atlas_audit_log_created_at_id", "atlas_audit_log")
     op.drop_index("ix_access_requests_tenant_status_created", "access_requests")
     op.drop_index("uq_access_requests_one_pending", "access_requests")
     op.drop_index("ix_access_requests_user_id", "access_requests")

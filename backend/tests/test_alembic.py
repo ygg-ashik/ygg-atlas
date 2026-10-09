@@ -384,6 +384,11 @@ def test_access_requests_table_constraints_and_indexes(head_engine: sa.Engine) -
     ]
     checks = {c["name"] for c in inspector.get_check_constraints("access_requests")}
     assert checks == {"ck_access_requests_kind", "ck_access_requests_status"}
+    audit = {i["name"]: i for i in inspector.get_indexes("atlas_audit_log")}
+    assert audit["ix_atlas_audit_log_created_at_id"]["column_names"] == [
+        "created_at",
+        "id",
+    ]
 
 
 def test_one_pending_request_per_target(head_engine: sa.Engine) -> None:
@@ -428,6 +433,12 @@ def test_downgrade_0006_round_trips(tmp_path: Path) -> None:
     # at integration the chain predecessor is 0005
     command.downgrade(config, "0003")
     assert "access_requests" not in _tables(f"sqlite:///{db}")
+    engine = sa.create_engine(f"sqlite:///{db}")
+    audit_indexes = {
+        i["name"] for i in sa.inspect(engine).get_indexes("atlas_audit_log")
+    }
+    engine.dispose()
+    assert "ix_atlas_audit_log_created_at_id" not in audit_indexes
 
     command.upgrade(config, "head")
     assert "access_requests" in _tables(f"sqlite:///{db}")

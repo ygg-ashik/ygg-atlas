@@ -14,8 +14,8 @@ them before reuse.
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
-from typing import Any, Literal, Self
+from datetime import UTC, datetime, time, timedelta
+from typing import Any, Final, Literal, Self
 from uuid import UUID
 
 import structlog
@@ -30,6 +30,7 @@ from app.access.catalog import (
     ROLES,
     role_capabilities,
 )
+from app.access.cursor import InvalidCursorError, decode_time_cursor, time_page
 from app.access.errors import (
     AccessDeniedError,
     ConflictError,
@@ -53,16 +54,60 @@ from app.access.patterns import InvalidPatternError, validate_pattern
 from app.access.policy import Policy
 from app.access.repository import AccessRepository
 from app.access.schemas import (
+    ActorRefOut,
+    AuditDecisionOut,
+    AuditSummaryOut,
+    AuditUserOut,
+    ChangeOut,
+    ChangeQuery,
+    DayCountOut,
+    DecisionQuery,
     GrantCreate,
     GroupCreate,
     GroupUpdate,
     MemberOut,
+    Page,
+    ReasonCountOut,
+    UserCountOut,
     UserUpdate,
 )
 from app.access.service import AccessService
 from app.identity import TokenVerifier, User, UserKind, UserStatus
+from app.models.audit import AtlasAuditLog
 
 logger = structlog.get_logger()
+
+
+BAD_CURSOR: Final = "That page link is invalid; reload the list."
+_ALL_CHANGES: Final = ChangeQuery()
+_ALL_DECISIONS: Final = DecisionQuery()
+_TOP: Final = 5  # top deny reasons and denied users in the summary
+_NO_REASON: Final = "unspecified"
+
+
+def page_position(cursor: str | None) -> tuple[datetime, UUID] | None:
+    """A request's cursor as a UTC keyset position; a bad one is a 422 (P5-D16)."""
+    if cursor is None:
+        return None
+    try:
+        return decode_time_cursor(cursor)
+    except InvalidCursorError:
+        raise InvalidChangeError(BAD_CURSOR) from None
+
+
+def _actor_ref(user: User | None) -> ActorRefOut | None:
+    if user is None:
+        return None
+    return ActorRefOut(display_name=user.display_name, email=user.email)
+
+
+def _decision_out(entry: AtlasAuditLog, user: User) -> AuditDecisionOut:
+    # The owner keys are replaced by the user ref; the session id stays private.
+    fields = entry.model_dump(exclude={"user_uid", "user_id", "session_id"})
+    user_ref = AuditUserOut(
+        user_id=user.id, email=user.email, display_name=user.display_name
+    )
+    return AuditDecisionOut.model_validate({**fields, "user": user_ref})
 
 
 def _snapshot(row: SQLModel | None) -> dict[str, Any] | None:
@@ -547,9 +592,73 @@ class AccessAdmin:
         user = await self._user(actor, user_id)
         return await self._access.policy_for_user(user.id)
 
-    async def list_changes(self, actor: Actor, limit: int = 100) -> list[RbacChange]:
+    async def list_changes(
+        self, actor: Actor, query: ChangeQuery = _ALL_CHANGES
+    ) -> Page[ChangeOut]:
+        """The tenant's access-change log, newest first (keyset on (at, id))."""
         actor.require(ADMIN_AUDIT)
-        return await self._repo.list_changes(actor.tenant, limit)
+        rows = await self._repo.list_changes(
+            actor.tenant, query, page_position(query.cursor)
+        )
+        page, next_cursor = time_page(rows, query.limit, lambda r: (r[0].at, r[0].id))
+        items = [
+            ChangeOut.model_validate({**change.model_dump(), "actor": _actor_ref(user)})
+            for change, user in page
+        ]
+        return Page[ChangeOut](items=items, next_cursor=next_cursor)
+
+    async def list_decisions(
+        self, actor: Actor, query: DecisionQuery = _ALL_DECISIONS
+    ) -> Page[AuditDecisionOut]:
+        """The tenant's atlas tool decisions, newest first (keyset on
+        (created_at, id)); rows with no user are never listed."""
+        actor.require(ADMIN_AUDIT)
+        rows = await self._repo.list_decisions(
+            actor.tenant, query, page_position(query.cursor)
+        )
+        page, next_cursor = time_page(
+            rows, query.limit, lambda r: (r[0].created_at, r[0].id)
+        )
+        items = [_decision_out(entry, user) for entry, user in page]
+        return Page[AuditDecisionOut](items=items, next_cursor=next_cursor)
+
+    async def audit_summary(
+        self, actor: Actor, days: Literal[7, 30]
+    ) -> AuditSummaryOut:
+        """Allow/deny per UTC day over the last `days` days (today included,
+        zero-filled), plus the top deny reasons and the most-denied users."""
+        actor.require(ADMIN_AUDIT)
+        today = _utcnow().date()
+        first = today - timedelta(days=days - 1)
+        since = datetime.combine(first, time.min, tzinfo=UTC)
+        counts = {
+            (day, decision): n
+            for day, decision, n in await self._repo.decision_counts_by_day(
+                actor.tenant, since
+            )
+        }
+        per_day = [
+            DayCountOut(
+                date=day,
+                allow=counts.get((day, "allow"), 0),
+                deny=counts.get((day, "deny"), 0),
+            )
+            for day in (first + timedelta(days=i) for i in range(days))
+        ]
+        reasons = await self._repo.top_deny_reasons(actor.tenant, since, _TOP)
+        users = await self._repo.top_denied_users(actor.tenant, since, _TOP)
+        return AuditSummaryOut(
+            days=days,
+            per_day=per_day,
+            top_deny_reasons=[
+                ReasonCountOut(reason=reason or _NO_REASON, count=n)
+                for reason, n in reasons
+            ],
+            top_denied_users=[
+                UserCountOut(user_id=uid, display_name=name, count=n)
+                for uid, name, n in users
+            ],
+        )
 
     async def _check_not_above_actor(self, actor: Actor, user: User) -> None:
         """D10: nobody changes the role or status of a user whose effective

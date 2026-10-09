@@ -9,7 +9,8 @@ every paged query still filters by tenant, so a forged cursor only positions a p
 import base64
 import binascii
 import re
-from datetime import datetime
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
 from typing import Final
 from uuid import UUID
 
@@ -61,4 +62,21 @@ def decode_time_cursor(raw: str) -> tuple[datetime, UUID]:
         raise InvalidCursorError("cursor time is not ISO-8601") from exc
     if at.utcoffset() is None:
         raise InvalidCursorError("cursor time has no timezone")
-    return at, row_id
+    return at.astimezone(UTC), row_id
+
+
+def encode_time_cursor(at: datetime, row_id: UUID) -> str:
+    """Encode a time key; a naive time is stored UTC (SQLite returns those)."""
+    moment = at if at.tzinfo is not None else at.replace(tzinfo=UTC)
+    return encode_cursor(moment.isoformat(), row_id)
+
+
+def time_page[R](
+    rows: Sequence[R], limit: int, key: Callable[[R], tuple[datetime, UUID]]
+) -> tuple[list[R], str | None]:
+    """Split a ``limit + 1`` keyset fetch into one page and the next cursor
+    (None on the last page). `key` gives a row's ``(time, id)`` sort key."""
+    page = list(rows[:limit])
+    if len(rows) <= limit:
+        return page, None
+    return page, encode_time_cursor(*key(page[-1]))

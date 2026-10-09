@@ -1,6 +1,6 @@
 """Access routes. Thin: resolve the caller, call a service, return a schema."""
 
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -20,8 +20,12 @@ from app.access.requests import AccessRequests
 from app.access.schemas import (
     AccessRequestCreate,
     AccessRequestOut,
+    AuditDecisionOut,
+    AuditSummaryOut,
     CatalogOut,
     ChangeOut,
+    ChangeQuery,
+    DecisionQuery,
     EffectiveAccessOut,
     GrantCreate,
     GrantOut,
@@ -41,6 +45,8 @@ from app.access.service import AccessService
 from app.identity import Principal, get_principal
 
 router = APIRouter(prefix="/api/v1", tags=["access"])
+
+_SUMMARY_WINDOWS: dict[int, Literal[7, 30]] = {7: 7, 30: 30}
 
 
 @router.get("/me/access", response_model=MeAccessOut)
@@ -189,13 +195,36 @@ async def user_access(
     return EffectiveAccessOut.from_policy(policy, resource)
 
 
-@router.get("/admin/rbac-changes", response_model=list[ChangeOut])
+@router.get("/admin/rbac-changes", response_model=Page[ChangeOut])
 async def rbac_changes(
-    limit: int = Query(100, ge=1, le=500),
+    query: Annotated[ChangeQuery, Query()],
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
-) -> list[ChangeOut]:
-    return [ChangeOut.model_validate(c) for c in await admin.list_changes(actor, limit)]
+) -> Page[ChangeOut]:
+    return await admin.list_changes(actor, query)
+
+
+@router.get("/admin/audit/decisions", response_model=Page[AuditDecisionOut])
+async def audit_decisions(
+    query: Annotated[DecisionQuery, Query()],
+    actor: Actor = Depends(get_actor),
+    admin: AccessAdmin = Depends(get_access_admin),
+) -> Page[AuditDecisionOut]:
+    return await admin.list_decisions(actor, query)
+
+
+@router.get("/admin/audit/summary", response_model=AuditSummaryOut)
+async def audit_summary(
+    days: int = 7,
+    actor: Actor = Depends(get_actor),
+    admin: AccessAdmin = Depends(get_access_admin),
+) -> AuditSummaryOut:
+    # A Literal[7, 30] query parameter refuses the string "7", so map it here.
+    window = _SUMMARY_WINDOWS.get(days)
+    if window is None:
+        msg = "The summary covers 7 or 30 days."
+        raise InvalidChangeError(msg)
+    return await admin.audit_summary(actor, window)
 
 
 # ---- access requests (spec §3.2 step 4; phase 5) -----------------------------

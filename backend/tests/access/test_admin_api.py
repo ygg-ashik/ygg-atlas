@@ -61,7 +61,7 @@ async def test_an_admin_grants_a_group_and_the_preview_explains_it(
     ).json()
     assert preview["decision"]["allowed"] is False
 
-    changes = (await api.get("/api/v1/admin/rbac-changes")).json()
+    changes = (await api.get("/api/v1/admin/rbac-changes")).json()["items"]
     assert [c["action"] for c in changes[:4]] == [
         "grant.revoke",
         "grant.create",
@@ -141,7 +141,7 @@ async def test_rbac_changes_limit_is_bounded(api: AsyncClient, db) -> None:
         await api.get("/api/v1/admin/rbac-changes", params={"limit": 0})
     ).status_code == 422
     assert (
-        await api.get("/api/v1/admin/rbac-changes", params={"limit": 501})
+        await api.get("/api/v1/admin/rbac-changes", params={"limit": 201})
     ).status_code == 422
 
 

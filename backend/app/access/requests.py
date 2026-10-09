@@ -21,9 +21,9 @@ from uuid import UUID
 import structlog
 from sqlalchemy.exc import IntegrityError
 
-from app.access.admin import AccessAdmin, Actor
+from app.access.admin import AccessAdmin, Actor, page_position
 from app.access.catalog import ROLES
-from app.access.cursor import InvalidCursorError, decode_time_cursor, encode_cursor
+from app.access.cursor import time_page
 from app.access.errors import (
     AccessDeniedError,
     ConflictError,
@@ -83,7 +83,6 @@ OWN_REQUEST: Final = "You can't decide your own request."
 REQUESTER_DISABLED: Final = "The requester's account is disabled."
 NOT_ACTIVE: Final = "Only active accounts can request access."
 NO_SCOPE: Final = "This needs admin:users, admin:groups or group manager standing."
-BAD_CURSOR: Final = "That page link is invalid; reload the list."
 DUPLICATE: Final = "You already asked for this; it's pending."
 
 # A member-shaped stand-in for "anyone who joins this group" (groups_granting).
@@ -267,22 +266,11 @@ class AccessRequests(AccessAdmin):
         scope = _scope(actor)
         if scope.empty:
             raise AccessDeniedError(NO_SCOPE)
-        after = None
-        if cursor is not None:
-            try:
-                at, row_id = decode_time_cursor(cursor)
-            except InvalidCursorError:
-                raise InvalidChangeError(BAD_CURSOR) from None
-            after = (at.astimezone(UTC), row_id)
         rows = await self._repo.list_decidable(
-            actor.tenant, scope, status, after, limit
+            actor.tenant, scope, status, page_position(cursor), limit
         )
-        page = rows[:limit]
-        next_cursor = None
-        if len(rows) > limit:
-            last = page[-1][0]
-            next_cursor = encode_cursor(_aware(last.created_at).isoformat(), last.id)
-        items = await self._outs(list(page), actor.tenant)
+        page, next_cursor = time_page(rows, limit, lambda r: (r[0].created_at, r[0].id))
+        items = await self._outs(page, actor.tenant)
         return Page[AccessRequestOut](items=items, next_cursor=next_cursor)
 
     async def approve(
