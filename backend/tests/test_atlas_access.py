@@ -9,8 +9,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 
 from app.access import GrantFacts, Policy, PolicyInputs, UserFacts, evaluate
-from app.atlas import AtlasCaller, AtlasRegistry, AtlasTools, ResourcePolicy
+from app.access.catalog import CLEARANCES
+from app.access.facts import LABEL_CLASSES as ACCESS_LABEL_CLASSES
+from app.atlas import (
+    AtlasCaller,
+    AtlasRegistry,
+    AtlasTools,
+    MaskMode,
+    ResourcePolicy,
+    RowScope,
+)
+from app.atlas.masking import CLEARANCE_FOR_CLASS
 from app.atlas.models import EntityDef, FunnelDef, FunnelStepDef, MetricDef
+from app.atlas.registry import LABEL_CLASSES as ATLAS_LABEL_CLASSES
 from app.models.audit import AtlasAuditLog
 from tests.fakes import make_tools
 
@@ -106,6 +117,44 @@ async def test_the_real_access_policy_satisfies_the_atlas_contract(db) -> None:
     caller = AtlasCaller(user_id=user_id, auth_method="test")
     result = await AtlasTools(caller, policy, db=db).execute("list_metrics", {})
     assert result == {"sources": []}
+    # C19: an evaluated Policy (scopes, clearances, label modes) is assigned to
+    # the protocol, so pyright checks the whole structure, not only deny_all.
+    inputs = PolicyInputs(
+        user=UserFacts(id=user_id, role="viewer", status="active", tenant="ygg"),
+        groups={},
+        memberships={},
+        grants=[],
+        policy_version=1,
+    )
+    evaluated: ResourcePolicy = evaluate(inputs, datetime.now(UTC))
+    assert evaluated.row_scope("demo/order/revenue") == ()
+    assert evaluated.has_clearance("fields:people_names") is False
+    assert evaluated.mask_mode("person_name") is None
+
+
+def test_clearance_mappings_agree() -> None:
+    # The atlas may not import access, so both keep the mapping (D3.8, C19).
+    assert set(CLEARANCE_FOR_CLASS.values()) == set(CLEARANCES)
+    assert ATLAS_LABEL_CLASSES == ACCESS_LABEL_CLASSES
+
+
+async def test_describe_entity_hides_fields_on_an_item_grant(db) -> None:
+    tools = make_tools(db=db, allowed=("demo/order/revenue",))
+    entity = await tools.execute("describe_entity", {"entity_id": "order"})
+    assert entity["fields"] == {}
+    assert entity["pii_fields"] == []
+    assert entity["fields_hidden"] is True
+    assert "field" in entity["note"].lower()
+    assert entity["metrics"] == ["revenue"]
+
+
+async def test_describe_entity_shows_fields_on_an_entity_grant(db) -> None:
+    tools = make_tools(db=db, allowed=("demo/order/*",))
+    entity = await tools.execute("describe_entity", {"entity_id": "order"})
+    assert entity["fields"]
+    assert entity["pii_fields"] == ["customer_email"]
+    assert entity["fields_hidden"] is False
+    assert "note" not in entity
 
 
 # ---- follow-up: search before the limit, policy errors, real policy ------
@@ -120,6 +169,15 @@ class ExplodingPolicy:
     def deny_reason(self, resource: str) -> str:
         raise RuntimeError("policy store unreachable")
 
+    def row_scope(self, resource: str) -> RowScope | None:
+        raise RuntimeError("policy store unreachable")
+
+    def has_clearance(self, clearance: str) -> bool:
+        raise RuntimeError("policy store unreachable")
+
+    def mask_mode(self, label_class: str) -> MaskMode | None:
+        raise RuntimeError("policy store unreachable")
+
 
 @dataclass(frozen=True)
 class VerboseDenyPolicy:
@@ -130,6 +188,15 @@ class VerboseDenyPolicy:
 
     def deny_reason(self, resource: str) -> str:
         return self.reason
+
+    def row_scope(self, resource: str) -> RowScope | None:
+        return ()
+
+    def has_clearance(self, clearance: str) -> bool:
+        return False
+
+    def mask_mode(self, label_class: str) -> MaskMode | None:
+        return None
 
 
 def _tools(policy: ResourcePolicy, db: AsyncSession, user_id: UUID) -> AtlasTools:
