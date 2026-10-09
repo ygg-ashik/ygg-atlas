@@ -38,5 +38,17 @@ def test_prompt_frames_a_miss_as_scoped_to_the_users_access() -> None:
     """Rule 2 + rule 10 must agree: partial access never reads as "this data
     doesn't exist" — only as "not among what you can see"."""
     prompt = build_system_prompt()
-    assert "available to you" in prompt
-    assert "may be outside your access" in prompt
+    assert "the data available to the user" in prompt
+    assert "may be outside the user's access" in prompt
+    # The phrasing the model should say back to the user stays second person.
+    assert '"among the data available to you' in prompt
+    assert '"this may be outside your access"' in prompt
+
+
+def test_prompt_access_rules_refer_to_the_person_as_the_user() -> None:
+    """The prompt addresses the model; outside quoted phrasing, the person is
+    "the user", never "you"/"your access"."""
+    prompt = build_system_prompt()
+    assert "can check your access" not in prompt
+    assert "If you expected" not in prompt
+    assert "it may be outside your access" not in prompt
