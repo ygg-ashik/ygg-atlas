@@ -1,22 +1,124 @@
-"""Identity: who is calling. Other modules import only from here."""
+"""Identity: who is calling, and the credentials that act as them. Other modules import
+only from here."""
 
+from app.identity.api_tokens import (
+    REVOKED_APP_DISCONNECTED,
+    REVOKED_BY_ADMIN,
+    REVOKED_BY_USER,
+    REVOKED_OAUTH_REVOKE,
+    TOKEN_PREFIXES,
+    CredentialActor,
+    CredentialVia,
+    TokenKind,
+)
 from app.identity.bootstrap import ensure_service_user
+from app.identity.credentials import (
+    AuthenticatedBearer,
+    ConnectedApp,
+    IssuedToken,
+    TokenService,
+    authenticate_bearer,
+    principal_for_user,
+    revoke_user_tokens,
+    service_account_email,
+)
 from app.identity.dependencies import get_principal, get_token_verifier
-from app.identity.models import User, UserKind, UserStatus
+from app.identity.errors import (
+    CredentialLimitError,
+    CredentialNotFoundError,
+    CredentialRuleError,
+)
+from app.identity.models import (
+    ApiToken,
+    CredentialEvent,
+    OAuthAuthorizationRequest,
+    OAuthClient,
+    OAuthCode,
+    User,
+    UserKind,
+    UserStatus,
+)
+from app.identity.oauth import (
+    AuthorizationRequestData,
+    AuthorizationRequestNotFoundError,
+    ClientRegistration,
+    ClientSummary,
+    CodeGrant,
+    Eligibility,
+    GcReport,
+    OAuthConfig,
+    OAuthGrantError,
+    OAuthRegistrationError,
+    OAuthRequestError,
+    OAuthService,
+    PendingAuthorization,
+    RefreshGrant,
+    RegisteredClient,
+    TokenPair,
+    canonical_resource,
+    is_loopback_redirect,
+    redirect_allowed,
+    with_query,
+)
 from app.identity.principal import Principal
 from app.identity.router import router as identity_router
 from app.identity.service import service_principal
-from app.identity.tokens import TokenVerifier
+from app.identity.tokens import InvalidTokenError, TokenVerifier
 
 __all__ = [
+    "REVOKED_APP_DISCONNECTED",
+    "REVOKED_BY_ADMIN",
+    "REVOKED_BY_USER",
+    "REVOKED_OAUTH_REVOKE",
+    "TOKEN_PREFIXES",
+    "ApiToken",
+    "AuthenticatedBearer",
+    "AuthorizationRequestData",
+    "AuthorizationRequestNotFoundError",
+    "ClientRegistration",
+    "ClientSummary",
+    "CodeGrant",
+    "ConnectedApp",
+    "CredentialActor",
+    "CredentialEvent",
+    "CredentialLimitError",
+    "CredentialNotFoundError",
+    "CredentialRuleError",
+    "CredentialVia",
+    "Eligibility",
+    "GcReport",
+    "InvalidTokenError",
+    "IssuedToken",
+    "OAuthAuthorizationRequest",
+    "OAuthClient",
+    "OAuthCode",
+    "OAuthConfig",
+    "OAuthGrantError",
+    "OAuthRegistrationError",
+    "OAuthRequestError",
+    "OAuthService",
+    "PendingAuthorization",
     "Principal",
+    "RefreshGrant",
+    "RegisteredClient",
+    "TokenKind",
+    "TokenPair",
+    "TokenService",
     "TokenVerifier",
     "User",
     "UserKind",
     "UserStatus",
+    "authenticate_bearer",
+    "canonical_resource",
     "ensure_service_user",
     "get_principal",
     "get_token_verifier",
     "identity_router",
+    "is_loopback_redirect",
+    "principal_for_user",
+    "redirect_allowed",
+    "revoke_user_tokens",
+    "service_account_email",
     "service_principal",
+    "with_query",
 ]

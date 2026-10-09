@@ -186,6 +186,7 @@ exhaustive = true
 layers = [
     "router",
     "dependencies | bootstrap",
+    "credentials | oauth",
     "service | firebase",
     "repository",
     "models",

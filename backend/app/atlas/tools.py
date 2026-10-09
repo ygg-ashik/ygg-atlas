@@ -188,6 +188,8 @@ class AtlasTools:
                 duration_ms=duration_ms,
                 decision=outcome.decision,
                 deny_reason=outcome.deny_reason,
+                token_id=self.caller.token_id,
+                client_id=self.caller.client_id,
             )
         )
         await self.db.commit()

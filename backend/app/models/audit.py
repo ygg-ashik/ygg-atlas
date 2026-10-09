@@ -34,3 +34,5 @@ class AtlasAuditLog(SQLModel, table=True):
     created_at: datetime = Field(
         default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True)
     )
+    token_id: UUID | None = None  # the credential that ran the call (D12)
+    client_id: str | None = Field(default=None, max_length=255)
