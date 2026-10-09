@@ -159,6 +159,7 @@ def test_head_matches_model_columns(tmp_path: Path) -> None:
             "grants",
             "rbac_changes",
             "policy_state",
+            "access_requests",
         ):
             migrated = {c["name"] for c in inspector.get_columns(table)}
             declared = set(SQLModel.metadata.tables[table].columns.keys())
@@ -317,3 +318,116 @@ def test_malformed_grant_rows_are_rejected(tmp_path: Path) -> None:
             )
     finally:
         engine.dispose()
+
+
+def _insert_user(conn: sa.Connection) -> UUID:
+    user_id = uuid4()
+    conn.execute(
+        sa.text(
+            "INSERT INTO users (id, email, display_name, status, kind, role, tenant, "
+            "created_at) VALUES (:id, :email, '', 'active', 'human', 'viewer', 'ygg', "
+            "CURRENT_TIMESTAMP)"
+        ),
+        {"id": user_id.hex, "email": f"{user_id.hex}@yougotagift.com"},
+    )
+    return user_id
+
+
+def _insert_request(
+    conn: sa.Connection,
+    user_id: UUID,
+    *,
+    status: str = "pending",
+    kind: str = "resource",
+    target: str = "metric:gmv",
+) -> None:
+    conn.execute(
+        sa.text(
+            "INSERT INTO access_requests (id, tenant, user_id, kind, target, note, "
+            "status, decision_note, created_at) VALUES (:id, 'ygg', :user_id, :kind, "
+            ":target, 'please', :status, '', CURRENT_TIMESTAMP)"
+        ),
+        {
+            "id": uuid4().hex,
+            "user_id": user_id.hex,
+            "kind": kind,
+            "target": target,
+            "status": status,
+        },
+    )
+
+
+@pytest.fixture
+def head_engine(tmp_path: Path):
+    db = tmp_path / "m.db"
+    command.upgrade(_config(f"sqlite+aiosqlite:///{db}"), "head")
+    engine = sa.create_engine(f"sqlite:///{db}")
+    yield engine
+    engine.dispose()
+
+
+def test_access_requests_table_constraints_and_indexes(head_engine: sa.Engine) -> None:
+    inspector = sa.inspect(head_engine)
+    indexes = {i["name"]: i for i in inspector.get_indexes("access_requests")}
+    assert set(indexes) == {
+        "ix_access_requests_user_id",
+        "uq_access_requests_one_pending",
+        "ix_access_requests_tenant_status_created",
+    }
+    one_pending = indexes["uq_access_requests_one_pending"]
+    assert one_pending["unique"]
+    assert one_pending["column_names"] == ["user_id", "kind", "target"]
+    assert indexes["ix_access_requests_tenant_status_created"]["column_names"] == [
+        "tenant",
+        "status",
+        "created_at",
+    ]
+    checks = {c["name"] for c in inspector.get_check_constraints("access_requests")}
+    assert checks == {"ck_access_requests_kind", "ck_access_requests_status"}
+
+
+def test_one_pending_request_per_target(head_engine: sa.Engine) -> None:
+    with head_engine.begin() as conn:
+        user_id = _insert_user(conn)
+        _insert_request(conn, user_id)
+    with pytest.raises(IntegrityError), head_engine.begin() as conn:
+        _insert_request(conn, user_id)
+
+    with head_engine.begin() as conn:
+        other = _insert_user(conn)
+        _insert_request(conn, other, status="cancelled")
+        _insert_request(conn, other)  # a cancelled request does not block a new one
+        _insert_request(conn, other, status="declined", target="metric:orders")
+        _insert_request(conn, other, status="declined", target="metric:orders")
+        _insert_request(conn, other, kind="role", target="metric:gmv")  # other kind
+        _insert_request(conn, user_id, target="metric:orders")  # other target
+        count = conn.execute(
+            sa.text("SELECT COUNT(*) FROM access_requests")
+        ).scalar_one()
+    assert count == 7
+
+
+@pytest.mark.parametrize(
+    ("kind", "status"), [("capability", "pending"), ("resource", "expired")]
+)
+def test_bad_kind_or_status_is_rejected(
+    head_engine: sa.Engine, kind: str, status: str
+) -> None:
+    with head_engine.begin() as conn:
+        user_id = _insert_user(conn)
+    with pytest.raises(IntegrityError), head_engine.begin() as conn:
+        _insert_request(conn, user_id, kind=kind, status=status)
+
+
+def test_downgrade_0006_round_trips(tmp_path: Path) -> None:
+    db = tmp_path / "m.db"
+    config = _config(f"sqlite+aiosqlite:///{db}")
+    command.upgrade(config, "head")
+    assert "access_requests" in _tables(f"sqlite:///{db}")
+
+    # at integration the chain predecessor is 0005
+    command.downgrade(config, "0003")
+    assert "access_requests" not in _tables(f"sqlite:///{db}")
+
+    command.upgrade(config, "head")
+    assert "access_requests" in _tables(f"sqlite:///{db}")

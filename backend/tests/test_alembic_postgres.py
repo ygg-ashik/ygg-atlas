@@ -14,6 +14,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlmodel import SQLModel
 
@@ -119,7 +120,7 @@ def _check_names(conn: Connection, table: str) -> set[str | None]:
 
 async def test_check_constraints_match_the_models(engine: AsyncEngine) -> None:
     await _upgrade("head")
-    tables = ("grants", "group_members", "policy_state")
+    tables = ("grants", "group_members", "policy_state", "access_requests")
     async with engine.connect() as conn:
         for table in tables:
             migrated = await conn.run_sync(_check_names, table)
@@ -130,3 +131,40 @@ async def test_check_constraints_match_the_models(engine: AsyncEngine) -> None:
             }
             assert declared, table
             assert migrated == declared, table
+
+
+_INSERT_REQUEST = sa.text(
+    "INSERT INTO access_requests (id, tenant, user_id, kind, target, note, status, "
+    "decision_note, created_at) VALUES (:id, 'ygg', :user_id, 'resource', "
+    "'metric:gmv', 'please', :status, '', now())"
+)
+
+
+async def test_access_requests_partial_index_on_postgres(
+    engine: AsyncEngine,
+) -> None:
+    await _upgrade("head")
+    user_id = uuid4()
+    async with engine.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "INSERT INTO users (id, email, display_name, status, kind, role, "
+                "tenant, created_at) VALUES (:id, 'sara@yougotagift.com', '', "
+                "'active', 'human', 'viewer', 'ygg', now())"
+            ),
+            {"id": user_id},
+        )
+        await conn.execute(
+            _INSERT_REQUEST, {"id": uuid4(), "user_id": user_id, "status": "pending"}
+        )
+        # A decided duplicate does not collide with the pending one.
+        await conn.execute(
+            _INSERT_REQUEST, {"id": uuid4(), "user_id": user_id, "status": "approved"}
+        )
+
+    with pytest.raises(IntegrityError, match=r"UniqueViolation|unique"):
+        async with engine.begin() as conn:
+            await conn.execute(
+                _INSERT_REQUEST,
+                {"id": uuid4(), "user_id": user_id, "status": "pending"},
+            )

@@ -217,7 +217,7 @@ layers = [
     "schemas",
     "cache | evaluator",
     "policy",
-    "catalog | patterns | facts | errors",
+    "catalog | patterns | facts | errors | cursor",
 ]
 
 [tool.coverage.run]
