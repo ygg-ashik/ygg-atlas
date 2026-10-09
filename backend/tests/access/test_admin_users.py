@@ -11,7 +11,7 @@ from app.access.errors import (
     NotFoundError,
 )
 from app.access.repository import AccessRepository
-from app.access.schemas import GroupCreate, UserUpdate
+from app.access.schemas import GroupCreate, UserQuery, UserUpdate
 from app.access.service import AccessService
 from app.identity.models import User
 from app.identity.tokens import VerifiedToken
@@ -185,7 +185,7 @@ async def test_changing_both_fields_writes_one_change(db) -> None:
 async def test_user_search_is_case_insensitive(db) -> None:
     actor = await actor_with(db)
     await make_user(db, "sara.ali@yougotagift.com")
-    users = await admin_for(db).list_users(actor, "SARA")
+    users = (await admin_for(db).list_users(actor, UserQuery(q="SARA"))).items
     assert [u.email for u in users] == ["sara.ali@yougotagift.com"]
 
 
@@ -197,13 +197,13 @@ async def test_list_users_excludes_other_tenants_and_matches_display_name(db) ->
     db.add(other_tenant)
     await db.commit()
 
-    by_name = await admin_for(db).list_users(actor, "Diaz")
+    by_name = (await admin_for(db).list_users(actor, UserQuery(q="Diaz"))).items
     assert [u.email for u in by_name] == ["nina@yougotagift.com"]
 
-    wildcard = await admin_for(db).list_users(actor, "%")
+    wildcard = (await admin_for(db).list_users(actor, UserQuery(q="%"))).items
     assert wildcard == []
 
-    all_users = await admin_for(db).list_users(actor)
+    all_users = (await admin_for(db).list_users(actor, UserQuery())).items
     assert "nina@acme.example" not in [u.email for u in all_users]
 
 

@@ -21,6 +21,12 @@ class MeAccessOut(BaseModel):
     capabilities: list[str]
     groups: list[GroupRefOut]
     has_data_access: bool
+    user_id: UUID
+    email: str
+    display_name: str
+    pending_requests: int  # the caller's own
+    pending_approvals: int  # the caller may decide (never their own; P5-D9)
+    is_manager: bool
 
 
 class CapabilityOut(BaseModel):
@@ -75,6 +81,8 @@ class MemberOut(BaseModel):
     display_name: str
     standing: str
     added_at: datetime
+    role: str
+    status: str
 
 
 class GrantCreate(BaseModel):
@@ -129,6 +137,7 @@ class UserOut(BaseModel):
     role: str
     status: str
     last_seen_at: datetime | None
+    created_at: datetime
 
 
 class RuleOut(BaseModel):
@@ -337,3 +346,46 @@ class AuditSummaryOut(BaseModel):
     per_day: list[DayCountOut]
     top_deny_reasons: list[ReasonCountOut]
     top_denied_users: list[UserCountOut]
+
+
+# ---- user and group detail, the user list (phase 5, B5) -------------------------
+
+
+class UserQuery(BaseModel):
+    """One page of the user list: search, filters, keyset position on
+    (email, id) and size. Also the route's query-parameter model."""
+
+    model_config = ConfigDict(frozen=True)
+
+    q: str = Field(default="", max_length=100)  # email or display name; stripped
+    role: str | None = Field(default=None, min_length=1, max_length=32)
+    status: Literal["active", "disabled"] | None = None
+    kind: Literal["human", "service"] | None = None
+    cursor: str | None = Field(default=None, max_length=512)
+    limit: int = Field(default=50, ge=1, le=200)
+
+
+class UserGroupOut(BaseModel):
+    id: UUID
+    name: str
+    standing: str
+
+
+class UserDetailOut(UserOut):
+    groups: list[UserGroupOut]  # direct memberships, by name
+    direct_grants: list[GrantOut]
+    pending_requests: int
+
+
+class GroupDetailOut(GroupOut):
+    member_count: int  # direct members
+    grant_count: int  # grants held by this group itself
+    path: list[str]  # names, root first, ending with this group
+
+
+class MemberCandidateOut(BaseModel):
+    """A colleague a group's managers may add (P5-D21)."""
+
+    user_id: UUID
+    display_name: str
+    email: str

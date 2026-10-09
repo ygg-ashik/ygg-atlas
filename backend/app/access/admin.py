@@ -30,7 +30,13 @@ from app.access.catalog import (
     ROLES,
     role_capabilities,
 )
-from app.access.cursor import InvalidCursorError, decode_time_cursor, time_page
+from app.access.cursor import (
+    InvalidCursorError,
+    decode_cursor,
+    decode_time_cursor,
+    encode_cursor,
+    time_page,
+)
 from app.access.errors import (
     AccessDeniedError,
     ConflictError,
@@ -63,12 +69,20 @@ from app.access.schemas import (
     DayCountOut,
     DecisionQuery,
     GrantCreate,
+    GrantOut,
     GroupCreate,
+    GroupDetailOut,
+    GroupOut,
     GroupUpdate,
+    MemberCandidateOut,
     MemberOut,
     Page,
     ReasonCountOut,
     UserCountOut,
+    UserDetailOut,
+    UserGroupOut,
+    UserOut,
+    UserQuery,
     UserUpdate,
 )
 from app.access.service import AccessService
@@ -83,6 +97,8 @@ _ALL_CHANGES: Final = ChangeQuery()
 _ALL_DECISIONS: Final = DecisionQuery()
 _TOP: Final = 5  # top deny reasons and denied users in the summary
 _NO_REASON: Final = "unspecified"
+MAX_CANDIDATES: Final = 10  # member-candidate lookup (P5-D21)
+CANDIDATE_QUERY: Final = (3, 100)  # stripped length bounds
 
 
 def page_position(cursor: str | None) -> tuple[datetime, UUID] | None:
@@ -91,6 +107,16 @@ def page_position(cursor: str | None) -> tuple[datetime, UUID] | None:
         return None
     try:
         return decode_time_cursor(cursor)
+    except InvalidCursorError:
+        raise InvalidChangeError(BAD_CURSOR) from None
+
+
+def _email_position(cursor: str | None) -> tuple[str, UUID] | None:
+    """A user-list cursor as an (email, id) keyset position; a bad one is a 422."""
+    if cursor is None:
+        return None
+    try:
+        return decode_cursor(cursor)
     except InvalidCursorError:
         raise InvalidChangeError(BAD_CURSOR) from None
 
@@ -178,6 +204,8 @@ def _member_out(member: GroupMember, user: User) -> MemberOut:
         display_name=user.display_name,
         standing=member.standing,
         added_at=member.added_at,
+        role=user.role,
+        status=user.status,
     )
 
 
@@ -294,8 +322,58 @@ class AccessAdmin:
     # ---- groups -------------------------------------------------------------
 
     async def list_groups(self, actor: Actor) -> list[Group]:
-        actor.require(ADMIN_GROUPS)
+        """Every tenant group for admin:groups (and the CLI); for a group
+        manager without it, only the groups they manage, subgroups included
+        (P5-D22). Rows keep their real parent_id."""
+        policy = actor.policy
+        if policy is not None and not policy.has(ADMIN_GROUPS):
+            if not (policy.active and policy.managed_group_ids):
+                actor.require(ADMIN_GROUPS)  # raises: the unchanged 403
+            groups = await self._repo.list_groups(actor.tenant)
+            return [g for g in groups if g.id in policy.managed_group_ids]
         return await self._repo.list_groups(actor.tenant)
+
+    async def group_detail(self, actor: Actor, group_id: UUID) -> GroupDetailOut:
+        """One group with its direct member and grant counts and its path of
+        names from the root (admin:groups or a manager of it or an ancestor)."""
+        actor.require_member_admin(group_id)
+        group = await self._group(actor, group_id)
+        groups = await self._repo.tenant_groups(actor.tenant)
+        path: list[str] = []
+        current: UUID | None = group.id
+        while current is not None and current in groups and len(path) < len(groups):
+            path.append(groups[current].name)
+            current = groups[current].parent_id
+        return GroupDetailOut(
+            **GroupOut.model_validate(group).model_dump(),
+            member_count=await self._repo.count_members(group.id),
+            grant_count=await self._repo.count_grants(SUBJECT_GROUP, group.id),
+            path=path[::-1],
+        )
+
+    async def member_candidates(
+        self, actor: Actor, group_id: UUID, query: str
+    ) -> list[MemberCandidateOut]:
+        """Up to ten active human colleagues matching `query` who could join
+        the group: never its members, service users or the actor (P5-D21)."""
+        actor.require_member_admin(group_id)
+        search = query.strip()
+        shortest, longest = CANDIDATE_QUERY
+        if not shortest <= len(search) <= longest:
+            msg = f"Type {shortest} to {longest} characters of a name or email."
+            raise InvalidChangeError(msg)
+        group = await self._group(actor, group_id)
+        users = await self._repo.member_candidates(
+            actor.tenant,
+            group.id,
+            search,
+            exclude_user_id=actor.user_id,
+            limit=MAX_CANDIDATES,
+        )
+        return [
+            MemberCandidateOut(user_id=u.id, display_name=u.display_name, email=u.email)
+            for u in users
+        ]
 
     async def create_group(self, actor: Actor, payload: GroupCreate) -> Group:
         actor.require(ADMIN_GROUPS)
@@ -545,11 +623,37 @@ class AccessAdmin:
 
     # ---- users ----------------------------------------------------------
 
-    async def list_users(
-        self, actor: Actor, query: str = "", limit: int = 50
-    ) -> list[User]:
+    async def list_users(self, actor: Actor, query: UserQuery) -> Page[UserOut]:
+        """The tenant's users by email (keyset on (email, id)), filtered."""
         actor.require(ADMIN_USERS)
-        return await self._repo.list_users(actor.tenant, query.strip(), limit)
+        rows = await self._repo.list_users(
+            actor.tenant, query, _email_position(query.cursor)
+        )
+        page = rows[: query.limit]
+        next_cursor = None
+        if len(rows) > query.limit:
+            next_cursor = encode_cursor(page[-1].email, page[-1].id)
+        return Page[UserOut](
+            items=[UserOut.model_validate(u) for u in page], next_cursor=next_cursor
+        )
+
+    async def user_detail(self, actor: Actor, user_id: UUID) -> UserDetailOut:
+        """One user with their direct groups, direct grants and pending requests."""
+        actor.require(ADMIN_USERS)  # before any lookup: no probing for user ids
+        user = await self._user(actor, user_id)
+        groups = await self._repo.tenant_groups(actor.tenant)
+        memberships = [
+            UserGroupOut(id=gid, name=groups[gid].name, standing=standing)
+            for gid, standing in (await self._repo.memberships(user.id)).items()
+            if gid in groups
+        ]
+        grants = await self._repo.list_grants(SUBJECT_USER, user.id)
+        return UserDetailOut(
+            **UserOut.model_validate(user).model_dump(),
+            groups=sorted(memberships, key=lambda g: (g.name, g.id)),
+            direct_grants=[GrantOut.model_validate(g) for g in grants],
+            pending_requests=await self._repo.count_pending(user.id),
+        )
 
     async def update_user(
         self, actor: Actor, user_id: UUID, payload: UserUpdate

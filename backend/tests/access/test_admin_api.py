@@ -104,7 +104,7 @@ async def test_user_admin_lists_and_updates_users(api: AsyncClient, db) -> None:
     await make_user(db, "dev@yougotagift.com", role="admin")
     sara = await make_user(db, "sara@yougotagift.com")
 
-    found = (await api.get("/api/v1/admin/users", params={"q": "sara"})).json()
+    found = (await api.get("/api/v1/admin/users", params={"q": "sara"})).json()["items"]
     assert [u["email"] for u in found] == ["sara@yougotagift.com"]
     updated = await api.patch(
         f"/api/v1/admin/users/{sara.id}", json={"role": "analyst"}

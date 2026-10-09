@@ -37,8 +37,8 @@ from app.access.models import (
     RbacChange,
 )
 from app.access.policy import DecidableScope
-from app.access.schemas import ChangeQuery, DecisionQuery
-from app.identity import User, UserStatus
+from app.access.schemas import ChangeQuery, DecisionQuery, UserQuery
+from app.identity import User, UserKind, UserStatus
 from app.models.audit import AtlasAuditLog
 
 
@@ -326,21 +326,85 @@ class AccessRepository:
         )
         return (await self._db.execute(stmt)).scalar_one_or_none()
 
-    async def list_users(self, tenant: str, query: str, limit: int) -> list[User]:
-        stmt = select(User).where(col(User.tenant) == tenant)
-        if query:
+    async def list_users(
+        self, tenant: str, query: UserQuery, after: tuple[str, UUID] | None = None
+    ) -> list[User]:
+        """Users of `tenant` by (email, id) ascending, filtered; returns up to
+        `query.limit + 1` rows so the caller can tell whether a next page exists."""
+        email, row_id = col(User.email), col(User.id)
+        stmt = select(User).where(
+            col(User.tenant) == tenant,
+            *_equal_where(
+                (col(User.role), query.role),
+                (col(User.status), query.status),
+                (col(User.kind), query.kind),
+            ),
+        )
+        search = query.q.strip()
+        if search:
+            stmt = stmt.where(_matches_user(search))
+        if after is not None:
+            last_email, last_id = after
             stmt = stmt.where(
-                or_(
-                    col(User.email).icontains(query, autoescape=True),
-                    col(User.display_name).icontains(query, autoescape=True),
-                )
+                or_(email > last_email, and_(email == last_email, row_id > last_id))
             )
         stmt = (
-            stmt.order_by(col(User.email))
+            stmt.order_by(email, row_id)
+            .limit(query.limit + 1)
+            .execution_options(populate_existing=True)
+        )
+        return list((await self._db.execute(stmt)).scalars().all())
+
+    async def member_candidates(
+        self,
+        tenant: str,
+        group_id: UUID,
+        search: str,
+        *,
+        exclude_user_id: UUID | None,
+        limit: int,
+    ) -> list[User]:
+        """Active human users of `tenant` matching `search` who are not yet
+        direct members of `group_id`, by email (P5-D21)."""
+        already = (
+            select(col(GroupMember.user_id))
+            .where(col(GroupMember.group_id) == group_id)
+            .scalar_subquery()
+        )
+        stmt = select(User).where(
+            col(User.tenant) == tenant,
+            col(User.status) == UserStatus.ACTIVE,
+            col(User.kind) != UserKind.SERVICE,
+            col(User.id).not_in(already),
+            _matches_user(search),
+        )
+        if exclude_user_id is not None:
+            stmt = stmt.where(col(User.id) != exclude_user_id)
+        stmt = (
+            stmt.order_by(col(User.email), col(User.id))
             .limit(limit)
             .execution_options(populate_existing=True)
         )
         return list((await self._db.execute(stmt)).scalars().all())
+
+    async def count_members(self, group_id: UUID) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(GroupMember)
+            .where(col(GroupMember.group_id) == group_id)
+        )
+        return (await self._db.execute(stmt)).scalar_one()
+
+    async def count_grants(self, subject_type: str, subject_id: UUID) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(Grant)
+            .where(
+                col(Grant.subject_type) == subject_type,
+                col(Grant.subject_id) == subject_id,
+            )
+        )
+        return (await self._db.execute(stmt)).scalar_one()
 
     async def list_changes(
         self,
@@ -606,19 +670,23 @@ class AccessRepository:
         self,
         tenant: str,
         scope: DecidableScope,
-        status: str | None,
+        statuses: Sequence[str] | None,
         after: tuple[datetime, UUID] | None,
         limit: int,
+        *,
+        user_id: UUID | None = None,
     ) -> list[tuple[AccessRequest, User]]:
-        """Requests in `scope`, newest first, with their requester; returns up
+        """Requests in `scope` (any of `statuses`; None = every status; only
+        `user_id`'s when given), newest first, with their requester; returns up
         to `limit + 1` rows so the caller can tell whether a next page exists."""
         stmt = (
             select(AccessRequest, User)
             .join(User, col(User.id) == col(AccessRequest.user_id))
             .where(_decidable(tenant, scope))
+            .where(*_equal_where((col(AccessRequest.user_id), user_id)))
         )
-        if status is not None:
-            stmt = stmt.where(col(AccessRequest.status) == status)
+        if statuses is not None:
+            stmt = stmt.where(col(AccessRequest.status).in_(statuses))
         if after is not None:
             at, row_id = after
             stmt = stmt.where(
@@ -759,6 +827,15 @@ def _decidable(tenant: str, scope: DecidableScope) -> ColumnElement[bool]:
     if scope.user_id is not None:
         clause = and_(clause, col(AccessRequest.user_id) != scope.user_id)
     return clause
+
+
+def _matches_user(search: str) -> ColumnElement[bool]:
+    """Case-insensitive substring match on email or display name; `%` and `_`
+    are literal."""
+    return or_(
+        col(User.email).icontains(search, autoescape=True),
+        col(User.display_name).icontains(search, autoescape=True),
+    )
 
 
 def _equal_where(*filters: tuple[Mapped[Any], object]) -> list[ColumnElement[bool]]:

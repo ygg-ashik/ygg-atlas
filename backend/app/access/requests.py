@@ -73,6 +73,8 @@ PENDING: Final = "pending"
 APPROVED: Final = "approved"
 DECLINED: Final = "declined"
 CANCELLED: Final = "cancelled"
+DECIDED: Final = "decided"  # a queue filter, not a stored status
+_STATUS_SETS: Final[Mapping[str, tuple[str, ...]]] = {DECIDED: (APPROVED, DECLINED)}
 
 KIND_GROUP: Final = "group"
 KIND_ROLE: Final = "role"
@@ -261,13 +263,28 @@ class AccessRequests(AccessAdmin):
     # ---- the decider --------------------------------------------------------
 
     async def list_decidable(
-        self, actor: Actor, status: str | None, cursor: str | None, limit: int
+        self,
+        actor: Actor,
+        status: str | None,
+        cursor: str | None,
+        limit: int,
+        *,
+        user_id: UUID | None = None,
     ) -> Page[AccessRequestOut]:
+        """Requests the actor may decide, newest first. `status` is one status,
+        `decided` (approved or declined; P5-D23) or None for every status;
+        `user_id` narrows to one requester, still inside the scope (P5-D24)."""
         scope = _scope(actor)
         if scope.empty:
             raise AccessDeniedError(NO_SCOPE)
+        statuses = _STATUS_SETS.get(status, (status,)) if status is not None else None
         rows = await self._repo.list_decidable(
-            actor.tenant, scope, status, page_position(cursor), limit
+            actor.tenant,
+            scope,
+            statuses,
+            page_position(cursor),
+            limit,
+            user_id=user_id,
         )
         page, next_cursor = time_page(rows, limit, lambda r: (r[0].created_at, r[0].id))
         items = await self._outs(page, actor.tenant)

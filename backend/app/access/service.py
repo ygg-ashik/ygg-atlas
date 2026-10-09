@@ -12,7 +12,7 @@ from app.access.cache import PolicyCache, shared_cache
 from app.access.errors import PolicyUnavailableError
 from app.access.evaluator import evaluate
 from app.access.facts import STATUS_ACTIVE, PolicyInputs, UserFacts
-from app.access.policy import Policy
+from app.access.policy import Policy, decidable_scope
 from app.access.repository import AccessRepository
 from app.access.schemas import GroupRefOut, MeAccessOut
 from app.identity import Principal
@@ -105,7 +105,9 @@ class AccessService:
         )
 
     async def describe(self, policy: Policy) -> MeAccessOut:
-        """What /me/access shows: role, capabilities, groups, any data at all.
+        """What /me/access shows: identity, role, capabilities, groups, any
+        data at all, and the request badges (own pending; pending the caller
+        may decide, counted through the same `decidable_scope` as the queue).
 
         Built from the already-evaluated Policy (group_ids, managed_group_ids)
         so this can never disagree with it; tenant_groups is read only for names.
@@ -120,11 +122,22 @@ class AccessService:
             for gid in policy.group_ids
             if gid in groups
         ]
+        user = await self._repo.user(policy.user_id)
+        scope = decidable_scope(policy)
+        approvals = (
+            0 if scope.empty else await self._repo.count_decidable(policy.tenant, scope)
+        )
         return MeAccessOut(
             role=policy.role,
             capabilities=sorted(policy.capabilities),
             groups=sorted(refs, key=lambda ref: ref.name),
             has_data_access=policy.has_data_access,
+            user_id=policy.user_id,
+            email=user.email if user is not None else "",
+            display_name=user.display_name if user is not None else "",
+            pending_requests=await self._repo.count_pending(policy.user_id),
+            pending_approvals=approvals,
+            is_manager=bool(policy.managed_group_ids),
         )
 
 

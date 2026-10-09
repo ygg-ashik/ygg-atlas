@@ -1,7 +1,7 @@
 """Access requests over HTTP: shapes, gates and status codes."""
 
 from collections.abc import AsyncIterator
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -9,7 +9,13 @@ from httpx import ASGITransport, AsyncClient
 from app.access.schemas import AccessRequestCreate
 from app.identity.models import User
 from app.main import app as asgi_app
-from tests.access_helpers import make_group, make_user, policy_of, requests_for
+from tests.access_helpers import (
+    add_member,
+    make_group,
+    make_user,
+    policy_of,
+    requests_for,
+)
 
 REVENUE = "demo/order/revenue"
 DEV = "dev@yougotagift.com"
@@ -143,6 +149,7 @@ async def test_admin_requests_query_bounds(api: AsyncClient, db) -> None:
         {"limit": "0"},
         {"limit": "201"},
         {"status": "weird"},
+        {"user_id": "not-a-uuid"},
         {"cursor": "tampered!"},
         {"cursor": "x" * 600},
     ):
@@ -179,3 +186,43 @@ async def test_approve_and_decline_over_http(api: AsyncClient, db) -> None:
 
     twice = await api.post(f"{base}/{approve_me}/decline", json={})
     assert twice.status_code == 409
+
+
+async def test_decided_status_lists_approved_and_declined(api: AsyncClient, db) -> None:
+    await make_user(db, DEV, role="admin")
+    sara = await make_user(db, "sara@yougotagift.com")
+    approve_me = await _ask(db, sara, "resource", REVENUE)
+    decline_me = await _ask(db, sara, "role", "analyst")
+    cancel_me = await _ask(db, sara, "resource", "demo/order/count")
+    pending = await _ask(db, sara, "role", "builder")
+    base = "/api/v1/admin/requests"
+    await api.post(f"{base}/{approve_me}/approve", json={})
+    await api.post(f"{base}/{decline_me}/decline", json={})
+    await requests_for(db).cancel(await policy_of(db, sara), UUID(cancel_me))
+
+    decided = (await api.get(base, params={"status": "decided"})).json()["items"]
+    assert sorted(r["id"] for r in decided) == sorted([approve_me, decline_me])
+    assert {r["status"] for r in decided} == {"approved", "declined"}
+    cancelled = (await api.get(base, params={"status": "cancelled"})).json()
+    assert [r["id"] for r in cancelled["items"]] == [cancel_me]
+    still = (await api.get(base)).json()["items"]
+    assert [r["id"] for r in still] == [pending]
+
+
+async def test_user_id_filter_stays_inside_the_scope(api: AsyncClient, db) -> None:
+    growth = await make_group(db, "growth")
+    sara = await make_user(db, "sara@yougotagift.com")
+    omar = await make_user(db, "omar@yougotagift.com")
+    sara_group = await _ask(db, sara, "group", str(growth.id))
+    await _ask(db, sara, "role", "analyst")  # outside a manager's scope
+    await _ask(db, omar, "group", str(growth.id))
+    dev = await make_user(db, DEV)
+    await add_member(db, growth, dev, "manager")
+    base = "/api/v1/admin/requests"
+
+    mine = (await api.get(base, params={"user_id": str(sara.id)})).json()
+    assert [r["id"] for r in mine["items"]] == [sara_group]
+    nobody = (await api.get(base, params={"user_id": str(uuid4())})).json()
+    assert nobody["items"] == []
+    own = (await api.get(base, params={"user_id": str(dev.id)})).json()
+    assert own["items"] == []

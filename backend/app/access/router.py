@@ -30,15 +30,19 @@ from app.access.schemas import (
     GrantCreate,
     GrantOut,
     GroupCreate,
+    GroupDetailOut,
     GroupOut,
     GroupUpdate,
     MeAccessOut,
+    MemberCandidateOut,
     MemberOut,
     MemberPut,
     Page,
     RequestDecision,
     RequestOptionsOut,
+    UserDetailOut,
     UserOut,
+    UserQuery,
     UserUpdate,
 )
 from app.access.service import AccessService
@@ -81,6 +85,28 @@ async def create_group(
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> GroupOut:
     return GroupOut.model_validate(await admin.create_group(actor, payload))
+
+
+@router.get("/admin/groups/{group_id}", response_model=GroupDetailOut)
+async def group_detail(
+    group_id: UUID,
+    actor: Actor = Depends(get_actor),
+    admin: AccessAdmin = Depends(get_access_admin),
+) -> GroupDetailOut:
+    return await admin.group_detail(actor, group_id)
+
+
+@router.get(
+    "/admin/groups/{group_id}/member-candidates",
+    response_model=list[MemberCandidateOut],
+)
+async def member_candidates(
+    group_id: UUID,
+    q: str = Query(max_length=200),
+    actor: Actor = Depends(get_actor),
+    admin: AccessAdmin = Depends(get_access_admin),
+) -> list[MemberCandidateOut]:
+    return await admin.member_candidates(actor, group_id, q)
 
 
 @router.patch("/admin/groups/{group_id}", response_model=GroupOut)
@@ -161,14 +187,22 @@ async def revoke_grant(
     await admin.revoke_grant(actor, grant_id)
 
 
-@router.get("/admin/users", response_model=list[UserOut])
+@router.get("/admin/users", response_model=Page[UserOut])
 async def list_users(
-    q: str = Query("", max_length=100),
-    limit: int = Query(50, ge=1, le=200),
+    query: Annotated[UserQuery, Query()],
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
-) -> list[UserOut]:
-    return [UserOut.model_validate(u) for u in await admin.list_users(actor, q, limit)]
+) -> Page[UserOut]:
+    return await admin.list_users(actor, query)
+
+
+@router.get("/admin/users/{user_id}", response_model=UserDetailOut)
+async def user_detail(
+    user_id: UUID,
+    actor: Actor = Depends(get_actor),
+    admin: AccessAdmin = Depends(get_access_admin),
+) -> UserDetailOut:
+    return await admin.user_detail(actor, user_id)
 
 
 @router.patch("/admin/users/{user_id}", response_model=UserOut)
@@ -267,14 +301,17 @@ async def cancel_request(
 
 @router.get("/admin/requests", response_model=Page[AccessRequestOut])
 async def decidable_requests(
-    status: Literal["pending", "approved", "declined", "cancelled", "all"] = "pending",
+    status: Literal[
+        "pending", "approved", "declined", "cancelled", "decided", "all"
+    ] = "pending",
+    user_id: UUID | None = None,
     cursor: str | None = Query(None, max_length=512),
     limit: int = Query(50, ge=1, le=200),
     actor: Actor = Depends(get_actor),
     requests: AccessRequests = Depends(get_access_requests),
 ) -> Page[AccessRequestOut]:
     wanted = None if status == "all" else status
-    return await requests.list_decidable(actor, wanted, cursor, limit)
+    return await requests.list_decidable(actor, wanted, cursor, limit, user_id=user_id)
 
 
 @router.post("/admin/requests/{request_id}/approve", response_model=AccessRequestOut)

@@ -13,9 +13,18 @@ from app.access.dependencies import get_policy
 from app.access.errors import AccessDeniedError, PolicyUnavailableError
 from app.access.models import PolicyState
 from app.access.policy import Policy
+from app.access.schemas import AccessRequestCreate
 from app.config import Settings, get_settings
+from app.identity.models import User
 from app.main import app as asgi_app
-from tests.access_helpers import add_grant, add_member, make_group, make_user
+from tests.access_helpers import (
+    add_grant,
+    add_member,
+    make_group,
+    make_user,
+    policy_of,
+    requests_for,
+)
 
 
 def _client(app: FastAPI) -> AsyncClient:
@@ -30,12 +39,15 @@ async def api(db) -> AsyncIterator[AsyncClient]:
 
 async def test_a_new_user_can_chat_but_has_no_data(api: AsyncClient) -> None:
     body = (await api.get("/api/v1/me/access")).json()
-    assert body == {
+    assert {k: body[k] for k in ("role", "capabilities", "groups")} == {
         "role": "viewer",
         "capabilities": ["chat:use"],
         "groups": [],
-        "has_data_access": False,
     }
+    assert body["has_data_access"] is False
+    assert body["pending_requests"] == 0
+    assert body["pending_approvals"] == 0
+    assert body["is_manager"] is False
 
 
 async def test_memberships_and_data_access_show_up(api: AsyncClient, db) -> None:
@@ -179,3 +191,62 @@ async def test_access_error_handler_maps_status_and_message() -> None:
     assert unavailable_response.json() == {
         "detail": "The access check is unavailable right now."
     }
+
+
+# ---- identity and request counts (phase 5, B5) --------------------------------
+
+
+async def _ask(db, user: User, kind: str, target: str) -> None:
+    payload = AccessRequestCreate.model_validate(
+        {"kind": kind, "target": target, "note": "please"}
+    )
+    await requests_for(db).create(await policy_of(db, user), payload)
+
+
+async def test_me_access_identity_fields(api: AsyncClient, db) -> None:
+    dev = await make_user(db, "dev@yougotagift.com")
+    dev.display_name = "Dev Eloper"
+    db.add(dev)
+    await db.commit()
+
+    body = (await api.get("/api/v1/me/access")).json()
+
+    assert body["user_id"] == str(dev.id)
+    assert body["email"] == "dev@yougotagift.com"
+    assert body["display_name"] == "Dev Eloper"
+
+
+async def test_me_access_pending_counts(api: AsyncClient, db) -> None:
+    growth = await make_group(db, "growth")
+    finance = await make_group(db, "finance")
+    sara = await make_user(db, "sara@yougotagift.com")
+    await _ask(db, sara, "group", str(growth.id))
+    await _ask(db, sara, "group", str(finance.id))
+    await _ask(db, sara, "role", "analyst")
+    dev = await make_user(db, "dev@yougotagift.com")
+
+    # A viewer: their own pending requests, nothing to decide.
+    await _ask(db, dev, "resource", "demo/order/revenue")
+    body = (await api.get("/api/v1/me/access")).json()
+    assert (body["pending_requests"], body["pending_approvals"]) == (1, 0)
+
+    # A manager of growth: only requests for growth's subtree.
+    await add_member(db, growth, dev, "manager")
+    body = (await api.get("/api/v1/me/access")).json()
+    assert body["pending_approvals"] == 1
+
+    # An admin: everything but their own request.
+    await make_user(db, "dev@yougotagift.com", role="admin")
+    body = (await api.get("/api/v1/me/access")).json()
+    assert (body["pending_requests"], body["pending_approvals"]) == (1, 3)
+
+
+async def test_me_access_is_manager(api: AsyncClient, db) -> None:
+    growth = await make_group(db, "growth")
+    dev = await make_user(db, "dev@yougotagift.com")
+    await add_member(db, growth, dev)
+    assert (await api.get("/api/v1/me/access")).json()["is_manager"] is False
+
+    sales = await make_group(db, "sales")
+    await add_member(db, sales, dev, "manager")
+    assert (await api.get("/api/v1/me/access")).json()["is_manager"] is True
