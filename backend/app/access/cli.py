@@ -10,8 +10,8 @@
         --reason dev
     uv run python -m app.access.cli grant group:csm allow 'deepsales/*' \
         --scope 'csm=$self'
-    uv run python -m app.access.cli grant group:gcc allow 'deepsales/*' \
-        --scope 'country=AE,SA'
+    uv run python -m app.access.cli grant group:b2c allow 'demo/order/*' \
+        --scope 'channel=b2c'
     uv run python -m app.access.cli grant user:lead@yougotagift.com allow \
         fields:people_names --kind clearance
     uv run python -m app.access.cli revoke <grant-id>
@@ -94,7 +94,7 @@ def _aware_datetime(value: str) -> datetime:
 
 
 def _parse_scope(values: Sequence[str] | None) -> dict[str, list[str]] | None:
-    """`['csm=$self', 'country=AE,SA']` -> `{csm: [$self], country: [AE, SA]}`.
+    """`['csm=$self', 'channel=b2c,b2b']` -> `{csm: [$self], channel: [b2c, b2b]}`.
     A dimension given twice merges its values; GrantCreate validates the rest."""
     if not values:
         return None
@@ -329,7 +329,7 @@ def _parser() -> argparse.ArgumentParser:
         action="append",
         default=None,
         metavar="DIM=V1[,V2]",
-        help="limit rows, e.g. 'csm=$self' or 'country=AE,SA' (repeatable)",
+        help="limit rows, e.g. 'csm=$self' or 'channel=b2c,b2b' (repeatable)",
     )
     grant.add_argument("--reason", default="")
     grant.add_argument(

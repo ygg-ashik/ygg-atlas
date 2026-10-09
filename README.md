@@ -143,6 +143,10 @@ data, capabilities and manager rights) to whoever it applies to.
     docker compose exec backend uv run --no-dev python -m app.access.cli access sara@yougotagift.com --resource deepsales/ds_task/ds_open_tasks
 
 - **Rows.** Several matching allows are ORed; one unscoped allow means all rows; deny still wins.
+- **`--scope` syntax.** `dimension=value[,value...]`: commas separate values, so a value cannot
+  contain a comma (set such a scope through the API instead).
+- **One grant per target.** A user or group holds at most one allow (and one deny) per target, so give different
+  scoped alternatives on the same target through separate groups (their allows are ORed).
 - **Labels.** Only `business_name` and `person_name` label classes are settable (`category` is never
   masked); defaults are `business_name` = pseudonymise, `person_name` = suppress. Bucket shows the
   first N rows as "Top 1..N" and sums the rest of the fetched rows into "Others".
