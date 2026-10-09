@@ -1,3 +1,5 @@
+# pyright: basic
+# strict after the Task 6 rewrite
 """MCP server exposing the atlas tools to external MCP clients.
 
 Same implementations as the chat agent (app.atlas.tools) — no drift between

@@ -26,6 +26,8 @@ class AtlasCaller:
     auth_method: str
     surface: str = "chat"  # 'chat' | 'mcp' | 'api'
     session_id: UUID | None = None
+    token_id: UUID | None = None  # MCP credential, written to the audit log
+    client_id: str | None = None  # OAuth client, when the credential is OAuth
 
 
 def metric_resource(metric: MetricDef) -> str:
