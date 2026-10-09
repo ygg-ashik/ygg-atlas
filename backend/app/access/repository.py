@@ -446,3 +446,76 @@ class AccessRepository:
             .execution_options(populate_existing=True)
         )
         return (await self._db.execute(stmt)).scalars().first()
+
+    # ---- row and field administration (phase 3) -------------------------
+
+    async def attribute(self, user_id: UUID, key: str) -> UserAttribute | None:
+        return await self._db.get(UserAttribute, (user_id, key), populate_existing=True)
+
+    async def list_attributes(self, user_id: UUID) -> list[UserAttribute]:
+        stmt = (
+            select(UserAttribute)
+            .where(col(UserAttribute.user_id) == user_id)
+            .order_by(col(UserAttribute.key))
+            .execution_options(populate_existing=True)
+        )
+        return list((await self._db.execute(stmt)).scalars().all())
+
+    async def label_class(self, label_class: str) -> LabelClassSetting | None:
+        return await self._db.get(
+            LabelClassSetting, label_class, populate_existing=True
+        )
+
+    async def list_label_classes(self) -> list[LabelClassSetting]:
+        stmt = (
+            select(LabelClassSetting)
+            .order_by(col(LabelClassSetting.label_class))
+            .execution_options(populate_existing=True)
+        )
+        return list((await self._db.execute(stmt)).scalars().all())
+
+    async def scope_dimensions(self) -> list[ScopeDimension]:
+        stmt = (
+            select(ScopeDimension)
+            .order_by(
+                col(ScopeDimension.source),
+                col(ScopeDimension.entity),
+                col(ScopeDimension.dimension),
+            )
+            .execution_options(populate_existing=True)
+        )
+        return list((await self._db.execute(stmt)).scalars().all())
+
+    async def replace_scope_dimensions(
+        self, rows: Iterable[tuple[str, str, str, str | None, str]]
+    ) -> int:
+        """Stage the mirror to hold exactly `rows`; returns how many rows changed.
+
+        Unchanged rows are left alone (their synced_at too), so replacing with
+        the same catalog is a no-op.
+        """
+        existing = {
+            (r.source, r.entity, r.dimension): r for r in await self.scope_dimensions()
+        }
+        wanted = {(s, e, d): (attr, desc) for s, e, d, attr, desc in rows}
+        changed = 0
+        for key, row in existing.items():
+            if key not in wanted:
+                await self._db.delete(row)
+                changed += 1
+        for (source, entity, dimension), (attr, desc) in wanted.items():
+            row = existing.get((source, entity, dimension))
+            if row is not None and (row.self_attribute, row.description) == (
+                attr,
+                desc,
+            ):
+                continue
+            row = row or ScopeDimension(
+                source=source, entity=entity, dimension=dimension
+            )
+            row.self_attribute = attr
+            row.description = desc
+            row.synced_at = datetime.now(UTC)
+            self._db.add(row)
+            changed += 1
+        return changed

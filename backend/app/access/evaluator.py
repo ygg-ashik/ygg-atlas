@@ -3,7 +3,6 @@
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime
 from types import MappingProxyType
-from typing import cast
 from uuid import UUID
 
 import structlog
@@ -18,9 +17,6 @@ from app.access.facts import (
     MASK_MODES,
     MASKABLE_LABEL_CLASSES,
     MAX_BUCKET_SIZE,
-    MAX_SCOPE_DIMENSIONS,
-    MAX_SCOPE_VALUES,
-    SCOPE_KEY,
     SELF_TOKEN,
     STANDING_MANAGER,
     STATUS_ACTIVE,
@@ -29,6 +25,7 @@ from app.access.facts import (
     GrantFacts,
     GroupFacts,
     PolicyInputs,
+    is_well_formed_scope,
 )
 from app.access.patterns import InvalidPatternError, validate_pattern
 from app.access.policy import Conjunction, LabelMode, Policy, Rule, SkippedRule
@@ -111,27 +108,7 @@ def _malformed_scope(grant: GrantFacts) -> bool:
         return False
     if grant.effect != EFFECT_ALLOW or grant.target_kind != KIND_RESOURCE:
         return True  # row-scoped denies are out of scope (spec §15)
-    return not _well_formed_scope(grant.row_scope)
-
-
-def _well_formed_scope(scope: object) -> bool:
-    # The column is JSON: check the stored shape, never trust the annotation.
-    if not isinstance(scope, Mapping):
-        return False
-    items = cast("Mapping[object, object]", scope)
-    return 1 <= len(items) <= MAX_SCOPE_DIMENSIONS and all(
-        isinstance(key, str) and SCOPE_KEY.fullmatch(key) and _well_formed_values(v)
-        for key, v in items.items()
-    )
-
-
-def _well_formed_values(values: object) -> bool:
-    if isinstance(values, str) or not isinstance(values, Sequence):
-        return False
-    items = cast("Sequence[object]", values)
-    return 1 <= len(items) <= MAX_SCOPE_VALUES and all(
-        isinstance(v, str) and v for v in items
-    )
+    return not is_well_formed_scope(grant.row_scope)
 
 
 def restricts(grant: GrantFacts, now: datetime) -> bool:

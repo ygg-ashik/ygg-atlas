@@ -17,7 +17,7 @@ from app.access.facts import GrantFacts, PolicyInputs, UserFacts
 from app.access.policy import Policy
 from app.access.router import router as access_router
 from app.access.service import policy_for
-from app.access.startup import prepare_access
+from app.access.startup import prepare_access, sync_scope_dimensions
 
 __all__ = [
     "ADMIN_AUDIT",
@@ -38,4 +38,5 @@ __all__ = [
     "policy_for",
     "prepare_access",
     "require_capability",
+    "sync_scope_dimensions",
 ]

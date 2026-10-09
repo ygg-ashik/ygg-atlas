@@ -106,7 +106,9 @@ async def add_grant(
     return grant
 
 
-async def set_attribute(db: AsyncSession, user: User, key: str, value: str) -> None:
+async def set_attribute(
+    db: AsyncSession, user: User, key: str, value: str, *, bump_version: bool = True
+) -> None:
     """Upsert one user attribute (no reserved-key check: that is AccessAdmin's)."""
     row = await db.get(UserAttribute, (user.id, key))
     if row is None:
@@ -114,7 +116,8 @@ async def set_attribute(db: AsyncSession, user: User, key: str, value: str) -> N
     row.value = value
     db.add(row)
     await db.commit()
-    await bump(db)
+    if bump_version:
+        await bump(db)
 
 
 async def seed_label_classes(
@@ -137,7 +140,10 @@ async def seed_label_classes(
 
 
 async def mirror_dimensions(
-    db: AsyncSession, rows: Iterable[tuple[str, str, str, str | None]]
+    db: AsyncSession,
+    rows: Iterable[tuple[str, str, str, str | None]],
+    *,
+    bump_version: bool = True,
 ) -> None:
     """Replace the scope_dimensions mirror with (source, entity, dimension, self)."""
     await db.execute(delete(ScopeDimension))
@@ -151,7 +157,8 @@ async def mirror_dimensions(
             )
         )
     await db.commit()
-    await bump(db)
+    if bump_version:
+        await bump(db)
 
 
 async def bump(db: AsyncSession) -> None:
