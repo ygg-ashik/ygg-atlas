@@ -1,8 +1,12 @@
 """Refresh rotation with reuse detection and the 30 s same-client grace (D6)."""
 
+from collections.abc import AsyncIterator
 from datetime import timedelta
+from typing import Any
+from uuid import uuid4
 
 import pytest
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 from structlog.testing import capture_logs
@@ -32,6 +36,7 @@ from tests.access_helpers import make_user
 from tests.identity.oauth_helpers import (
     Clock,
     always_eligible,
+    credential_db,
     issued_pair,
     never_eligible,
     oauth_config,
@@ -39,6 +44,13 @@ from tests.identity.oauth_helpers import (
 )
 
 GRACE = timedelta(seconds=30)
+
+
+@pytest.fixture
+async def db() -> AsyncIterator[AsyncSession]:
+    """This module's own cheap database (overrides the shared, seeded `db`)."""
+    async with credential_db() as session:
+        yield session
 
 
 @pytest.fixture
@@ -210,7 +222,12 @@ async def test_cross_client_reuse_revokes_the_family_without_grace(
     assert not await _family_live(db, pair)
     assert REVOKED_CROSS_CLIENT in await _family_reasons(db, pair)
     [event] = await _events(db, EVENT_REUSE_DETECTED)
-    assert event.details == {"family_id": str(pair.family_id), "kind": "refresh"}
+    assert event.client_id == client_id  # the family's own client
+    assert event.details == {
+        "family_id": str(pair.family_id),
+        "kind": "refresh",
+        "presented_by_client_id": other,  # forensics: who replayed it
+    }
 
 
 async def test_cross_client_presentation_of_a_live_token_revokes_it(
@@ -246,6 +263,31 @@ async def test_grace_never_revives_a_revoked_family(
     with pytest.raises(OAuthGrantError):
         await _rotate(service, client_id, pair.refresh_token)
     assert len(await _events(db, EVENT_REUSE_DETECTED)) == 1
+    assert not await _family_live(db, pair)
+    assert await _events(db, EVENT_REFRESH_GRACE) == []
+
+
+async def test_a_grace_issue_rechecks_eligibility_and_revokes_on_failure(
+    db: AsyncSession,
+    service: OAuthService,
+    client_id: str,
+    pair: TokenPair,
+    clock: Clock,
+) -> None:
+    await _rotate(service, client_id, pair.refresh_token)
+    clock.advance(timedelta(seconds=5))
+    grant = await _grant(service, client_id, pair.refresh_token)
+    with pytest.raises(OAuthGrantError):
+        await service.rotate_refresh(client_id, grant, never_eligible)
+    assert not await _family_live(db, pair)
+    assert REVOKED_NO_MCP_USE in await _family_reasons(db, pair)
+    assert await _events(db, EVENT_REFRESH_GRACE) == []
+    [event] = await _events(db, EVENT_FAMILY_REVOKED)
+    assert event.details == {"family_id": str(pair.family_id), "reason": "no_mcp_use"}
+
+
+async def test_lock_family_is_a_no_op_on_sqlite(db: AsyncSession) -> None:
+    await CredentialRepository(db).lock_family(uuid4())  # PG only; never raises here
 
 
 async def test_superseded_token_is_reuse(
@@ -366,3 +408,113 @@ async def test_a_vanished_token_fails(
     await db.commit()
     with pytest.raises(OAuthGrantError):
         await service.rotate_refresh(client_id, grant, always_eligible)
+
+
+def _deadlock() -> DBAPIError:
+    return DBAPIError("UPDATE api_tokens ...", {}, Exception("deadlock detected"))
+
+
+async def test_a_database_error_during_rotation_is_a_generic_grant_error(
+    db: AsyncSession,
+    service: OAuthService,
+    client_id: str,
+    pair: TokenPair,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The SDK token handler must never see a raw DBAPIError (a 500 with a stack)."""
+    grant = await _grant(service, client_id, pair.refresh_token)
+
+    async def broken(self: CredentialRepository, *args: object) -> bool:
+        raise _deadlock()
+
+    monkeypatch.setattr(CredentialRepository, "mark_rotated", broken)
+    with capture_logs() as logs, pytest.raises(OAuthGrantError) as caught:
+        await service.rotate_refresh(client_id, grant, always_eligible)
+    assert caught.value.error == "invalid_grant"
+    assert "deadlock" not in str(caught.value)
+    [entry] = [e for e in logs if e["event"] == "oauth.database_error"]
+    assert entry["error"] == "DBAPIError"
+    assert pair.refresh_token not in str(logs)
+    # the session is usable afterwards: nothing was rotated
+    assert (await _row(db, pair.refresh_token)).revoked_at is None
+
+
+async def test_a_database_error_while_loading_a_refresh_is_not_found(
+    service: OAuthService,
+    client_id: str,
+    pair: TokenPair,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """load_refresh is the SDK token handler's entry too: a raw DBAPIError there
+    would be a 500. It fails closed as 'not found' (invalid_grant)."""
+
+    async def broken(self: CredentialRepository, *args: object) -> None:
+        raise _deadlock()
+
+    monkeypatch.setattr(CredentialRepository, "token_by_hash", broken)
+    with capture_logs() as logs:
+        assert await service.load_refresh(client_id, pair.refresh_token) is None
+    [entry] = [e for e in logs if e["event"] == "oauth.database_error"]
+    assert entry["error"] == "DBAPIError"
+    assert pair.refresh_token not in str(logs)
+
+
+def _record_calls(
+    monkeypatch: pytest.MonkeyPatch, calls: list[str], *methods: str
+) -> None:
+    for method in methods:
+        original = getattr(CredentialRepository, method)
+
+        async def spy(
+            self: CredentialRepository,
+            *args: object,
+            _name: str = method,
+            _original: Any = original,
+        ) -> object:
+            calls.append(_name)
+            return await _original(self, *args)
+
+        monkeypatch.setattr(CredentialRepository, method, spy)
+
+
+async def test_rotation_locks_the_client_row_before_the_family_and_the_token(
+    service: OAuthService,
+    client_id: str,
+    pair: TokenPair,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The one global lock order (revoke_client locks the client row, then its
+    tokens): client row, family lock, token row. Otherwise rotation deadlocks
+    against revoke_client."""
+    grant = await _grant(service, client_id, pair.refresh_token)
+    calls: list[str] = []
+    _record_calls(monkeypatch, calls, "touch_client", "lock_family", "mark_rotated")
+    await service.rotate_refresh(client_id, grant, always_eligible)
+    assert calls[:3] == ["touch_client", "lock_family", "mark_rotated"]
+
+
+async def test_the_grace_window_is_measured_after_the_lock_wait(
+    db: AsyncSession,
+    service: OAuthService,
+    client_id: str,
+    pair: TokenPair,
+    clock: Clock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`now` is read after the locks: a retry that arrived inside the 30 s grace but
+    waited past it on the family lock is reuse, not a grace issue."""
+    await _rotate(service, client_id, pair.refresh_token)
+    clock.advance(timedelta(seconds=5))
+    grant = await _grant(service, client_id, pair.refresh_token)
+    original = CredentialRepository.lock_family
+
+    async def slow_lock(self: CredentialRepository, family_id: Any) -> None:
+        await original(self, family_id)
+        clock.advance(GRACE)
+
+    monkeypatch.setattr(CredentialRepository, "lock_family", slow_lock)
+    with pytest.raises(OAuthGrantError):
+        await service.rotate_refresh(client_id, grant, always_eligible)
+    assert await _events(db, EVENT_REFRESH_GRACE) == []
+    assert REVOKED_REFRESH_REUSE in await _family_reasons(db, pair)
+    assert not await _family_live(db, pair)

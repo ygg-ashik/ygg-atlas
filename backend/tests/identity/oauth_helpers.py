@@ -4,13 +4,27 @@ one-call setups that run the real service (register, consent, exchange)."""
 import base64
 import hashlib
 import secrets
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID, uuid4
 
-from app.identity.models import User
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
+from sqlmodel import SQLModel
+
+from app.access.models import PolicyState
+from app.identity.models import (
+    ApiToken,
+    CredentialEvent,
+    OAuthAuthorizationRequest,
+    OAuthClient,
+    OAuthCode,
+    User,
+)
 from app.identity.oauth import (
     AuthorizationRequestData,
     ClientRegistration,
@@ -25,6 +39,37 @@ PUBLIC_URL = "http://localhost:8080"
 RESOURCE = f"{PUBLIC_URL}/mcp-server/mcp"
 HOSTED_REDIRECT = "https://claude.ai/api/mcp/auth_callback"
 GRANT_TYPES = ("authorization_code", "refresh_token")
+
+
+_CREDENTIAL_TABLES = [
+    model.__table__  # pyright: ignore[reportAttributeAccessIssue]  # SQLModel tables
+    for model in (
+        User,
+        PolicyState,  # make_user bumps the policy version on an existing user
+        OAuthClient,
+        ApiToken,
+        OAuthAuthorizationRequest,
+        OAuthCode,
+        CredentialEvent,
+    )
+]
+
+
+@asynccontextmanager
+async def credential_db() -> AsyncIterator[AsyncSession]:
+    """A private in-memory database with only the credential tables: no demo seed,
+    no plugin or registry reset. Much cheaper than the shared `db` fixture, so the
+    OAuth test modules use it for their own `db`."""
+    engine = create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all, tables=_CREDENTIAL_TABLES)
+    try:
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+            session.add(PolicyState())
+            await session.commit()
+            yield session
+    finally:
+        await engine.dispose()
 
 
 class Clock:

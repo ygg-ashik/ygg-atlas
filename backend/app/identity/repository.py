@@ -16,6 +16,7 @@ from sqlalchemy import (
     delete,
     func,
     or_,
+    text,
     update,
 )
 from sqlalchemy.exc import IntegrityError
@@ -210,8 +211,26 @@ class CredentialRepository:
         """Exactly one concurrent refresh of a token sees True (D6)."""
         return await self.revoke_token(token_id, REVOKED_ROTATED, now)
 
+    async def lock_family(self, family_id: UUID) -> None:
+        """Serialise every change to one OAuth family until this transaction ends.
+
+        Without it a family revoke can land between a rotation's mark_rotated and
+        the insert of the new pair (or during a grace issue) and miss the new rows,
+        leaving a live pair in a revoked family. PostgreSQL: a transaction-scoped
+        advisory lock keyed by the family id. SQLite serialises writers already, so
+        it is a no-op there.
+        """
+        if self._db.get_bind().dialect.name != "postgresql":
+            return
+        await self._db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:family, 0))"),
+            {"family": str(family_id)},
+        )
+
     async def revoke_family(self, family_id: UUID, reason: str, now: datetime) -> int:
-        """Revokes the family's live rows; never overwrites an earlier reason."""
+        """Revokes the family's live rows under the family lock; never overwrites an
+        earlier reason."""
+        await self.lock_family(family_id)
         return await self._update(
             update(ApiToken)
             .where(

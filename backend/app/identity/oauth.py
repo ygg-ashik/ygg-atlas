@@ -9,7 +9,8 @@ or the MCP SDK: `app/mcp` adapts this service to the SDK handlers.
 
 import hmac
 import re
-from collections.abc import Awaitable, Callable, Collection
+from collections.abc import Awaitable, Callable, Collection, Mapping
+from contextlib import suppress
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final, Literal, Self
@@ -18,6 +19,7 @@ from uuid import UUID, uuid4
 
 import structlog
 from pydantic import AnyHttpUrl, AnyUrl, ValidationError
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -94,6 +96,7 @@ _REUSE_REASONS: Final = frozenset(
 _DEAD_CODE: Final = "The authorization code is no longer valid."
 _DEAD_REFRESH: Final = "The refresh token is no longer valid."
 _INELIGIBLE: Final = "Authorization is no longer valid. Sign in again."
+_UNAVAILABLE: Final = "The grant could not be processed. Try again."
 
 # Supplied by app/mcp: the user is active and holds mcp:use.
 Eligibility = Callable[[UUID], Awaitable[bool]]
@@ -334,6 +337,20 @@ def with_query(uri: str, **params: str | None) -> str:
     return urlunsplit(parts._replace(query=query))
 
 
+def _canonical_redirect(uri: str) -> str:
+    """The one spelling of a redirect we store and compare: `str(AnyUrl(uri))`.
+
+    Note for app/mcp (Task 5): the SDK compares redirects as `str(AnyUrl)` on both
+    sides (`OAuthClientMetadata.validate_redirect_uri`, `handlers/token.py`), so
+    everything this service stores, returns in `RegisteredClient.redirect_uris`,
+    binds into a code and redirects to is already in that form; a client may
+    register `http://127.0.0.1:33418` and send `http://127.0.0.1:33418/`. Only
+    called on URIs `redirect_allowed` accepted, or to normalise a comparison.
+    """
+    url = _parse_url(uri)
+    return str(url) if url is not None else uri
+
+
 def _redirect_host(uri: str) -> str:
     url = _parse_url(uri)
     return (url.host or "") if url is not None else ""
@@ -437,6 +454,14 @@ def _code_grant(row: OAuthCode, display: str) -> CodeGrant:
     )
 
 
+def _presenter(owner_client_id: str, presented_by: str) -> dict[str, str]:
+    """Forensics for a reuse event: who presented the credential, when not its own
+    client (the event's client_id stays the family's client)."""
+    if presented_by == owner_client_id:
+        return {}
+    return {"presented_by_client_id": presented_by}
+
+
 async def _is_eligible(eligible: Eligibility, user_id: UUID) -> bool:
     try:
         return await eligible(user_id)
@@ -477,7 +502,9 @@ class OAuthService:
             OAuthClient(
                 client_id=registration.client_id,
                 client_name=name,
-                redirect_uris=list(registration.redirect_uris),
+                redirect_uris=[
+                    _canonical_redirect(uri) for uri in registration.redirect_uris
+                ],
                 token_endpoint_auth_method=method,
                 client_secret_hash=hash_secret(secret) if secret is not None else None,
                 grant_types=list(registration.grant_types),
@@ -510,7 +537,9 @@ class OAuthService:
             return None
         hosted = self._config.hosted_redirect_uris
         allowed = tuple(
-            uri for uri in row.redirect_uris if redirect_allowed(uri, hosted)
+            _canonical_redirect(uri)
+            for uri in row.redirect_uris
+            if redirect_allowed(uri, hosted)
         )
         if not allowed:
             return None
@@ -569,7 +598,8 @@ class OAuthService:
         """Stores the request under hash(txn) and returns the consent URL with txn.
         Raises OAuthRequestError."""
         client = await self.get_client(client_id)
-        if client is None or request.redirect_uri not in client.redirect_uris:
+        redirect_uri = _canonical_redirect(request.redirect_uri)
+        if client is None or redirect_uri not in client.redirect_uris:
             raise OAuthRequestError("This client or redirect is not registered.")
         audience = self._bind_audience(request.resource)
         if not _CHALLENGE.fullmatch(request.code_challenge):
@@ -582,7 +612,7 @@ class OAuthService:
             OAuthAuthorizationRequest(
                 id=hash_secret(txn),
                 client_id=client_id,
-                redirect_uri=request.redirect_uri,
+                redirect_uri=redirect_uri,
                 redirect_uri_provided_explicitly=request.redirect_uri_provided_explicitly,
                 code_challenge=request.code_challenge,
                 state=request.state,
@@ -693,14 +723,29 @@ class OAuthService:
     # ---- codes ----------------------------------------------------------------------
 
     async def load_code(self, client_id: str, raw_code: str) -> CodeGrant | None:
-        """None for unknown, foreign or reused codes (reuse revokes the family).
-        Expiry is the SDK's check (C14)."""
+        """None for unknown, foreign or reused codes. A used code revokes its family
+        whoever presents it. Expiry is the SDK's check (C14). An unexpected database
+        error is None too (fail closed)."""
+        try:
+            return await self._load_code(client_id, raw_code)
+        except DBAPIError as exc:
+            await self._database_error(exc)
+            return None
+
+    async def _load_code(self, client_id: str, raw_code: str) -> CodeGrant | None:
         row = await self._creds.code_by_hash(hash_secret(raw_code))
-        if row is None or row.client_id != client_id:
+        if row is None:
             return None
         if row.used_at is not None:
             family = _Family(row.family_id, row.user_id, row.client_id)
-            await self._revoke_family(family, REVOKED_CODE_REUSE, kind="code")
+            await self._revoke_family(
+                family,
+                REVOKED_CODE_REUSE,
+                kind="code",
+                extra_details=_presenter(row.client_id, client_id),
+            )
+            return None
+        if row.client_id != client_id:
             return None
         return _code_grant(row, display_prefix(raw_code))
 
@@ -709,11 +754,18 @@ class OAuthService:
     ) -> TokenPair:
         """Exactly one exchange of a code succeeds; a second one (reuse or a lost
         race) revokes the family, the winner's tokens included (D30, C8). Raises
-        OAuthGrantError."""
+        OAuthGrantError, also for an unexpected database error."""
+        return await self._db_errors_as_grant_errors(
+            self._exchange_code(client_id, grant, eligible)
+        )
+
+    async def _exchange_code(
+        self, client_id: str, grant: CodeGrant, eligible: Eligibility
+    ) -> TokenPair:
         if grant.client_id != client_id:
             raise OAuthGrantError(_DEAD_CODE)
-        now = self._clock()
         family = _Family(grant.family_id, grant.user_id, client_id)
+        now = await self._enter_family(family)
         if not await self._creds.mark_code_used(grant.code_id, now):
             await self._creds.rollback()
             fresh = await self._creds.code(grant.code_id, fresh=True)
@@ -736,7 +788,17 @@ class OAuthService:
     ) -> RefreshGrant | None:
         """None for non-refresh or unknown tokens; a cross-client presentation revokes
         the family (no grace across clients). Revoked rows load too: rotation
-        decides between grace and reuse."""
+        decides between grace and reuse. An unexpected database error is None too
+        (fail closed)."""
+        try:
+            return await self._load_refresh(client_id, raw_refresh)
+        except DBAPIError as exc:
+            await self._database_error(exc)
+            return None
+
+    async def _load_refresh(
+        self, client_id: str, raw_refresh: str
+    ) -> RefreshGrant | None:
         if kind_of(raw_refresh) is not TokenKind.OAUTH_REFRESH:
             return None
         row = await self._creds.token_by_hash(hash_secret(raw_refresh))
@@ -744,7 +806,12 @@ class OAuthService:
             return None
         if row.client_id != client_id:
             family = _Family(row.family_id, row.user_id, row.client_id or client_id)
-            await self._revoke_family(family, REVOKED_CROSS_CLIENT, kind="refresh")
+            await self._revoke_family(
+                family,
+                REVOKED_CROSS_CLIENT,
+                kind="refresh",
+                extra_details=_presenter(family.client_id, client_id),
+            )
             return None
         return RefreshGrant(
             token_id=row.id,
@@ -761,8 +828,14 @@ class OAuthService:
     ) -> TokenPair:
         """Rotation with reuse detection and a 30 s same-client grace (D6). Every
         refresh re-checks the user, mcp:use, the client and the audience. Raises
-        OAuthGrantError."""
-        now = self._clock()
+        OAuthGrantError, also for an unexpected database error."""
+        return await self._db_errors_as_grant_errors(
+            self._rotate_refresh(client_id, grant, eligible)
+        )
+
+    async def _rotate_refresh(
+        self, client_id: str, grant: RefreshGrant, eligible: Eligibility
+    ) -> TokenPair:
         row = await self._creds.token(grant.token_id, fresh=True)
         if (
             row is None
@@ -773,22 +846,30 @@ class OAuthService:
             raise OAuthGrantError(_DEAD_REFRESH)
         family = _Family(grant.family_id, row.user_id, client_id)
         audience = row.audience or ""
+        # Held until the commit: a family revoke cannot slip in between marking
+        # this token rotated and inserting its successor.
+        now = await self._enter_family(family)
         if row.revoked_at is None and _as_utc(row.expires_at) <= now:
+            await self._creds.rollback()
             raise OAuthGrantError(_DEAD_REFRESH)
         if row.revoked_at is not None or not await self._creds.mark_rotated(
             row.id, now
         ):
-            return await self._retry_or_reuse(grant.token_id, family, eligible, now)
+            return await self._retry_or_reuse(grant.token_id, family, eligible)
         return await self._issue_checked(
             family, audience, eligible, now, EVENT_REFRESHED
         )
 
     async def _retry_or_reuse(
-        self, token_id: UUID, family: _Family, eligible: Eligibility, now: datetime
+        self, token_id: UUID, family: _Family, eligible: Eligibility
     ) -> TokenPair:
         """The presented token was already rotated or revoked: a same-client retry
-        within the grace gets a fresh pair; anything else is reuse."""
+        within the grace gets a fresh pair; anything else is reuse. The grace check
+        (the family still has a live token) runs under the family lock, so a
+        concurrent revoke either lands first and is seen, or waits for the issue
+        and then covers the new pair too."""
         await self._creds.rollback()
+        now = await self._enter_family(family)
         row = await self._creds.token(token_id, fresh=True)
         if row is not None and await self._in_grace(row, now):
             audience = row.audience or ""
@@ -797,6 +878,35 @@ class OAuthService:
             )
         await self._revoke_family(family, REVOKED_REFRESH_REUSE, kind="refresh")
         raise OAuthGrantError(_DEAD_REFRESH)
+
+    async def _enter_family(self, family: _Family) -> datetime:
+        """Takes the locks an issuing transaction needs, in the one global order:
+        the client row first (revoke_client locks it and then the client's token
+        rows), then the family lock, and only then token or code rows. Returns
+        the time after the waits, so a lock wait never stretches a window such as
+        the refresh grace."""
+        await self._creds.touch_client(family.client_id, self._clock())
+        await self._creds.lock_family(family.family_id)
+        return self._clock()
+
+    async def _db_errors_as_grant_errors(
+        self, issuing: Awaitable[TokenPair]
+    ) -> TokenPair:
+        """Defence in depth for the SDK token handler: an unexpected database error
+        (a deadlock, a lost connection) becomes a generic invalid_grant, never a
+        500 with a stack. Logged by type only: the statement may carry hashes."""
+        try:
+            return await issuing
+        except DBAPIError as exc:
+            await self._database_error(exc)
+            raise OAuthGrantError(_UNAVAILABLE) from None
+
+    async def _database_error(self, exc: DBAPIError) -> None:
+        """Logs a database error by type only (the statement may carry hashes) and
+        leaves the session usable."""
+        logger.error("oauth.database_error", error=type(exc).__name__)
+        with suppress(DBAPIError):
+            await self._creds.rollback()
 
     async def _in_grace(self, row: ApiToken, now: datetime) -> bool:
         """A concurrent retry by the same client (already checked) within 30 s, while
@@ -860,7 +970,6 @@ class OAuthService:
         )
         self._creds.add(access)
         self._creds.add(refresh)
-        await self._creds.touch_client(family.client_id, now)
         self._creds.add(
             CredentialEvent(
                 event=event,
@@ -885,9 +994,16 @@ class OAuthService:
         )
 
     async def _revoke_family(
-        self, family: _Family, reason: str, *, kind: ReuseKind | None = None
+        self,
+        family: _Family,
+        reason: str,
+        *,
+        kind: ReuseKind | None = None,
+        extra_details: Mapping[str, str] | None = None,
     ) -> None:
-        """Revokes every live row of the family and records why, then commits."""
+        """Revokes every live row of the family (under the family lock, taken by the
+        repository) and records why, then commits. The event's client_id is the
+        family's client; `extra_details` adds forensics such as the presenter."""
         await self._creds.revoke_family(family.family_id, reason, self._clock())
         family_id = str(family.family_id)
         if reason in _REUSE_REASONS:
@@ -904,7 +1020,7 @@ class OAuthService:
                 via="oauth",
                 user_id=family.user_id,
                 client_id=family.client_id,
-                details=details,
+                details=details | dict(extra_details or {}),
             )
         )
         await self._creds.commit()

@@ -1,11 +1,14 @@
 """OAuthService: registration, authorization requests, consent, codes, revocation
 and GC (D4-D8, D30, D36). Refresh rotation lives in test_oauth_refresh.py."""
 
+from collections.abc import AsyncIterator
 from datetime import timedelta
+from typing import Any
 from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 from structlog.testing import capture_logs
@@ -46,6 +49,7 @@ from app.identity.oauth import (
     OAuthService,
     RegisteredClient,
 )
+from app.identity.repository import CredentialRepository
 from tests.access_helpers import make_user
 from tests.identity.credential_helpers import (
     LOOPBACK_REDIRECT,
@@ -61,6 +65,7 @@ from tests.identity.oauth_helpers import (
     approved_code,
     auth_request,
     begin,
+    credential_db,
     issued_pair,
     never_eligible,
     oauth_config,
@@ -70,6 +75,13 @@ from tests.identity.oauth_helpers import (
 )
 
 ADMIN = CredentialActor(user_id=None, via="cli")
+
+
+@pytest.fixture
+async def db() -> AsyncIterator[AsyncSession]:
+    """This module's own cheap database (overrides the shared, seeded `db`)."""
+    async with credential_db() as session:
+        yield session
 
 
 @pytest.fixture
@@ -622,6 +634,66 @@ async def test_exchanging_a_grant_twice_revokes_the_winners_tokens(
     assert len(await _events(db, EVENT_REUSE_DETECTED)) == 1
 
 
+async def test_a_used_code_presented_by_another_client_revokes_the_family(
+    db: AsyncSession, service: OAuthService, user: User, client_id: str
+) -> None:
+    raw, grant = await approved_code(service, user, client_id)
+    await service.exchange_code(client_id, grant, always_eligible)
+    other = await register_public_client(service)
+
+    assert await service.load_code(other, raw) is None
+    assert {row.revoked_reason for row in await _family(db, grant.family_id)} == {
+        REVOKED_CODE_REUSE
+    }
+    [event] = await _events(db, EVENT_REUSE_DETECTED)
+    assert event.client_id == client_id
+    assert event.details == {
+        "family_id": str(grant.family_id),
+        "kind": "code",
+        "presented_by_client_id": other,
+    }
+
+
+async def test_exchange_with_another_clients_grant_fails_and_spends_nothing(
+    db: AsyncSession, service: OAuthService, user: User, client_id: str
+) -> None:
+    _, grant = await approved_code(service, user, client_id)
+    other = await register_public_client(service)
+    with pytest.raises(OAuthGrantError):
+        await service.exchange_code(other, grant, always_eligible)
+    code = await db.get(OAuthCode, grant.code_id, populate_existing=True)
+    assert code is not None
+    assert code.used_at is None
+    assert await _family(db, grant.family_id) == []
+
+
+async def test_registration_stores_redirects_in_canonical_form(
+    db: AsyncSession, service: OAuthService
+) -> None:
+    reg = registration(
+        redirect_uris=("http://LOCALHOST:7777/x", "http://127.0.0.1:33418")
+    )
+    await service.register_client(reg)
+    row = await db.get(OAuthClient, reg.client_id)
+    assert row is not None
+    assert row.redirect_uris == ["http://localhost:7777/x", "http://127.0.0.1:33418/"]
+
+
+async def test_redirects_are_matched_in_canonical_form(
+    service: OAuthService, user: User
+) -> None:
+    """The SDK compares str(AnyUrl) on both sides, so the slash-less spelling a
+    client registered must match the slashed one it later sends, and vice versa."""
+    client_id = await register_public_client(service, "http://127.0.0.1:33418")
+    for spelling in ("http://127.0.0.1:33418/", "http://127.0.0.1:33418"):
+        consent = await service.begin_authorization(client_id, auth_request(spelling))
+        pending = await service.pending_request(query_param(consent, "txn"))
+        assert pending is not None
+        assert pending.redirect_uri == "http://127.0.0.1:33418/"
+        redirect = await service.approve(query_param(consent, "txn"), user.id)
+        assert redirect.startswith("http://127.0.0.1:33418/?code=")
+
+
 async def test_code_from_another_client_is_not_found(
     db: AsyncSession, service: OAuthService, user: User, client_id: str
 ) -> None:
@@ -895,3 +967,69 @@ async def test_grant_error_messages_are_generic(
     with pytest.raises(OAuthGrantError) as caught:
         await service.exchange_code(client_id, grant, always_eligible)
     assert str(caught.value) == "The authorization code is no longer valid."
+
+
+async def test_a_database_error_during_exchange_is_a_generic_grant_error(
+    service: OAuthService,
+    user: User,
+    client_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The SDK token handler must never see a raw DBAPIError (a 500 with a stack)."""
+    _, grant = await approved_code(service, user, client_id)
+
+    async def broken(self: CredentialRepository, *args: object) -> bool:
+        raise DBAPIError("UPDATE oauth_codes ...", {}, Exception("deadlock detected"))
+
+    monkeypatch.setattr(CredentialRepository, "mark_code_used", broken)
+    with pytest.raises(OAuthGrantError) as caught:
+        await service.exchange_code(client_id, grant, always_eligible)
+    assert caught.value.error == "invalid_grant"
+    assert "deadlock" not in str(caught.value)
+
+
+async def test_a_database_error_while_loading_a_code_is_not_found(
+    service: OAuthService,
+    user: User,
+    client_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """load_code is the SDK token handler's entry too: a raw DBAPIError there would
+    be a 500. It fails closed as 'not found' (invalid_grant)."""
+    raw, _ = await approved_code(service, user, client_id)
+
+    async def broken(self: CredentialRepository, *args: object) -> None:
+        raise DBAPIError("SELECT oauth_codes ...", {}, Exception("connection lost"))
+
+    monkeypatch.setattr(CredentialRepository, "code_by_hash", broken)
+    with capture_logs() as logs:
+        assert await service.load_code(client_id, raw) is None
+    [entry] = [e for e in logs if e["event"] == "oauth.database_error"]
+    assert entry["error"] == "DBAPIError"
+    assert raw not in str(logs)
+
+
+async def test_exchange_locks_the_client_row_before_the_family_and_the_code(
+    service: OAuthService,
+    user: User,
+    client_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The one global lock order: client row, family lock, then code/token rows."""
+    _, grant = await approved_code(service, user, client_id)
+    calls: list[str] = []
+    for method in ("touch_client", "lock_family", "mark_code_used"):
+        original = getattr(CredentialRepository, method)
+
+        async def spy(
+            self: CredentialRepository,
+            *args: object,
+            _name: str = method,
+            _original: Any = original,
+        ) -> object:
+            calls.append(_name)
+            return await _original(self, *args)
+
+        monkeypatch.setattr(CredentialRepository, method, spy)
+    await service.exchange_code(client_id, grant, always_eligible)
+    assert calls[:3] == ["touch_client", "lock_family", "mark_code_used"]
