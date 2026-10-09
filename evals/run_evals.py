@@ -19,18 +19,17 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import yaml
 
 from app.access import GrantFacts, Policy, PolicyInputs, UserFacts, evaluate
 from app.agent import run_chat_turn
-from app.atlas import AtlasCaller, AtlasTools
-from app.atlas.registry import get_registry
+from app.atlas import AtlasCaller, AtlasTools, get_registry
 from app.config import get_settings
 from app.database import get_session_factory
-from app.identity import ensure_service_user
-from app.models.chat import ChatSession
+from app.identity import User, UserKind, ensure_service_user
+from app.models import ChatSession
 
 GOLDENS_DIR = Path(__file__).parent / "goldens"
 
@@ -154,13 +153,13 @@ def _record(turn: Turn, event: dict[str, Any]) -> None:
 EVAL_EMAIL = "evals@yougotagift.com"
 
 
-def _policy(user_id: UUID, golden: Golden) -> Policy:
+def _policy(user: User, golden: Golden) -> Policy:
     """The eval user sees what the golden allows (default: everything)."""
     grants = [
         GrantFacts(
             id=uuid4(),
             subject_type="user",
-            subject_id=user_id,
+            subject_id=user.id,
             effect="allow",
             target_kind="resource",
             target=pattern,
@@ -169,7 +168,7 @@ def _policy(user_id: UUID, golden: Golden) -> Policy:
         for pattern in golden.get("allow", ["*"])
     ]
     inputs = PolicyInputs(
-        user=UserFacts(id=user_id, role="viewer", status="active", tenant="ygg"),
+        user=UserFacts(id=user.id, role=user.role, status="active", tenant=user.tenant),
         groups={},
         memberships={},
         grants=grants,
@@ -181,6 +180,12 @@ def _policy(user_id: UUID, golden: Golden) -> Policy:
 async def _run_question(golden: Golden) -> Turn:
     async with get_session_factory()() as db:
         user = await ensure_service_user(db, EVAL_EMAIL, "Eval runner", "viewer")
+        if user.kind != UserKind.SERVICE:
+            msg = (
+                f"{EVAL_EMAIL} exists as a {user.kind} user, not a service user. "
+                "Evals refuse to run as a person; fix or rename that users row."
+            )
+            raise SystemExit(msg)
         session = ChatSession(user_id=user.id, user_email=EVAL_EMAIL)
         db.add(session)
         await db.commit()
@@ -192,7 +197,7 @@ async def _run_question(golden: Golden) -> Turn:
             surface="chat",
             session_id=session.id,
         )
-        tools = AtlasTools(caller, _policy(user.id, golden), db=db)
+        tools = AtlasTools(caller, _policy(user, golden), db=db)
         turn = Turn()
         async for event in run_chat_turn(tools, golden["question"], [], db):
             _record(turn, event)
