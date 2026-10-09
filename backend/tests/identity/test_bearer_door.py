@@ -170,6 +170,17 @@ async def test_expired_token_is_rejected(db) -> None:
         await authenticate_bearer(db, raw, now=datetime.now(UTC) + timedelta(days=2))
 
 
+async def test_token_expiring_exactly_now_is_rejected(db) -> None:
+    user = await _human(db)
+    row, raw = await insert_token(db, user, TokenKind.PAT)
+    expires_at = row.expires_at
+    moment = expires_at if expires_at.tzinfo else expires_at.replace(tzinfo=UTC)
+    with pytest.raises(InvalidTokenError, match=r"^invalid token$"):
+        await authenticate_bearer(db, raw, now=moment)
+    accepted = await authenticate_bearer(db, raw, now=moment - timedelta(seconds=1))
+    assert accepted.principal.token_id == row.id
+
+
 async def test_revoked_token_is_rejected(db) -> None:
     user = await _human(db)
     _, raw = await insert_token(db, user, TokenKind.PAT, revoked_reason=REVOKED_BY_USER)

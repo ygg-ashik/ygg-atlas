@@ -89,7 +89,11 @@ async def test_duplicate_service_account_conflicts(db) -> None:
     assert await policy_version(db) == version
 
 
-@pytest.mark.parametrize("name", ["", "ab", "!!!", "x" * 41, "é√ß"])
+@pytest.mark.parametrize(
+    "name",
+    ["", "ab", "!!!", "x" * 41, "é√ß", "a" + "!" * 300 + "b"],
+    ids=["empty", "short", "symbols", "long-slug", "non-ascii", "long-name"],
+)
 async def test_bad_service_account_names(db, name: str) -> None:
     actor = await actor_with(db)
     version = await policy_version(db)

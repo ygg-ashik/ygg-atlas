@@ -61,6 +61,7 @@ from app.access.schemas import (
 )
 from app.access.service import AccessService
 from app.identity import (
+    REVOKED_USER_DISABLED,
     TokenVerifier,
     User,
     UserKind,
@@ -506,7 +507,7 @@ class AccessAdmin:
             await self._end_firebase_sessions(user)
             await revoke_user_tokens(
                 user.id,
-                reason="user_disabled",
+                reason=REVOKED_USER_DISABLED,
                 actor_user_id=actor.user_id,
                 via="cli" if actor.via == "cli" else "api",
             )

@@ -105,8 +105,12 @@ class ConnectedApp:
 
 def service_account_email(name: str) -> str | None:
     """The `svc-<slug>@atlas.internal` email for a service-account name, or None when
-    the slug is not 3-40 lowercase letters, digits or dashes (D13, ruling C5)."""
-    slug = _SLUG_SEPARATORS.sub("-", name.strip().lower()).strip("-")
+    the name is over 100 characters (it becomes the display name) or the slug is not
+    3-40 lowercase letters, digits or dashes (D13, ruling C5)."""
+    cleaned = name.strip()
+    if len(cleaned) > _NAME_MAX:
+        return None
+    slug = _SLUG_SEPARATORS.sub("-", cleaned.lower()).strip("-")
     if not _SLUG_MIN <= len(slug) <= _SLUG_MAX:
         return None
     return f"svc-{slug}@{SERVICE_ACCOUNT_DOMAIN}"
