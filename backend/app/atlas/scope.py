@@ -27,8 +27,17 @@ MAX_SCOPE_BINDS: Final = 1000  # per compiled predicate
 UNDECLARED: Final = "scope names a dimension this data does not have"
 
 _UNRESTRICTED: Final = "AND TRUE"
-_BIND_PREFIX: Final = ":scope_"  # reserved for generated bind names
-_COLUMN: Final = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?")
+RESERVED_BIND_PREFIX: Final = ":scope_"  # reserved for generated bind names
+# Column text spliced into vetted SQL: an identifier, optionally table-qualified.
+# Use with ``fullmatch``; the registry lints YAML columns with the same pattern.
+COLUMN_PATTERN: Final = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?")
+# A ``:scope_`` bind, but not a Postgres cast such as ``x::scope_enum``.
+_RESERVED_BIND: Final = re.compile(r"(?<!:):scope_")
+
+
+def uses_reserved_bind(sql: str) -> bool:
+    """True if ``sql`` names a bind in the prefix reserved for compiled scopes."""
+    return _RESERVED_BIND.search(sql) is not None
 
 
 class ScopeCompileError(ValueError):
@@ -69,8 +78,10 @@ def compile_scope(
     query: str, columns: Mapping[str, str], scope: RowScope | None
 ) -> CompiledScope:
     """Replace every ``{{scope}}`` in ``query`` with the same bound predicate."""
-    if _BIND_PREFIX in query:
-        raise ScopeCompileError(f"queries may not use the reserved {_BIND_PREFIX}")
+    if uses_reserved_bind(query):
+        raise ScopeCompileError(
+            f"queries may not use the reserved {RESERVED_BIND_PREFIX}"
+        )
     narrowed = narrow_scope(scope, columns)
     if narrowed is None:
         return CompiledScope(
@@ -157,6 +168,6 @@ def _freeze_values(values: object) -> frozenset[str]:
 
 def _safe_column(column: str) -> str:
     """Defense in depth: the registry lints columns; re-check before use."""
-    if not _COLUMN.fullmatch(column):
+    if not COLUMN_PATTERN.fullmatch(column):
         raise ScopeCompileError("a scope dimension maps to an invalid column")
     return column

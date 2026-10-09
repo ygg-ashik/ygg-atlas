@@ -24,6 +24,7 @@ metrics:
     query: >
       SELECT COUNT(*) AS value FROM tasks
       WHERE status IN ('pending', 'in_progress', 'blocked')
+    breakdown_label_class: person_name
     breakdown_query: >
       SELECT COALESCE(assignee_name, 'Unassigned') AS label, COUNT(*) AS value
       FROM tasks WHERE status IN ('pending', 'in_progress', 'blocked')
@@ -38,6 +39,7 @@ metrics:
       SELECT COUNT(*) AS value FROM tasks
       WHERE status IN ('pending', 'in_progress', 'blocked')
         AND due_date IS NOT NULL AND due_date < CURRENT_DATE
+    breakdown_label_class: person_name
     breakdown_query: >
       SELECT COALESCE(assignee_name, 'Unassigned') AS label, COUNT(*) AS value
       FROM tasks

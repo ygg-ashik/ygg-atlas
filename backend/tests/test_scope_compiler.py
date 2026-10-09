@@ -14,6 +14,7 @@ from app.atlas.scope import (
     ScopeCompileError,
     compile_scope,
     narrow_scope,
+    uses_reserved_bind,
 )
 from app.sources import get_connector
 from app.sources.base import assert_read_only
@@ -326,6 +327,31 @@ def test_a_query_using_the_reserved_bind_prefix_is_rejected():
         compile_scope(query, COLUMNS, ({"channel": frozenset({"b2c"})},))
     with pytest.raises(ScopeCompileError):
         compile_scope(query, COLUMNS, None)
+
+
+def test_a_postgres_cast_to_a_scope_named_type_is_not_a_reserved_bind():
+    query = (
+        "SELECT COUNT(*) AS value FROM demo_orders "
+        "WHERE channel::scope_enum IS NOT NULL {{scope}}"
+    )
+
+    compiled = compile_scope(query, COLUMNS, ({"channel": frozenset({"b2c"})},))
+
+    assert compiled.params == {"scope_0_0": "b2c"}
+
+
+@pytest.mark.parametrize(
+    ("sql", "reserved"),
+    [
+        ("WHERE id = :scope_x", True),
+        ("WHERE id=:scope_0_0", True),
+        ("WHERE channel::scope_enum = 'b2c'", False),
+        ("WHERE id = :start AND scope_x = 1", False),
+        ("WHERE TRUE {{scope}}", False),
+    ],
+)
+def test_uses_reserved_bind(sql: str, reserved: bool):
+    assert uses_reserved_bind(sql) is reserved
 
 
 def test_compiled_alternatives_are_frozen_copies():

@@ -28,6 +28,7 @@ metrics:
     query: >
       SELECT COUNT(*) AS value FROM account_profiles
       WHERE analyzed_at IS NOT NULL
+    breakdown_label_class: category
     breakdown_query: >
       SELECT COALESCE(health_v2_status, 'Unscored') AS label, COUNT(*) AS value
       FROM account_profiles WHERE analyzed_at IS NOT NULL
@@ -43,6 +44,7 @@ metrics:
     query: >
       SELECT COUNT(*) AS value FROM account_profiles
       WHERE analyzed_at IS NOT NULL AND health_v2_status = 'Red'
+    breakdown_label_class: business_name
     breakdown_query: >
       SELECT account_name AS label, COALESCE(health_v2_score, 0) AS value
       FROM account_profiles
@@ -58,6 +60,7 @@ metrics:
     query: >
       SELECT COALESCE(SUM(revenue_ytd), 0) AS value FROM account_profiles
       WHERE analyzed_at IS NOT NULL
+    breakdown_label_class: business_name
     breakdown_query: >
       SELECT account_name AS label, revenue_ytd AS value FROM account_profiles
       WHERE analyzed_at IS NOT NULL AND revenue_ytd IS NOT NULL

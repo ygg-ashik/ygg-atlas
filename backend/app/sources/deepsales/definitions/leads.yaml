@@ -17,6 +17,7 @@ metrics:
     query: >
       SELECT COUNT(*) AS value FROM leads
       WHERE created_at >= :start AND created_at <= :end
+    breakdown_label_class: category
     breakdown_query: >
       SELECT COALESCE(channel, 'unknown') AS label, COUNT(*) AS value FROM leads
       WHERE created_at >= :start AND created_at <= :end

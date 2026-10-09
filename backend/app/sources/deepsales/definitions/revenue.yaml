@@ -19,6 +19,7 @@ metrics:
     query: >
       SELECT COALESCE(SUM(revenue_aed), 0) AS value FROM corporate_revenue_monthly
       WHERE month >= CAST(:start AS date) AND month <= CAST(:end AS date)
+    breakdown_label_class: business_name
     breakdown_query: >
       SELECT c.corporate_name AS label, SUM(m.revenue_aed) AS value
       FROM corporate_revenue_monthly m
