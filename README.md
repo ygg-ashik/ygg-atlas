@@ -229,5 +229,6 @@ URL. 4b is configuration plus one code precondition (step 6). Checklist:
 6. **Bind consent to the initiating browser** (HttpOnly cookie set on `/authorize`) — a code change
    that must land before hosted callbacks are opened (ARCHITECTURE.md §6).
 7. **Verify.** Rebuild and restart, then run `backend/scripts/mcp_oauth_smoke.py` (phase 4, Task 12)
-   against the public URL. Existing OAuth logins re-authenticate once (their audience changes); PATs
-   and service tokens keep working.
+   with `--base-url https://<public host>` (PATs and the consent bearer from the environment:
+   `ATLAS_PAT`, `ATLAS_REVOKED_PAT`, `ATLAS_FIREBASE_TOKEN`). Existing OAuth logins
+   re-authenticate once (their audience changes); PATs and service tokens keep working.
