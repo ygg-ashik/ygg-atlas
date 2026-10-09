@@ -2,7 +2,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CommandPalette } from './command-palette';
 import { CommandTrigger } from './command-trigger';
 
@@ -37,6 +37,13 @@ vi.mock('@/api/hooks/use-chat-sessions', () => ({
   }),
 }));
 
+const PAGES = [
+  { label: 'Overview', to: '/' },
+  { label: 'Ask Atlas', to: '/ask' },
+  { label: 'My access', to: '/account' },
+];
+let pages = PAGES;
+
 let path = '';
 function Where() {
   const l = useLocation();
@@ -52,7 +59,7 @@ const setup = () =>
           element={
             <>
               <CommandTrigger />
-              <CommandPalette />
+              <CommandPalette pages={pages} />
               <Where />
             </>
           }
@@ -62,6 +69,10 @@ const setup = () =>
   );
 
 describe('CommandPalette', () => {
+  beforeEach(() => {
+    pages = PAGES;
+  });
+
   it('opens with ⌘K and jumps to a metric', async () => {
     setup();
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
@@ -92,5 +103,23 @@ describe('CommandPalette', () => {
     expect(screen.queryByPlaceholderText(/Search metrics, threads/)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /Search/ }));
     expect(await screen.findByPlaceholderText(/Search metrics, threads/)).toBeInTheDocument();
+  });
+
+  it('offers exactly the pages it is given, so admin pages stay out for a viewer', async () => {
+    setup();
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    const input = await screen.findByPlaceholderText(/Search metrics, threads/);
+    await userEvent.type(input, 'users');
+    expect(screen.queryByRole('option', { name: 'Users' })).not.toBeInTheDocument();
+  });
+
+  it('jumps to an admin page when the composed pages include it', async () => {
+    pages = [...PAGES, { label: 'Users', to: '/admin/users' }];
+    setup();
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    const input = await screen.findByPlaceholderText(/Search metrics, threads/);
+    await userEvent.type(input, 'users');
+    await userEvent.click(await screen.findByRole('option', { name: 'Users' }));
+    expect(path).toBe('/admin/users');
   });
 });

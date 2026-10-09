@@ -8,19 +8,21 @@ import { useMetricsCatalog } from '@/api/hooks/use-atlas';
 import { useChatSessions } from '@/api/hooks/use-chat-sessions';
 import { usePaletteOpen } from './use-palette-open';
 
-const PAGES = [
-  { label: 'Overview', to: '/' },
-  { label: 'Ask Atlas', to: '/ask' },
-  { label: 'Metrics', to: '/metrics' },
-];
+/** A page the palette can jump to. */
+export interface PaletteLink {
+  label: string;
+  to: string;
+}
 
 const ITEM =
   'flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-body data-[selected=true]:bg-primary/10 data-[selected=true]:text-ink';
 const GROUP =
   '[&_[cmdk-group-heading]]:px-2.5 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:text-caption [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.06em] [&_[cmdk-group-heading]]:text-muted-2';
 
-/** Spotlight-style palette (DESIGN.md › command-palette): glass, scrim, materialize. */
-export function CommandPalette() {
+/** Spotlight-style palette (DESIGN.md › command-palette): glass, scrim, materialize.
+ * `pages` is the same capability-filtered list the sidebar shows (composed in
+ * App.tsx), so the palette never offers a page the navigation hides. */
+export function CommandPalette({ pages }: { pages: readonly PaletteLink[] }) {
   const [open, setOpen] = usePaletteOpen();
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
@@ -106,7 +108,7 @@ export function CommandPalette() {
           ))}
         </Command.Group>
         <Command.Group heading="Go to" className={GROUP}>
-          {PAGES.map((p) => (
+          {pages.map((p) => (
             <Command.Item
               key={p.to}
               value={`page ${p.label}`}

@@ -15,7 +15,7 @@ export interface UserChipProps {
 export function UserChip({ name, email, role, className }: UserChipProps) {
   return (
     <div className={cn('mt-auto flex items-center gap-2.5 rounded-[14px] p-2.5', className)}>
-      <Avatar name={name} />
+      <Avatar name={name || email} />
       <div className="min-w-0">
         <div className="text-label font-medium leading-tight text-ink">{name}</div>
         <div className="max-w-[140px] truncate text-caption text-muted-foreground" title={email}>

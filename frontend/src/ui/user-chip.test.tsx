@@ -11,4 +11,9 @@ describe('UserChip', () => {
     expect(screen.getByText('ashik@yougotagift.com')).toHaveClass('truncate');
     expect(screen.getByText('admin')).toBeInTheDocument();
   });
+
+  it('falls back to the email for initials when the name is empty', () => {
+    render(<UserChip name="" email="lina@yougotagift.com" />);
+    expect(screen.getByText('L')).toBeInTheDocument();
+  });
 });
