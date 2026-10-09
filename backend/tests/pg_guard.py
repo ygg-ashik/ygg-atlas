@@ -14,6 +14,11 @@ from sqlalchemy.exc import ArgumentError
 
 _DISPOSABLE_TOKENS = frozenset({"test", "scratch"})
 
+# xdist group shared by every module that resets the TEST_PG_URL schema. Under
+# `pytest -n` (forced to --dist loadgroup by conftest.py) one worker runs them all,
+# so two modules never DROP SCHEMA under each other.
+PG_XDIST_GROUP = "real-postgres"
+
 
 def is_disposable(url: str) -> bool:
     """True only when the URL parses and its database name has a "test" or

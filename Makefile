@@ -11,7 +11,7 @@ check-backend: ## Format check, lint, types, architecture contracts, tests + cov
 	cd backend && uv run ruff check . ../evals
 	cd backend && uv run pyright && uv run pyright ../evals
 	cd backend && uv run lint-imports
-	cd backend && uv run pytest --cov=app -q
+	cd backend && uv run pytest -n auto --cov=app -q
 
 check-frontend: ## Prettier check, ESLint, tsc, Vitest, production build
 	cd frontend && $(PNPM) -s check

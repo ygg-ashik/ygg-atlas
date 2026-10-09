@@ -1,5 +1,6 @@
 import os
 from datetime import UTC, datetime, time, timedelta
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -17,6 +18,29 @@ from app.sources import reset_plugins
 # Settings fail closed (unset ENVIRONMENT means production), and some test modules
 # import app.main, which reads settings, at collection time, before any fixture runs.
 os.environ["ENVIRONMENT"] = "test"
+
+
+_DIST_KEY = "atlas_dist"
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Under `pytest -n`, honour `xdist_group` marks so the opt-in Postgres modules,
+    which share one TEST_PG_URL schema, run on a single worker. xdist turns a bare
+    `-n` into `--dist load`, which ignores groups; `loadgroup` is `load` plus groups.
+    Workers re-parse the CLI, so they learn the mode from the controller through
+    `workerinput` (see pytest_configure_node) to tag nodeids with their group.
+    Each worker is its own process with its own tmp_path_factory basetemp, so the
+    SQLite file, env vars and module caches below are already per-worker."""
+    if getattr(config.option, "dist", "no") == "load":
+        config.option.dist = "loadgroup"
+    workerinput = getattr(config, "workerinput", None)
+    if workerinput is not None and workerinput.get(_DIST_KEY) == "loadgroup":
+        config.option.loadgroup = True
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_configure_node(node: Any) -> None:  # xdist WorkerController
+    node.workerinput[_DIST_KEY] = node.config.option.dist
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -44,7 +44,7 @@ Or the whole stack: `docker compose up`.
 ## Tests
 
 ```bash
-cd backend && uv run pytest --cov=app
+cd backend && uv run pytest -n auto --cov=app   # parallel; drop -n auto to debug serially
 cd frontend && pnpm test
 cd backend && uv run python ../evals/run_evals.py   # golden suite (needs seeded demo data)
 ```
