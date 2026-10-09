@@ -264,6 +264,42 @@ metrics:
   If such a grant exists anyway (e.g. a definition changed), it grants nothing.
 - `$self` resolves from `user_attributes`. A missing attribute grants nothing.
 
+**As built (phase 3).** Differences from the text above, and the decisions taken while building it:
+
+- **Placeholders.** `{{scope}}` compiles to numbered bound `IN` lists,
+  `AND ((col IN (:scope_0_0, :scope_0_1)) OR ((c2 IN (:scope_1_0)) AND (c3 IN (:scope_1_1))))`, not
+  `= ANY(...)` (Postgres-only; the demo plugin runs on SQLite). Every `{{scope}}` occurrence gets the
+  same predicate. Authors write `WHERE TRUE {{scope}}` where a query has no `WHERE`. The bind prefix
+  `:scope_` is reserved: a query that names a `:scope_*` bind is rejected at load (registry lint) and
+  again at compile time. When compiling, a value set that is a bare string or holds duplicate values
+  is rejected and the execution fails closed (the admin API de-duplicates values before storing).
+- **Lint failures stop the app, not one plugin.** The text above says the plugin fails to load. As
+  built, `AtlasRegistry` raises while it is built and `main.py` builds it at startup, so a lint
+  violation stops the backend from starting.
+- **Caps.** At most 100 values per dimension per alternative, 20 dimensions per grant, 50
+  alternatives and 1000 bind values per compiled predicate. Dimension names (declared in plugin YAML and
+  named in grants) and attribute keys all match `^[a-z][a-z0-9_]{0,63}$` (at most 64 characters). Over a cap ⇒ the grant (or the execution) fails closed.
+- **Semantics.** Matching allows are ORed, the dimensions of one grant ANDed; one unscoped allow
+  means all rows; deny wins; denies cannot carry a scope. A malformed scope makes the grant
+  malformed (deny-all for everyone it applies to). In the atlas, an alternative naming a dimension
+  the entity does not declare is dropped; if nothing is left the resource is denied and hidden from
+  discovery.
+- **One `self` attribute per dimension (C1, accepted deviation).** A dimension name maps to one
+  `self` attribute registry-wide, linted at load, because a `deepsales/*` grant spans several
+  entities. `ds_task.csm` is `{column: assignee_name, self: csm_name}` as in the example above.
+  Declared dimensions are mirrored into a `scope_dimensions` table at startup so `access` validates
+  grants and resolves `$self` without importing `atlas`.
+- **Leads are scoped by owner (C2, accepted deviation).** `ds_lead` declares `owner` (`self:
+  csm_email`), not `csm`, so a CSM grant `deepsales/*` with `csm=$self` hides leads; leads are
+  granted separately with `owner=$self`.
+- **`ds_revenue`** carries `csm` through a `corporate` join (`c.csm_name`); its EXPLAIN is checked
+  on the box before deploy.
+- **Attributes (C11).** `user_attributes` are admin-set only, one value per key, never identity
+  claims; `email` and `user_id` are built-ins and reserved (setting them is rejected). An admin
+  cannot set their own attributes through the API.
+- **Records.** No records query exists yet, so the lint covers metric, breakdown, funnel-step and
+  freshness queries.
+
 ### 5.6 Field masking
 
 Each breakdown label and record column declares `label_class`: `category`, `business_name` or
@@ -277,6 +313,30 @@ visible. Contact identifiers stay structurally excluded from every query, as tod
 | bucket | Top N named as "Top 1..N" rank buckets plus "Others" |
 
 Defaults: `person_name` = suppress, `business_name` = pseudonymise.
+
+**As built (phase 3).** Differences from the text above, and the decisions taken while building it:
+
+- **Where.** Masking happens once, in `AtlasTools` (`app/atlas/masking.py`), so chat, insights, MCP
+  and evals inherit it. Breakdowns declare `breakdown_label_class`; record columns are not built
+  yet. Pseudonyms are `"Account 7f3a1c"` / `"Person 7f3a1c"` (first 6 hex of
+  `HMAC-SHA256(ATLAS_PSEUDONYM_KEY, "<class>:<label>")`). A missing setting, an unknown mode or an
+  empty or blank key degrades to suppress.
+- **Bucket.** The first N fetched rows become "Top 1..N"; "Others" is the sum of the **remaining
+  fetched rows** (not the whole population), stated in the result. N is 1..50.
+- **Settable classes (C12).** Only `business_name` and `person_name` are settable (`category` is
+  never masked).
+- **`describe_entity`.** Fields and PII fields are returned only with an entity-wide allow
+  (`source/entity/*` or wider); item-only grants see `fields_hidden: true`.
+- **Clearance self-escalation (C10, accepted deviation).** Through the API, an actor may grant a
+  clearance allow, or revoke a clearance deny, only if they hold that clearance. While building it,
+  the same holding rule was **extended to group membership and re-parenting**: adding a member to a
+  group inherits the lineage's clearance allows, removing one lifts its clearance denies, and moving
+  a group gains the new ancestors' allows and lifts the old ancestors' denies, so each requires the
+  actor to hold the affected clearances. The CLI is exempt, so the first clearances are granted
+  there. **Needs user confirmation** (the extension to membership and re-parenting especially).
+- **Provenance and audit.** Provenance carries `scope: {restricted, dimensions}` (names, never
+  values) and `masking: {label_class, mode} | null`; the audit log keeps the compiled alternatives
+  and `{label_class, mode, rows_in, rows_out}`.
 
 ## 6. Enforcement points
 

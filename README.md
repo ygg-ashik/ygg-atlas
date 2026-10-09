@@ -118,3 +118,64 @@ the CLI on the box:
 Every change is in `rbac_changes`. The same operations exist as `/api/v1/admin/...` for admins.
 MCP is off unless `ATLAS_MCP_TOKEN` is set; it runs as `MCP_SERVICE_EMAIL` under that user's grants.
 Locally, `make dev-access` (after signing in once) grants the dev user all data.
+
+### Access control (phase 3: rows and labels)
+
+A grant can be limited to some rows, and breakdown labels (customer and people names) can be hidden
+from callers without a clearance. Every gap fails closed: a missing attribute or an undeclared
+dimension makes that grant grant nothing, and a malformed scope makes its grant deny everything (all
+data, capabilities and manager rights) to whoever it applies to.
+
+    # which dimensions a scope may name (declared per entity in plugin YAML)
+    docker compose exec backend uv run --no-dev python -m app.access.cli scope-dimensions
+    # attributes feed $self; admin-set only (email and user_id are built in)
+    docker compose exec backend uv run --no-dev python -m app.access.cli set-attr sara@yougotagift.com csm_name "Sara K"
+    docker compose exec backend uv run --no-dev python -m app.access.cli attrs sara@yougotagift.com
+    # scoped grants: quote '$self'; --scope repeats (same dimension merges, different ones AND)
+    docker compose exec backend uv run --no-dev python -m app.access.cli grant group:csm allow 'deepsales/*' --scope 'csm=$self'
+    docker compose exec backend uv run --no-dev python -m app.access.cli grant group:b2c allow 'demo/order/*' --scope 'channel=b2c'
+    # clearances: fields:business_names, fields:people_names
+    docker compose exec backend uv run --no-dev python -m app.access.cli grant group:finance allow fields:business_names --kind clearance
+    # how a label class shows without its clearance: pseudonymise | suppress | bucket
+    docker compose exec backend uv run --no-dev python -m app.access.cli label-classes
+    docker compose exec backend uv run --no-dev python -m app.access.cli label-class person_name bucket --bucket-size 5
+    # check the result
+    docker compose exec backend uv run --no-dev python -m app.access.cli access sara@yougotagift.com --resource deepsales/ds_task/ds_open_tasks
+
+- **Rows.** Several matching allows are ORed; one unscoped allow means all rows; deny still wins.
+- **Labels.** Only `business_name` and `person_name` label classes are settable (`category` is never
+  masked); defaults are `business_name` = pseudonymise, `person_name` = suppress. Bucket shows the
+  first N rows as "Top 1..N" and sums the rest of the fetched rows into "Others".
+- **Clearances (pending user confirmation).** Through the API, an admin can grant a clearance (or
+  lift a clearance deny, or add a member / re-parent a group in a way that does either) only if they
+  hold that clearance themselves. The CLI is exempt, so the first clearances are granted with the
+  CLI.
+- **API.** `PUT/DELETE /api/v1/admin/users/{id}/attributes/{key}`, `GET/PUT
+  /api/v1/admin/label-classes[/{class}]`, `GET /api/v1/meta/scope-dimensions`; `POST
+  /api/v1/admin/grants` takes `row_scope` and `target_kind: "clearance"`.
+
+**Deploy notes (phase 3), in order:**
+
+1. Set `ATLAS_PSEUDONYM_KEY` in `backend/.env` on the box (`openssl rand -hex 32`). Without it
+   pseudonymised labels are suppressed and production logs `atlas.pseudonym_key_missing`.
+2. Before deploying, on the box, run `EXPLAIN` on the `ds_revenue` queries (they now join
+   `corporate_revenue_monthly m JOIN corporate c ON c.id = m.corporate_id`) and count orphan rows
+   (`corporate_revenue_monthly` rows with no matching `corporate`), which the join now drops.
+3. Back up the atlas database, then deploy. Migration 0004 runs at container start; **migration 0004
+   and the phase-3 code must deploy together** (older code does not understand scoped grants).
+4. If the demo plugin is deployed, reseed it (adds `demo_orders.sales_rep`; `orders_by_rep` errors
+   until this runs):
+   `docker compose exec backend uv run --no-dev python scripts/seed_demo.py`.
+5. Grant admins their first clearance with the CLI (`grant ... --kind clearance`).
+6. Set attributes: `set-attr <email> csm_name "<Name>"` for CSMs (and `csm_email` for lead owners).
+7. Grant group `csm` `deepsales/*` with `--scope 'csm=$self'`. `ds_lead` declares `owner`, not
+   `csm`, so a CSM grant hides leads; grant leads separately when wanted:
+   `grant group:<g> allow 'deepsales/ds_lead/*' --scope 'owner=$self'`.
+8. Verify: `access <email> --resource deepsales/ds_task/ds_open_tasks`.
+
+**Rollback (phase 3) fails open unless you clean up first.** Older code ignores `grants.row_scope`,
+so a scoped allow becomes an all-rows allow, and the 0004 downgrade drops `row_scope`. Before rolling
+back the code or downgrading 0004, revoke every scoped grant (`row_scope IS NOT NULL`) and every
+clearance grant (`target_kind = 'clearance'`). The 0004 downgrade refuses to run while any remain.
+Older code also has no label masking: after any rollback, breakdowns show real customer and
+people names to everyone with access to that data.

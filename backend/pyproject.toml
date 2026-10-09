@@ -124,7 +124,7 @@ venv = ".venv"
 typeCheckingMode = "standard"
 reportMissingTypeStubs = false
 # Ratchet: new self-contained modules are added here and checked in strict mode.
-strict = ["app/insights", "app/identity", "app/access"]
+strict = ["app/insights", "app/identity", "app/access", "app/atlas/scope.py", "app/atlas/masking.py"]
 
 [tool.importlinter]
 root_package = "app"
