@@ -52,28 +52,41 @@ The WIP commit (`wip(phase3): T11, T12`, cd36f54) contains:
 - **CLAUDE.md guardrail edits from the WIP are reverted.** The user is deciding guardrail text; the proposed wording is kept in the final report.
 - T11 and T12 reviewed and approved after fixes (rollback note and 0004 downgrade guard, `_DIMENSION` cap, doc accuracy).
 
-## Next steps (in order)
+## Status (2026-10-10, end of phase 3)
 
-1. ~~Fix the clarify-ambiguous-sales regression~~ (done, see Resume log).
-2. **Review T11 and T12.** Re-review the T11 delta and review T12. Then split the WIP into proper `test(evals)` and `docs` commits; amending or rebasing the local branch is OK.
-3. **Run the backend gate and `make check`.** Put `frontend/node_modules/.bin` on PATH for `make check`.
-4. **Run live evals.**
-   - Use a throwaway `postgres:16-alpine` on :5441. Run `alembic upgrade head` and `scripts/seed_demo.py`, then `uv run python ../evals/run_evals.py`.
-   - Read `OPENAI_API_KEY` from `backend/.env` without printing it. Set `ANTHROPIC_API_KEY` empty and `ENVIRONMENT=development`.
-   - The worktree has no `backend/.env`.
-   - Last result was 19/20; see Open findings.
-5. **Run the PG checks.**
-   - Run `TEST_PG_URL=... uv run pytest tests/test_alembic_postgres.py tests/test_access_postgres.py`. The T5 implementer passed `test_alembic_postgres` 3/3 earlier.
-   - Add one scoped-query PG check.
-6. **Run the final whole-branch review (`origin/main...HEAD`).** Focus areas:
-   - SQL injection through scopes;
-   - fail-closed paths;
-   - the scoped-entity lint;
-   - `$self` resolution;
-   - masking bypass across surfaces;
-   - cache and policy version;
-   - D10 for attributes and clearances.
-7. **Write the final report.** Use the original orchestrator format.
+**Phase 3 is complete, reviewed and committed. Nothing has been pushed, and no PR is open.**
+
+- **WIP folded.** The WIP commit was split into:
+  - `fix(agent)` 560df04
+  - `test(evals)` 051cae0
+  - `fix(access)` 66b3c34 (the 0004 downgrade guard and the `_DIMENSION` cap)
+  - `docs` d856461
+- **Later commits:**
+  - d66ece1: the PG scope test
+  - a8a5fab: the placement lint
+  - 218110f: error and log hygiene
+  - bc5b3da: CLI docs
+- **Final whole-branch review: PASS WITH WARNINGS.** Fixed: the important finding (`{{scope}}` placement lint) and minor findings 2, 4, 5 and 7. The lint was re-reviewed three times while it was being hardened; the last round was APPROVED.
+- **Gates at HEAD.**
+  - `make check` is green: 929 passed, 12 skipped, coverage 95.9%. Frontend: 217 passed, build OK.
+  - The PG tests pass 11/11 on a throwaway "scratch" database: alembic, access and scope.
+- **Live evals:** 20/20, twice at HEAD. The 6 DeepSales goldens are skipped locally.
+
+## Open follow-ups
+
+- **Insights:** pass `suppressed_rows` and `others_covers` through to breakdowns. The UI scope and masking chips are phase 5 / C20.
+- **Duplication:** `_self_attributes` (eval harness vs repository) and `sales_rep()` (conftest vs seed).
+- **Missing tests:**
+  - preview tests for a disabled user's clearances and for `decision.row_scope == []`;
+  - a `ProvenanceOut` test in insights.
+- **Contract:** `/meta/capabilities` `label_classes` includes `category`, which PUT rejects. Tell phase 5.
+- **`WHERE NOT {{scope}}`** passes the lint. It is a syntax error at runtime, so it fails closed.
+- **Evals:**
+  - A typed `expect_no_tool` check.
+  - The agent runs at the default temperature, so prompt-sensitive goldens stay probabilistic. Re-measure them with 10+ runs before calling a regression.
+- **User decisions:**
+  - C10 extension and the CLI exemption.
+  - CLAUDE.md guardrail text. The proposed text is in the final report.
 
 ## Deviations and decisions (beyond the plan's C1–C20)
 
