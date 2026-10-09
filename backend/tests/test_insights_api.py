@@ -68,3 +68,13 @@ async def test_without_grants_the_catalog_is_empty(db: AsyncSession) -> None:
         overview = (await client.get("/api/v1/atlas/overview?days=7")).json()
     assert catalog == {"sources": []}
     assert overview["kpis"] == []
+    denials = (
+        (
+            await db.execute(
+                select(AtlasAuditLog).where(AtlasAuditLog.decision == "deny")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert denials == []

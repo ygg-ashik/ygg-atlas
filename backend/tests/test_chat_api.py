@@ -3,6 +3,7 @@
 import json
 from uuid import uuid4
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
@@ -148,5 +149,23 @@ async def test_chat_needs_the_chat_capability(api, db):
     dev = await make_user(db, "dev@yougotagift.com")
     await add_grant(db, dev, "chat:use", effect="deny", kind="capability")
     resp = await api.get("/api/v1/chat/sessions")
+    assert resp.status_code == 403
+    assert "chat:use" in resp.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        ("POST", "/api/v1/chat/sessions", {}),
+        ("GET", "/api/v1/chat/sessions/{id}/messages", None),
+        ("DELETE", "/api/v1/chat/sessions/{id}", None),
+        ("PATCH", "/api/v1/chat/messages/{id}/feedback", {"rating": "up"}),
+        ("POST", "/api/v1/chat/sessions/{id}/messages", {"content": "q"}),
+    ],
+)
+async def test_every_chat_route_needs_the_chat_capability(api, db, method, path, body):
+    dev = await make_user(db, "dev@yougotagift.com")
+    await add_grant(db, dev, "chat:use", effect="deny", kind="capability")
+    resp = await api.request(method, path.format(id=uuid4()), json=body)
     assert resp.status_code == 403
     assert "chat:use" in resp.json()["detail"]

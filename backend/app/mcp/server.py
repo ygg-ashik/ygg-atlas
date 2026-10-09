@@ -5,12 +5,16 @@ surfaces. Auth until phase 4: the shared ATLAS_MCP_TOKEN is required (no token =
 MCP off), and every call runs as the MCP service user (MCP_SERVICE_EMAIL) under
 that user's grants.
 
-Run standalone:  uv run python -m app.mcp.server        (streamable HTTP :8090/mcp)
+Run standalone:  uv run python -m app.mcp.server
+    Serves the same token-gated app the main API mounts (build_http_app), on
+    127.0.0.1:8090/mcp via uvicorn. ATLAS_MCP_TOKEN is enforced there too.
 """
 
 import hmac
 from typing import Any
 
+import structlog
+import uvicorn
 from mcp.server.fastmcp import FastMCP
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -22,7 +26,9 @@ from app.access import MCP_USE, PolicyUnavailableError, policy_for
 from app.atlas import AtlasCaller, AtlasTools
 from app.config import get_settings
 from app.database import get_session_factory
-from app.identity import service_principal
+from app.identity import Principal, service_principal
+
+logger = structlog.get_logger()
 
 mcp = FastMCP("ygg-atlas", stateless_http=True)
 
@@ -35,13 +41,20 @@ UNAVAILABLE = {"error": "The access check is unavailable right now. Try again sh
 async def run_tool(tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Run one atlas tool as the MCP service user, under its policy (fail closed)."""
     async with get_session_factory()() as db:
-        principal = await service_principal(db, get_settings().mcp_service_email)
-        if principal is None:
-            return dict(NOT_READY)
+        # Both lookups hit the database; neither error's text may reach an MCP
+        # client (FastMCP would forward it verbatim as a ToolError).
+        principal: Principal | None = None
         try:
-            policy = await policy_for(db, principal)
+            principal = await service_principal(db, get_settings().mcp_service_email)
+            policy = await policy_for(db, principal) if principal else None
         except PolicyUnavailableError:
             return dict(UNAVAILABLE)
+        except Exception:
+            logger.exception("mcp.access_check_failed")
+            return dict(UNAVAILABLE)
+        if principal is None or policy is None:
+            logger.warning("mcp.service_user_unavailable")
+            return dict(NOT_READY)
         if not policy.has(MCP_USE):
             return dict(NO_MCP_ACCESS)
         caller = AtlasCaller(
@@ -146,10 +159,18 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
                 {"error": "MCP is off on this server (ATLAS_MCP_TOKEN is not set)."},
                 status_code=503,
             )
-        supplied = request.headers.get("authorization", "")
-        if not hmac.compare_digest(supplied.encode(), f"Bearer {expected}".encode()):
+        if not _bearer_matches(request.headers.get("authorization", ""), expected):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         return await call_next(request)
+
+
+def _bearer_matches(header: str, expected: str) -> bool:
+    """RFC 6750 `Bearer <token>`: scheme case-insensitive, token compared in
+    constant time. Missing, empty or wrong-scheme headers never match."""
+    scheme, _, token = header.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        return False
+    return hmac.compare_digest(token.encode(), expected.encode())
 
 
 def build_http_app() -> Starlette:
@@ -160,6 +181,14 @@ def build_http_app() -> Starlette:
     return app
 
 
+STANDALONE_HOST = "127.0.0.1"
+STANDALONE_PORT = 8090
+
+
+def serve_standalone() -> None:
+    """Serve the token-gated app alone (its lifespan runs the session manager)."""
+    uvicorn.run(build_http_app(), host=STANDALONE_HOST, port=STANDALONE_PORT)
+
+
 if __name__ == "__main__":
-    mcp.settings.port = 8090
-    mcp.run(transport="streamable-http")
+    serve_standalone()
