@@ -21,10 +21,10 @@ from app.identity import (
     IssuedToken,
     OAuthConfig,
     OAuthService,
-    Principal,
     TokenService,
     UserKind,
     principal_for_user,
+    tenant_of_user,
 )
 from app.mcp.schemas import TokenCreate
 
@@ -33,7 +33,7 @@ _NOT_A_SERVICE_ACCOUNT: Final = "Service tokens are for service accounts only."
 _OUTRANKS: Final = (
     "You can't mint a token for an account with more access than your own."
 )
-_NO_USER: Final = "No such active user."
+_NO_USER: Final = "No such user."
 _TXN_GONE: Final = "This approval request has expired or was already used."
 
 
@@ -75,12 +75,10 @@ def consent_errors() -> Generator[None]:
         raise transaction_gone() from None
 
 
-async def tenant_user(db: AsyncSession, user_id: UUID, tenant: str) -> Principal:
-    """An active user in `tenant`, else 404 (no probing other tenants' ids)."""
-    principal = await principal_for_user(db, user_id)
-    if principal is None or principal.tenant != tenant:
+async def require_tenant_user(db: AsyncSession, user_id: UUID, tenant: str) -> None:
+    """A user in `tenant`, active or not, else 404 (no probing other tenants' ids)."""
+    if await tenant_of_user(db, user_id) != tenant:
         raise HTTPException(404, _NO_USER)
-    return principal
 
 
 async def mint_service_token(

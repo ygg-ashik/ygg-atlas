@@ -10,7 +10,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-UNNAMED_CLIENT: Final = "Unnamed client"
 _TOKEN_NAME_MAX: Final = 100
 _TOKEN_DAYS_MAX: Final = 365
 _SERVICE_NAME_MIN, _SERVICE_NAME_MAX = 3, 60

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 from structlog.testing import capture_logs
 
+from app.identity import UNNAMED_CLIENT, oauth
 from app.identity.api_tokens import (
     EVENT_FAMILY_REVOKED,
     EVENT_TOKEN_CREATED,
@@ -27,6 +28,7 @@ from app.identity.credentials import (
     TokenService,
     authenticate_bearer,
     revoke_user_tokens,
+    tenant_of_user,
 )
 from app.identity.errors import (
     CredentialLimitError,
@@ -501,3 +503,29 @@ async def test_revoke_user_tokens_never_raises(
     (failure,) = [e for e in logs if e["event"] == "identity.revoke_all_failed"]
     assert failure["user_id"] == str(user.id)
     assert failure["error"] == "RuntimeError"
+
+
+async def test_connected_app_of_an_unnamed_client_gets_the_fallback_name(db) -> None:
+    user = await _human(db)
+    client = await make_client(db, name=None)
+    await insert_token(
+        db, user, TokenKind.OAUTH_REFRESH, client_id=client.client_id, family_id=uuid4()
+    )
+
+    (app,) = await TokenService(db).list_connected_apps(user.id)
+
+    assert app.client_name == UNNAMED_CLIENT == "Unnamed client"
+
+
+async def test_tenant_of_user_ignores_status(db) -> None:
+    active = await _human(db)
+    disabled = await _human(db, status="disabled")
+
+    assert await tenant_of_user(db, active.id) == active.tenant
+    assert await tenant_of_user(db, disabled.id) == disabled.tenant
+    assert await tenant_of_user(db, uuid4()) is None
+
+
+def test_oauth_and_connected_apps_share_one_unnamed_client_name() -> None:
+    # oauth.py keeps its own copy until it imports the api_tokens one.
+    assert oauth.UNNAMED_CLIENT == UNNAMED_CLIENT

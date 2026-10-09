@@ -8,6 +8,7 @@ from app.identity.api_tokens import (
     REVOKED_OAUTH_REVOKE,
     REVOKED_USER_DISABLED,
     TOKEN_PREFIXES,
+    UNNAMED_CLIENT,
     CredentialActor,
     CredentialVia,
     TokenKind,
@@ -22,6 +23,7 @@ from app.identity.credentials import (
     principal_for_user,
     revoke_user_tokens,
     service_account_email,
+    tenant_of_user,
 )
 from app.identity.dependencies import get_principal, get_token_verifier
 from app.identity.errors import (
@@ -73,6 +75,7 @@ __all__ = [
     "REVOKED_OAUTH_REVOKE",
     "REVOKED_USER_DISABLED",
     "TOKEN_PREFIXES",
+    "UNNAMED_CLIENT",
     "ApiToken",
     "AuthenticatedBearer",
     "AuthorizationRequestData",
@@ -122,5 +125,6 @@ __all__ = [
     "revoke_user_tokens",
     "service_account_email",
     "service_principal",
+    "tenant_of_user",
     "with_query",
 ]

@@ -48,6 +48,8 @@ LAST_USED_INTERVAL: Final = timedelta(minutes=5)
 CLIENT_IDLE_GC: Final = timedelta(days=90)
 MAX_LIVE_PATS: Final = 10
 MAX_TOKEN_DAYS: Final = 365
+# The display name of an OAuth client that registered none.
+UNNAMED_CLIENT: Final = "Unnamed client"
 
 # api_tokens.revoked_reason values (varchar 32)
 REVOKED_ROTATED: Final = "rotated"

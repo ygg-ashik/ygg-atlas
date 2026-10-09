@@ -166,6 +166,32 @@ async def test_revoke_all_for_a_user(
     assert missing.status_code == 404
 
 
+async def test_revoke_all_reaches_a_disabled_user_with_live_tokens(
+    api: AsyncClient, db: AsyncSession
+) -> None:
+    """The cleanup tool when the disable hook (D18) failed to revoke."""
+    off = await make_user(db, "gone@yougotagift.com", status="disabled")
+    first, _ = await insert_token(db, off, TokenKind.PAT)
+    second, _ = await insert_token(db, off, TokenKind.OAUTH_REFRESH)
+    resp = await api.post(f"{ADMIN}/users/{off.id}/tokens/revoke-all")
+    assert resp.status_code == 200
+    assert resp.json() == {"revoked": 2}
+    for row in (first, second):
+        assert (await _token(db, row.id)).revoked_reason == "admin_revoked"
+
+
+async def test_revoke_all_hides_a_disabled_user_in_another_tenant(
+    api: AsyncClient, db: AsyncSession
+) -> None:
+    off = await _elsewhere(
+        db, await make_user(db, "far@yougotagift.com", status="disabled")
+    )
+    row, _ = await insert_token(db, off, TokenKind.PAT)
+    resp = await api.post(f"{ADMIN}/users/{off.id}/tokens/revoke-all")
+    assert resp.status_code == 404
+    assert (await _token(db, row.id)).revoked_at is None
+
+
 async def test_create_service_account_needs_admin_users(
     app: FastAPI, api: AsyncClient, db: AsyncSession, admin: User, ana: User
 ) -> None:
@@ -309,6 +335,7 @@ async def test_list_and_revoke_clients_cascades_to_tokens(
     assert after["active_families"] == 0
     assert (await api.delete(f"{ADMIN}/clients/{client_id}")).status_code == 404
     assert (await api.delete(f"{ADMIN}/clients/no-such-client")).status_code == 404
+    assert (await api.delete(f"{ADMIN}/clients/{'x' * 256}")).status_code == 422
 
 
 async def test_client_routes_need_admin_clients(

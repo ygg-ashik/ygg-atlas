@@ -26,6 +26,7 @@ from app.identity.api_tokens import (
     LAST_USED_INTERVAL,
     MAX_LIVE_PATS,
     MAX_TOKEN_DAYS,
+    UNNAMED_CLIENT,
     CredentialActor,
     CredentialVia,
     TokenKind,
@@ -96,7 +97,7 @@ class ConnectedApp:
 
     family_id: UUID
     client_id: str
-    client_name: str | None
+    client_name: str  # UNNAMED_CLIENT when the client registered none
     redirect_host: str
     created_at: datetime
     last_used_at: datetime | None
@@ -199,6 +200,13 @@ async def principal_for_user(db: AsyncSession, user_id: UUID) -> Principal | Non
     if user is None or user.status != UserStatus.ACTIVE:
         return None
     return to_principal(user, "service" if user.kind == UserKind.SERVICE else "pat")
+
+
+async def tenant_of_user(db: AsyncSession, user_id: UUID) -> str | None:
+    """The tenant of any user, whatever their status; None for an unknown id. Lets an
+    admin clean up a disabled user's credentials (D18 hook failure)."""
+    user = await UserRepository(db).get(user_id)
+    return None if user is None else user.tenant
 
 
 async def revoke_user_tokens(
@@ -467,7 +475,7 @@ class TokenService:
             ConnectedApp(
                 family_id=row.family_id,
                 client_id=row.client_id,
-                client_name=row.client_name,
+                client_name=row.client_name or UNNAMED_CLIENT,
                 redirect_host=_redirect_host(row.redirect_uris),
                 created_at=_as_utc(row.created_at),
                 last_used_at=None

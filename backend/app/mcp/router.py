@@ -11,7 +11,7 @@ from typing import Any, Final, cast
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
@@ -52,11 +52,10 @@ from app.mcp.dependencies import (
     get_oauth_service,
     get_token_service,
     mint_service_token,
-    tenant_user,
+    require_tenant_user,
     transaction_gone,
 )
 from app.mcp.schemas import (
-    UNNAMED_CLIENT,
     AdminTokenKind,
     AuthMethodsOut,
     ClientOut,
@@ -164,7 +163,7 @@ def _connected(app: ConnectedApp) -> ConnectedAppOut:
     return ConnectedAppOut(
         family_id=app.family_id,
         client_id=app.client_id,
-        client_name=app.client_name or UNNAMED_CLIENT,
+        client_name=app.client_name,
         redirect_host=app.redirect_host,
         created_at=app.created_at,
         last_used_at=app.last_used_at,
@@ -303,13 +302,19 @@ mcp_router.include_router(_consent)
 # ---- administration (D13, D24, D34) ------------------------------------------------
 
 
-@mcp_router.get("/admin/tokens", response_model=list[TokenOut])
+@mcp_router.get(
+    "/admin/tokens",
+    response_model=list[TokenOut],
+    response_description="Newest first; at most 200 tokens.",
+)
 async def admin_list_tokens(
     user_id: UUID | None = None,
     kind: AdminTokenKind | None = None,
     policy: Policy = Depends(require_capability(ADMIN_TOKENS)),
     tokens: TokenService = Depends(get_token_service),
 ) -> list[TokenOut]:
+    """Unrevoked tokens in the caller's tenant, newest first, capped at 200 rows (the
+    repository's limit); narrow with `user_id` or `kind` to see older ones."""
     rows = await tokens.list_tokens(
         tenant=policy.tenant, user_id=user_id, kinds=_ADMIN_KINDS[kind]
     )
@@ -338,9 +343,9 @@ async def admin_revoke_all_tokens(
     tokens: TokenService = Depends(get_token_service),
     db: AsyncSession = Depends(get_db),
 ) -> RevokedOut:
-    """Every token of an active user in the caller's tenant. A disabled user's tokens
-    were revoked when they were disabled, and the bearer door refuses them anyway."""
-    await tenant_user(db, user_id, policy.tenant)
+    """Every token of a user in the caller's tenant, whatever their status: the
+    cleanup tool for a disable whose post-commit revoke hook (D18) failed."""
+    await require_tenant_user(db, user_id, policy.tenant)
     count = await tokens.revoke_all_tokens(
         user_id, reason=REVOKED_BY_ADMIN, actor=_api_actor(policy.user_id)
     )
@@ -406,7 +411,7 @@ async def admin_list_clients(
 
 @mcp_router.delete("/admin/clients/{client_id}", status_code=204)
 async def admin_revoke_client(
-    client_id: str,
+    client_id: str = Path(max_length=255),
     policy: Policy = Depends(require_capability(ADMIN_CLIENTS)),
     oauth: OAuthService = Depends(get_oauth_service),
 ) -> None:
