@@ -60,9 +60,27 @@ async def test_the_bearer_scheme_is_case_insensitive(
     assert (await _get({"Authorization": "BEARER s3cret"})).status_code == 200
 
 
+async def test_extra_spaces_after_the_bearer_scheme_are_allowed(
+    mcp_token: Callable[[str], None],
+) -> None:
+    # RFC 6750 §2.1: one or more spaces separate the scheme from the token.
+    mcp_token("s3cret")
+    assert (await _get({"Authorization": "Bearer  s3cret"})).status_code == 200
+    assert (await _get({"Authorization": "Bearer   s3cret"})).status_code == 200
+
+
 @pytest.mark.parametrize(
     "header",
-    [None, "", "Basic s3cret", "s3cret", "Bearer ", "Bearer", "Bearers3cret"],
+    [
+        None,
+        "Bearer   ",
+        "",
+        "Basic s3cret",
+        "s3cret",
+        "Bearer ",
+        "Bearer",
+        "Bearers3cret",
+    ],
 )
 async def test_malformed_authorization_is_unauthorized(
     mcp_token: Callable[[str], None], header: str | None
@@ -132,14 +150,17 @@ async def test_a_failing_service_lookup_is_unavailable_and_leaks_nothing(
     assert any(e["event"] == "mcp.access_check_failed" for e in logs)
 
 
-async def test_a_failing_policy_lookup_is_unavailable(
+async def test_a_failing_policy_lookup_is_unavailable_and_leaks_nothing(
     db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     await make_user(db, SERVICE_EMAIL, role="analyst", kind="service")
 
     async def boom(*_args: Any, **_kwargs: Any) -> None:
-        raise RuntimeError("db exploded")
+        raise RuntimeError("OperationalError: connection to 10.0.0.5 refused")
 
     monkeypatch.setattr(server, "policy_for", boom)
-    result = await server.run_tool("list_metrics", {})
+    with capture_logs() as logs:
+        result = await server.run_tool("list_metrics", {})
     assert result == server.UNAVAILABLE
+    assert "10.0.0.5" not in str(result)
+    assert any(e["event"] == "mcp.access_check_failed" for e in logs)

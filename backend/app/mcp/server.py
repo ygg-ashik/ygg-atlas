@@ -165,9 +165,11 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
 
 
 def _bearer_matches(header: str, expected: str) -> bool:
-    """RFC 6750 `Bearer <token>`: scheme case-insensitive, token compared in
-    constant time. Missing, empty or wrong-scheme headers never match."""
-    scheme, _, token = header.partition(" ")
+    """RFC 6750 `Bearer <token>`: scheme case-insensitive, one or more spaces
+    before the token, token compared in constant time. Missing, empty or
+    wrong-scheme headers never match."""
+    scheme, _, rest = header.partition(" ")
+    token = rest.lstrip(" ")
     if scheme.lower() != "bearer" or not token:
         return False
     return hmac.compare_digest(token.encode(), expected.encode())
