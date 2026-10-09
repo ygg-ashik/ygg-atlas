@@ -8,7 +8,7 @@ from datetime import UTC, datetime, time, timedelta
 from app.atlas import RowScope
 from app.atlas.models import EntityDef
 from app.atlas.registry import get_registry
-from app.atlas.scope import compile_scope
+from app.atlas.scope import compile_scope, scope_placement_error
 from app.sources import get_connector
 from tests.fakes import make_tools
 
@@ -130,6 +130,7 @@ async def test_every_scoped_demo_query_executes_on_sqlite(db):
             {next(iter(columns)): frozenset({"z"})},
         )
         for what, sql in _queries(entity):
+            assert scope_placement_error(sql) is None, what
             compiled = compile_scope(sql, columns, scope)
             assert compiled.restricted, what
             params = {k: v for k, v in window.items() if f":{k}" in compiled.sql}
@@ -143,3 +144,18 @@ async def test_every_scoped_demo_query_executes_on_sqlite(db):
             else:
                 assert len(rows) == 1, what
                 assert next(iter(rows[0].values())) in (0, None), what
+
+
+async def test_a_top_level_or_would_leak_rows_past_the_scope(db):
+    """Why the placement lint exists: AND binds tighter than OR."""
+    sql = (
+        "SELECT COUNT(*) AS value FROM demo_orders "
+        "WHERE channel = 'b2c' OR channel = 'b2b' {{scope}}"
+    )
+    nothing: RowScope = ({"channel": frozenset({"x"})},)
+    compiled = compile_scope(sql, {"channel": "channel"}, nothing)
+
+    rows = await get_connector("demo").fetch_all(compiled.sql, compiled.params)
+
+    assert next(iter(rows[0].values())) > 0  # b2c rows escape the scope
+    assert scope_placement_error(sql) is not None  # so the registry rejects it

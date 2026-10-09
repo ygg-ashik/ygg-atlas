@@ -12,7 +12,7 @@ alternatives are ORed, dimensions inside one alternative are ANDed.
 """
 
 import re
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Iterator, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final
@@ -38,6 +38,134 @@ _RESERVED_BIND: Final = re.compile(r"(?<!:):scope_")
 def uses_reserved_bind(sql: str) -> bool:
     """True if ``sql`` names a bind in the prefix reserved for compiled scopes."""
     return _RESERVED_BIND.search(sql) is not None
+
+
+# The placement lint reads SQL as pieces: (kind, text, paren depth).
+type _Piece = tuple[str, str, int]
+
+_SET_OPERATORS: Final = frozenset({"UNION", "INTERSECT", "EXCEPT"})
+# Top-level keywords that open a clause; the token must sit in the WHERE clause.
+_CLAUSES: Final = frozenset(
+    {"SELECT", "FROM", "JOIN", "ON", "USING", "WHERE", "GROUP", "HAVING", "WINDOW"}
+    | {"ORDER", "LIMIT", "OFFSET", "FETCH"}
+)
+# What may follow the token at the top level: another condition, or a clause.
+_AFTER_TOKEN: Final = frozenset(
+    {"AND", "GROUP", "HAVING", "WINDOW", "ORDER", "LIMIT", "OFFSET", "FETCH"}
+)
+# Words whose top-level AND/OR rebinds the token: wrap them in parentheses.
+_TOP_LEVEL_UNSAFE: Final = {
+    "OR": "AND binds tighter than OR",
+    "BETWEEN": "its AND would take the scope as a bound",
+}
+_WORD: Final = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*")
+# Comments, backslashes, dollar quotes and statement separators stop the read.
+_STOP: Final = re.compile(r"--|/\*|[\\$;]")
+_ALWAYS_UNSAFE: Final = {
+    "unterminated": "an unterminated quoted string",
+    "prefixed": "a prefixed string literal (E'', U&'' and the like)",
+    "--": "an SQL comment (-- or /*)",
+    "/*": "an SQL comment (-- or /*)",
+    "stop": "a backslash, dollar quote or statement separator",
+    "unbalanced": "unbalanced parentheses",
+    "nested": f"{SCOPE_TOKEN} inside parentheses",
+    "misplaced": (
+        f"{SCOPE_TOKEN} not at the top level of the WHERE clause, followed by "
+        "AND, a later clause or the end"
+    ),
+}
+
+
+def scope_placement_error(sql: str) -> str | None:
+    """Why ``{{scope}}`` cannot be safely spliced into ``sql``, or None if it can.
+
+    The token becomes ``AND (...)``, which binds tighter than ``OR`` and looser
+    than ``IS`` or ``=``, and can be commented out, quoted or bypassed by a set
+    operation. So a scoped query may have no comments, prefixed strings,
+    backslashes, dollar quotes, ``;``, UNION/INTERSECT/EXCEPT, or OR or BETWEEN
+    outside parentheses, and its parentheses must balance. Every token must sit at the
+    top level of the WHERE clause, outside quotes, followed only by AND, a later
+    clause or the end of the query. Anything this reader cannot classify fails.
+    """
+    pieces = list(_pieces(sql))
+    checks = (*pieces, *_placement(pieces))
+    return next((reason for piece in checks if (reason := _unsafe(*piece))), None)
+
+
+def _placement(pieces: list[_Piece]) -> Iterator[_Piece]:
+    """Unbalanced parentheses, and each token outside its one safe position."""
+    if sum(1 if p[1] == "(" else -1 if p[1] == ")" else 0 for p in pieces):
+        yield "unbalanced", "", 0
+    clause = ""
+    for index, (kind, text, depth) in enumerate(pieces):
+        if kind == "word" and depth == 0 and text in _CLAUSES:
+            clause = text
+        if kind != "token":
+            continue
+        following = next((p for p in pieces[index + 1 :] if p[0] != "token"), None)
+        if depth:
+            yield "nested", text, depth
+        elif clause != "WHERE" or (
+            following is not None
+            and (following[0] != "word" or following[1] not in _AFTER_TOKEN)
+        ):
+            yield "misplaced", text, depth
+
+
+def _unsafe(kind: str, text: str, depth: int) -> str | None:
+    if kind in _ALWAYS_UNSAFE:
+        return _ALWAYS_UNSAFE[kind]
+    if kind == "quoted":
+        return f"{SCOPE_TOKEN} inside a quoted string" if SCOPE_TOKEN in text else None
+    if text in _SET_OPERATORS:
+        return f"{text} (a set operation escapes the scope)"
+    if text in _TOP_LEVEL_UNSAFE and depth == 0:
+        return f"{text} outside parentheses ({_TOP_LEVEL_UNSAFE[text]})"
+    return None
+
+
+def _quoted(sql: str, i: int) -> tuple[str, str, int]:
+    """(kind, text, next index) for the quoted string starting at ``sql[i]``."""
+    if i and (sql[i - 1].isalnum() or sql[i - 1] in "_&"):
+        return "prefixed", sql[i], len(sql)
+    end = sql.find(sql[i], i + 1)
+    if end < 0:
+        return "unterminated", sql[i:], len(sql)
+    return "quoted", sql[i:end], end + 1  # '' reads as two adjacent strings
+
+
+def _pieces(sql: str) -> Iterator[_Piece]:
+    """Quoted strings, tokens, upper-cased words and punctuation, in order.
+
+    Reading stops at the first piece it cannot classify safely (a comment, a
+    prefixed or unterminated string, a backslash, ``$``, ``;`` or a ``)`` with
+    nothing open), which is reported as that piece.
+    """
+    depth = 0
+    i = 0
+    while i < len(sql):
+        char = sql[i]
+        if char in "'\"":
+            kind, text, i = _quoted(sql, i)
+            yield kind, text, depth
+        elif stop := _STOP.match(sql, i):
+            yield (stop.group() if stop.group() in _ALWAYS_UNSAFE else "stop"), "", 0
+            return
+        elif sql.startswith(SCOPE_TOKEN, i):
+            yield "token", SCOPE_TOKEN, depth
+            i += len(SCOPE_TOKEN)
+        elif word := _WORD.match(sql, i):
+            yield "word", word.group().upper(), depth
+            i = word.end()
+        else:
+            depth -= char == ")"
+            if depth < 0:
+                yield "unbalanced", char, depth
+                return
+            if not char.isspace():
+                yield "punct", char, depth
+            depth += char == "("
+            i += 1
 
 
 class ScopeCompileError(ValueError):

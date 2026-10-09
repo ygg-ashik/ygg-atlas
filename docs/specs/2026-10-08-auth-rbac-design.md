@@ -273,6 +273,10 @@ metrics:
   `:scope_` is reserved: a query that names a `:scope_*` bind is rejected at load (registry lint) and
   again at compile time. When compiling, a value set that is a bare string or holds duplicate values
   is rejected and the execution fails closed (the admin API de-duplicates values before storing).
+- **Placement lint.** Because `{{scope}}` is spliced in as `AND (...)`, a scoped query must hold
+  it at the top level of its `WHERE` clause, followed only by `AND`, a later clause or the end, and
+  may contain no comments, `UNION`/`INTERSECT`/`EXCEPT`, top-level `OR` or `BETWEEN`, prefixed (`E''`, `U&''`) or
+  dollar-quoted strings, backslashes or `;`. Parentheses must balance. Checked at registry load.
 - **Lint failures stop the app, not one plugin.** The text above says the plugin fails to load. As
   built, `AtlasRegistry` raises while it is built and `main.py` builds it at startup, so a lint
   violation stops the backend from starting.

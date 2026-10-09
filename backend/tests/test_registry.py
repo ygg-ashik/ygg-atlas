@@ -512,6 +512,44 @@ def test_a_postgres_cast_to_a_scope_named_type_loads(tmp_path) -> None:
     assert _load(tmp_path, yaml_text).metrics["shop_orders"]
 
 
+_QUERY_NAMES = {
+    "metric": "metric 'shop_orders'",
+    "breakdown": "breakdown of 'shop_orders'",
+    "funnel step": "funnel 'shop_orders_funnel' step 'first'",
+    "freshness query": "freshness query",
+}
+
+
+@pytest.mark.parametrize("what", sorted(_QUERY_HEADS))
+@pytest.mark.parametrize(
+    ("unsafe", "reason"),
+    [
+        (" OR id = 1 {{scope}}", "OR outside parentheses"),
+        (" -- {{scope}}", "comment"),
+        (' AND b = "{{scope}}"', "inside a quoted string"),
+        (" {{scope}} UNION SELECT 1 FROM t", "UNION"),
+        (" AND id IN (SELECT id FROM t WHERE TRUE {{scope}})", "inside parentheses"),
+    ],
+)
+def test_unsafe_scope_placements_fail_the_load(
+    tmp_path, what: str, unsafe: str, reason: str
+) -> None:
+    head = _QUERY_HEADS[what]
+    yaml_text = _scoped_entity().replace(f"{head} {{{{scope}}}}", head + unsafe)
+    assert yaml_text.count(unsafe) == 1
+    with pytest.raises(ValueError, match=r"unsafe \{\{scope\}\} placement") as info:
+        _load(tmp_path, yaml_text)
+    message = str(info.value)
+    assert f"{_QUERY_NAMES[what]} in testsrc:test.yaml" in message
+    assert "entity 'shop'" in message
+    assert reason in message
+
+
+def test_unscoped_entities_are_not_placement_linted(tmp_path) -> None:
+    yaml_text = _scoped_entity(dimensions="").replace(" {{scope}}", " OR id = 1")
+    assert _load(tmp_path, yaml_text).metrics["shop_orders"]
+
+
 def test_label_classes_come_from_the_masking_module() -> None:
     from app.atlas import masking  # noqa: PLC0415
 

@@ -1,15 +1,18 @@
 """Loads and indexes the semantic registry from every enabled source plugin.
 
 Load-time validation is the enterprise guardrail: globally unique ids, ids that are
-safe resource-path segments (`^[a-z0-9_]+$`, and no metric and funnel sharing an
-id within one entity, since both map to `source/entity/id`), and every SQL query
-may reference only tables its plugin has allowlisted. Row scope fails closed at
-load: in an entity that declares `scope_dimensions`, every query carries the
-`{{scope}}` placeholder, no other `{{...}}` template exists anywhere, dimension
+safe resource-path segments (`^[a-z0-9_]+$`, and no metric and funnel sharing an id
+within one entity, since both map to `source/entity/id`), and every SQL query may
+reference only tables its plugin has allowlisted. Row scope fails closed at load: in
+an entity that declares `scope_dimensions`, every query carries the `{{scope}}`
+placeholder at the top level of its WHERE clause, followed only by AND, a later
+clause or the end (`atlas.scope.scope_placement_error`: no comments, set operations,
+top-level OR or BETWEEN, prefixed or dollar-quoted strings, `;`, or token inside
+quotes or parentheses), no other `{{...}}` template exists anywhere, dimension
 names, columns and `self` attributes are linted, one dimension name maps to one
-`self` attribute registry-wide, and every breakdown declares its label class.
-A definition that fails validation prevents startup — bad metrics never reach
-the agent.
+`self` attribute registry-wide, and every breakdown declares its label class. A
+definition that fails validation prevents startup — bad metrics never reach the
+agent.
 """
 
 import re
@@ -26,6 +29,7 @@ from app.atlas.scope import (
     COLUMN_PATTERN,
     RESERVED_BIND_PREFIX,
     SCOPE_TOKEN,
+    scope_placement_error,
     uses_reserved_bind,
 )
 from app.sources import SourcePlugin, get_plugins
@@ -338,6 +342,12 @@ def _lint_scope(plugin: SourcePlugin, entity: EntityDef, where: str) -> None:
             raise ValueError(
                 f"{what} in {where} uses {SCOPE_TOKEN} but entity '{entity.id}' "
                 "declares no scope_dimensions"
+            )
+        placement = scope_placement_error(sql) if scoped else None
+        if placement:
+            raise ValueError(
+                f"{what} in {where} has an unsafe {SCOPE_TOKEN} placement for "
+                f"entity '{entity.id}': {placement}"
             )
 
 

@@ -14,6 +14,7 @@ from app.atlas.scope import (
     ScopeCompileError,
     compile_scope,
     narrow_scope,
+    scope_placement_error,
     uses_reserved_bind,
 )
 from app.sources import get_connector
@@ -365,3 +366,71 @@ def test_compiled_alternatives_are_frozen_copies():
     assert compiled.alternatives == ({"channel": frozenset({"b2c"})},)
     with pytest.raises(TypeError):
         compiled.alternatives[0]["channel"] = frozenset()  # pyright: ignore[reportIndexIssue]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT COUNT(*) FROM t WHERE created_at >= :start {{scope}}",
+        "SELECT COUNT(*) FROM t WHERE TRUE {{scope}}",
+        "SELECT COUNT(*) FROM t WHERE (a = 1 OR b = 2) {{scope}}",
+        "SELECT COUNT(*) FROM t WHERE x::scope_enum = 'b2c' {{scope}}",
+        "SELECT COUNT(*) FROM t WHERE stage IN ('a', 'b') {{scope}} GROUP BY c",
+        "SELECT 'it''s -- not a comment' AS v FROM t WHERE TRUE {{scope}}",
+        'SELECT "OR" AS v FROM t WHERE TRUE {{scope}}',
+        "SELECT orders, ORDER_id FROM t WHERE TRUE {{scope}}",
+        "SELECT a FROM t WHERE TRUE {{scope}} AND b = 1 {{scope}}",
+        "SELECT a FROM t WHERE TRUE {{scope}} GROUP BY a ORDER BY a LIMIT :limit",
+        "SELECT a FROM t WHERE (d BETWEEN :start AND :end) {{scope}}",
+        "WITH c AS (SELECT * FROM t WHERE a OR b) SELECT a FROM c WHERE TRUE {{scope}}",
+    ],
+)
+def test_safe_scope_placements_are_accepted(sql: str):
+    assert scope_placement_error(sql) is None
+
+
+@pytest.mark.parametrize(
+    ("sql", "reason"),
+    [
+        ("SELECT a FROM t WHERE a = 1 OR b = 2 {{scope}}", "OR outside parentheses"),
+        ("SELECT a FROM t WHERE a = 1 or b = 2 {{scope}}", "OR outside parentheses"),
+        ("SELECT a FROM t WHERE TRUE {{scope}} OR b = 2", "OR outside parentheses"),
+        ("SELECT a FROM t WHERE TRUE -- {{scope}}", "comment"),
+        ("SELECT a FROM t WHERE TRUE /* {{scope}} */", "comment"),
+        ("SELECT a FROM t WHERE TRUE {{scope}} -- note", "comment"),
+        ("SELECT a FROM t WHERE TRUE {{scope}} UNION SELECT a FROM u", "UNION"),
+        ("SELECT a FROM t WHERE TRUE {{scope}} intersect SELECT a FROM u", "INTERSECT"),
+        ("SELECT a FROM t WHERE TRUE {{scope}} EXCEPT SELECT a FROM u", "EXCEPT"),
+        ("SELECT a FROM t WHERE b = '{{scope}}'", "inside a quoted string"),
+        ('SELECT a FROM t WHERE b = "{{scope}}"', "inside a quoted string"),
+        (
+            "SELECT a FROM t WHERE b IN (SELECT c FROM u WHERE TRUE {{scope}})",
+            "inside parentheses",
+        ),
+        ("SELECT a FROM t WHERE b = 'open {{scope}}", "unterminated"),
+        # The token must sit at the top level of WHERE, before AND or a clause.
+        ("SELECT a FROM t LEFT JOIN u ON t.id = u.id {{scope}}", "WHERE clause"),
+        ("SELECT a FROM t WHERE TRUE {{scope}} IS NOT TRUE", "WHERE clause"),
+        ("SELECT a FROM t WHERE TRUE {{scope}} = FALSE", "WHERE clause"),
+        ("SELECT a FROM t WHERE TRUE GROUP BY a {{scope}}", "WHERE clause"),
+        ("SELECT a FROM t WHERE TRUE ORDER BY a {{scope}}", "WHERE clause"),
+        ("SELECT a FROM t WHERE TRUE HAVING a {{scope}}", "WHERE clause"),
+        ("SELECT COUNT(*) {{scope}} FROM t", "WHERE clause"),
+        ("SELECT a FROM t {{scope}} WHERE TRUE", "WHERE clause"),
+        # Postgres string forms this reader does not parse fail closed.
+        (r"SELECT a FROM t WHERE a = E'\'' OR TRUE OR b = E'\'' {{scope}}", "prefixed"),
+        ("SELECT a FROM t WHERE b = U&'x' {{scope}}", "prefixed"),
+        ("SELECT a FROM t WHERE b = $$ {{scope}} $$", "dollar quote"),
+        ("SELECT a FROM t WHERE b = $q$ {{scope}} $q$", "dollar quote"),
+        ("SELECT a FROM t WHERE TRUE {{scope}}; SELECT 1", "statement separator"),
+        ("SELECT a FROM t WHERE x) OR (y {{scope}}", "unbalanced"),
+        ("SELECT a FROM t WHERE (x {{scope}}", "unbalanced"),
+        ("SELECT a FROM t WHERE f BETWEEN FALSE {{scope}} AND TRUE", "BETWEEN"),
+        ("SELECT a FROM t WHERE f between symmetric 0 {{scope}} AND 1", "BETWEEN"),
+    ],
+)
+def test_unsafe_scope_placements_are_rejected(sql: str, reason: str):
+    error = scope_placement_error(sql)
+
+    assert error is not None
+    assert reason in error
