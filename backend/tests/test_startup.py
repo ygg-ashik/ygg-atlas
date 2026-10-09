@@ -6,6 +6,7 @@ from sqlmodel import select
 from app import main
 from app.access.catalog import CAPABILITIES
 from app.access.models import Capability, PolicyState
+from app.identity.models import User
 from app.identity.repository import UserRepository
 
 
@@ -42,3 +43,21 @@ async def test_apply_startup_increments_the_policy_version(db) -> None:
     after = await db.get(PolicyState, 1, populate_existing=True)
     assert after is not None
     assert after.policy_version == version_before + 1
+
+
+async def test_startup_never_re_elevates_a_demoted_bootstrap_admin(
+    db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    users = UserRepository(db)
+    await users.save(User(email="boss@yougotagift.com", role="viewer"))
+    monkeypatch.setenv("BOOTSTRAP_ADMINS", "boss@yougotagift.com")
+    main.get_settings.cache_clear()
+    try:
+        await main.apply_startup()
+    finally:
+        main.get_settings.cache_clear()
+
+    boss = await users.get_by_email("boss@yougotagift.com")
+    assert boss is not None
+    await db.refresh(boss)
+    assert boss.role == "viewer"

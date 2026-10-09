@@ -12,6 +12,7 @@ from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import ColumnElement, CursorResult, and_, func, or_, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, col, select
 
@@ -210,6 +211,16 @@ class AccessRepository:
         if await self._db.get(PolicyState, 1, populate_existing=True) is None:
             self._db.add(PolicyState(id=1, policy_version=1))
             await self._db.flush()
+
+    async def insert_user_if_absent(self, user: User) -> bool:
+        """Stage `user` in a SAVEPOINT; False (nothing staged) when a row with
+        the same identity already exists, e.g. a concurrent sign-in won."""
+        try:
+            async with self._db.begin_nested():
+                self._db.add(user)
+        except IntegrityError:
+            return False
+        return True
 
     async def sync_capabilities(self, catalog: Mapping[str, str]) -> None:
         existing = {

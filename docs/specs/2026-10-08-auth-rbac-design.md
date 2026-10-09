@@ -97,8 +97,13 @@ Disabling a user revokes all of their atlas tokens and their Firebase refresh to
 
 - First Google sign-in on any door creates `users(status=active, role=viewer)` with no groups, then
   shows **Request access**.
-- `ATLAS_BOOTSTRAP_ADMINS` (comma-separated emails) is applied idempotently at startup: create or
-  upgrade to `role=admin`. This is the only way to create the first admin.
+- `ATLAS_BOOTSTRAP_ADMINS` (comma-separated emails) is applied idempotently at startup, by
+  `app.access.prepare_access` under its startup advisory lock: a listed email with no user yet is
+  created with `role=admin`, recorded in `rbac_changes` (`via="bootstrap"`, no actor) and committed
+  with the `policy_version` bump. **An existing user's role is never changed** (a demoted admin
+  stays demoted across restarts; a service identity is never elevated); the skip is logged as
+  `identity.bootstrap_admin_skipped`. Promote an existing user with the audited CLI (`set-role`).
+  This is the only way to create the first admin.
 - **The app refuses to start when `AUTH_DISABLED=true` and `ENVIRONMENT=production`.**
 
 ## 4. Flows

@@ -88,7 +88,8 @@ irreversible (`alembic downgrade base` refuses), so back up before risky migrati
 `ENVIRONMENT` fails closed: unset means `production`, which refuses `AUTH_DISABLED=true` and requires
 `FIREBASE_PROJECT_ID`. While the box still runs with `AUTH_DISABLED=true`, `backend/.env` must set
 `ENVIRONMENT=development` or the backend will not start. `BOOTSTRAP_ADMINS` (comma-separated emails)
-creates the first admins; the dev user is a plain viewer.
+creates the first admins (only emails with no user yet; an existing user's role is never changed,
+so promote one with the CLI's `set-role`); the dev user is a plain viewer.
 
 Server-only files on the box (not in git):
 - `backend/.env` — secrets: `ANTHROPIC_API_KEY`, `FIREBASE_PROJECT_ID`, `ATLAS_MCP_TOKEN`.

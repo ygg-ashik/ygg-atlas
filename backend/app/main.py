@@ -9,7 +9,7 @@ from app.access import AccessError, access_error_handler, access_router, prepare
 from app.api import chat_router
 from app.config import get_settings
 from app.database import get_session_factory
-from app.identity import bootstrap_admins, ensure_service_user, identity_router
+from app.identity import ensure_service_user, identity_router
 from app.insights import router as insights_router
 
 logger = structlog.get_logger()
@@ -31,11 +31,12 @@ MCP_SERVICE_ROLE = "analyst"
 async def apply_startup() -> None:
     settings = get_settings()
     async with get_session_factory()() as db:
-        await bootstrap_admins(db, settings.bootstrap_admin_list)
         await ensure_service_user(
             db, settings.mcp_service_email, MCP_SERVICE_NAME, MCP_SERVICE_ROLE
         )
-        await prepare_access(db)
+        # Bootstrap admins are created by access: a role is an authorization
+        # change, audited and versioned in the same commit (spec §3.3).
+        await prepare_access(db, settings.bootstrap_admin_list)
 
 
 @asynccontextmanager

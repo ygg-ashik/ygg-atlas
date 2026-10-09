@@ -106,7 +106,7 @@ class RbacChange(SQLModel, table=True):
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     actor_user_id: UUID | None = Field(default=None, foreign_key="users.id", index=True)
-    via: str = Field(default="api", max_length=16)  # 'api' | 'cli'
+    via: str = Field(default="api", max_length=16)  # 'api' | 'cli' | 'bootstrap'
     tenant: str = Field(default=DEFAULT_TENANT, max_length=64, index=True)
     action: str = Field(max_length=64)
     object_type: str = Field(max_length=32)
