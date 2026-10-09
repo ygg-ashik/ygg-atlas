@@ -833,7 +833,7 @@ function approveSpec(r){const u=USERS[r.u];
    lines:[['c',`request ${r.id}  ${u.email}`],['a',`grant allow ${r.target} for ${short(u.email)} until ${exp}`],['a',`reason "${r.note}"`]],audit:'request.approve + grant.create'}}
 VIEW.adminRequests={title:'Access requests',route:'/admin/requests',w:1080,sk:'list',what:'access requests',need:'admin:users',render(){
   const mgr=isManager();const meId=me().id;const tab=U.rqTab;
-  const pend=REQS.filter(r=>r.status==='pending'&&visibleReq(r)&&!U.decided[r.id]);
+  const pend=actionableReqs();/* same set as the sidebar badge; your own requests live in My requests */
   const dec=REQS.filter(r=>(r.status!=='pending'||U.decided[r.id])&&visibleReq(r)&&r.status!=='cancelled'||(r.status==='cancelled'&&visibleReq(r)&&r.u!==meId&&r.u!=='omar'));
   const list=tab==='pending'?(S.state==='empty'?[]:pend):dec;
   const card=r=>{const u=USERS[r.u];const own=r.u===meId;const d=U.decided[r.id];const open=U.rqOpen&&U.rqOpen.id===r.id?U.rqOpen.mode:null;const status=d?d.status:r.status;
