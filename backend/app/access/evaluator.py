@@ -41,7 +41,7 @@ def evaluate(inputs: PolicyInputs, now: datetime) -> Policy:
         return Policy.deny_all(user.id, user.tenant, inputs.policy_version, user.role)
     groups = {gid: g for gid, g in inputs.groups.items() if g.tenant == user.tenant}
     member_of = frozenset(gid for gid in inputs.memberships if gid in groups)
-    reach = _with_ancestors(member_of, groups)
+    reach = with_ancestors(member_of, groups)
     grants = [g for g in inputs.grants if _applies(g, user.id, reach) and _live(g, now)]
     allow, deny = _resource_rules(grants, groups)
     # A corrupt grant also drops manager rights.
@@ -85,7 +85,14 @@ def _is_malformed(grant: GrantFacts) -> bool:
     )
 
 
-def _with_ancestors(start: Iterable[UUID], groups: Groups) -> frozenset[UUID]:
+def restricts(grant: GrantFacts, now: datetime) -> bool:
+    """True when `grant` is live and narrows access: a deny, or a malformed
+    grant (which the evaluator turns into deny-all). Removing someone from a
+    group that carries such a grant widens their access."""
+    return _live(grant, now) and (grant.effect == EFFECT_DENY or _is_malformed(grant))
+
+
+def with_ancestors(start: Iterable[UUID], groups: Groups) -> frozenset[UUID]:
     """The groups plus every ancestor. Cycle-safe: a group is visited once."""
     seen: set[UUID] = set()
     for gid in start:

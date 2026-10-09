@@ -35,6 +35,18 @@ from app.access.models import (
 from app.identity import User
 
 
+def _grant_facts(g: Grant) -> GrantFacts:
+    return GrantFacts(
+        g.id,
+        g.subject_type,
+        g.subject_id,
+        g.effect,
+        g.target_kind,
+        g.target,
+        as_utc(g.expires_at),
+    )
+
+
 class AccessRepository:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
@@ -115,18 +127,28 @@ class AccessRepository:
             .scalars()
             .all()
         )
-        return [
-            GrantFacts(
-                g.id,
-                g.subject_type,
-                g.subject_id,
-                g.effect,
-                g.target_kind,
-                g.target,
-                as_utc(g.expires_at),
+        return [_grant_facts(g) for g in rows]
+
+    async def group_grants(self, group_ids: Iterable[UUID]) -> list[GrantFacts]:
+        """Every grant whose subject is one of `group_ids`, expired ones included."""
+        ids = list(group_ids)
+        if not ids:
+            return []
+        rows = (
+            (
+                await self._db.execute(
+                    select(Grant)
+                    .where(
+                        col(Grant.subject_type) == SUBJECT_GROUP,
+                        col(Grant.subject_id).in_(ids),
+                    )
+                    .execution_options(populate_existing=True)
+                )
             )
-            for g in rows
-        ]
+            .scalars()
+            .all()
+        )
+        return [_grant_facts(g) for g in rows]
 
     # ---- staged writes (the service commits) ----------------------------
 

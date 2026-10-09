@@ -199,11 +199,20 @@ trusted operator on the box and skips them):
 - You cannot change the role or status of a user whose effective capabilities exceed yours. A
   disabled target is judged by the capabilities it would have if it were active.
 - You cannot change your own role or status (`_not_self` in `app/access/admin.py`, a 409).
-- Revoking a deny on a group you belong to is allowed: like the carve-out below, it is
-  group-mediated, so it is not a self-grant.
+- Managers cannot change their own membership: joining a group, changing your own standing or
+  leaving a group yourself needs `admin:groups` (manager standing is not enough).
+- Removing anyone from a group needs `admin:groups` when that group or any of its ancestors holds a
+  live deny (or a malformed grant): membership carries those grants, so removal lifts them. Expiry is
+  judged as the evaluator judges it.
+- Adding a **service** user (the shared MCP identity) to a group needs `admin:groups`: whatever the
+  group holds becomes reachable to every caller of that door.
+- Revoking a deny on a group you belong to is allowed for an `admin:groups` holder: like the
+  carve-out below, it is group-mediated, so it is not a self-grant.
 - D10 covers **direct** grants. Widening access through a group (an `admin:groups` holder granting
-  their own group, or joining a group that already holds grants) is allowed by design; it is
-  visible in, and relies on, the `rbac_changes` audit trail.
+  their own group, joining a group that already holds grants, or lifting a group deny) is reserved
+  for `admin:groups` holders and is visible in, and relies on, the `rbac_changes` audit trail.
+  Managers (D8) only add and remove plain members of their subtree, never themselves, never a
+  service user, and never out from under a deny.
 
 ### 5.4 Evaluation (the single function `access.policy_for(principal)`)
 

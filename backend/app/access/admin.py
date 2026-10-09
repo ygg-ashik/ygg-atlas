@@ -35,6 +35,7 @@ from app.access.errors import (
     InvalidChangeError,
     NotFoundError,
 )
+from app.access.evaluator import restricts, with_ancestors
 from app.access.facts import (
     DEFAULT_TENANT,
     EFFECT_DENY,
@@ -58,7 +59,7 @@ from app.access.schemas import (
     UserUpdate,
 )
 from app.access.service import AccessService
-from app.identity import TokenVerifier, User, UserStatus
+from app.identity import TokenVerifier, User, UserKind, UserStatus
 
 logger = structlog.get_logger()
 
@@ -181,6 +182,13 @@ def _not_self(actor: Actor, user: User) -> None:
     if actor.user_id is not None and actor.user_id == user.id:
         msg = "You can't change your own role or status. Ask another admin."
         raise ConflictError(msg)
+
+
+def _no_self_membership(actor: Actor, user_id: UUID) -> None:
+    """D10: joining, re-standing or leaving a group yourself changes your own
+    access through the group, so it needs admin:groups, not manager standing."""
+    if actor.user_id is not None and actor.user_id == user_id:
+        actor.require(ADMIN_GROUPS)
 
 
 def _check_role_escalation(actor: Actor, role: str) -> None:
@@ -319,10 +327,15 @@ class AccessAdmin:
             msg = f"'{standing}' isn't a standing a member can have."
             raise InvalidChangeError(msg)
         actor.require_member_admin(group_id)
+        _no_self_membership(actor, user_id)
         async with self._write():
             await self._repo.lock_for_write()
             group = await self._group(actor, group_id)
             user = await self._user(actor, user_id)
+            if user.kind == UserKind.SERVICE:
+                # A service identity (the shared MCP user) gains whatever its
+                # groups hold, for every caller of that door: admin:groups only.
+                actor.require(ADMIN_GROUPS)
             member = await self._repo.member(group.id, user.id)
             # Only admin:groups appoints a manager, demotes one or edits one's
             # standing further (decision D8): a manager may only ever change
@@ -352,6 +365,7 @@ class AccessAdmin:
 
     async def remove_member(self, actor: Actor, group_id: UUID, user_id: UUID) -> None:
         actor.require_member_admin(group_id)
+        _no_self_membership(actor, user_id)
         async with self._write():
             await self._repo.lock_for_write()
             group = await self._group(actor, group_id)
@@ -360,6 +374,10 @@ class AccessAdmin:
                 msg = "That user isn't in this group."
                 raise NotFoundError(msg)
             if member.standing == STANDING_MANAGER:
+                actor.require(ADMIN_GROUPS)
+            if await self._carries_restriction(actor, group.id):
+                # Membership carries the group's and its ancestors' grants;
+                # removal lifts their denies, which widens access (D10).
                 actor.require(ADMIN_GROUPS)
             before = _snapshot(member)
             await self._repo.delete(member)
@@ -574,6 +592,14 @@ class AccessAdmin:
             await self._group(actor, subject_id)
         else:
             await self._user(actor, subject_id)
+
+    async def _carries_restriction(self, actor: Actor, group_id: UUID) -> bool:
+        """True when the group or any ancestor holds a live deny (or a
+        malformed grant), judged as the evaluator judges it."""
+        groups = await self._repo.tenant_groups(actor.tenant)
+        lineage = with_ancestors((group_id,), groups)
+        now = _utcnow()
+        return any(restricts(g, now) for g in await self._repo.group_grants(lineage))
 
     async def _ensure_name_free(self, actor: Actor, name: str) -> None:
         if await self._repo.group_by_name(actor.tenant, name) is not None:
