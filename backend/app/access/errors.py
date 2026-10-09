@@ -34,6 +34,15 @@ class InvalidChangeError(AccessError):
 
 
 class PolicyUnavailableError(AccessError):
-    """503: the policy could not be evaluated, so everything is denied (spec §12)."""
+    """503: the policy could not be evaluated, so everything is denied (spec §12).
+
+    `str(exc)` is the business message clients see; `reason` is the internal
+    cause, for logs only.
+    """
 
     status_code: ClassVar[int] = 503
+    PUBLIC_MESSAGE: ClassVar[str] = "The access check is unavailable right now."
+
+    def __init__(self, reason: str = "") -> None:
+        super().__init__(self.PUBLIC_MESSAGE)
+        self.reason = reason

@@ -42,8 +42,10 @@ class AccessService:
         """The user's Policy. Any failure raises PolicyUnavailableError: deny."""
         try:
             return await self._resolve(user_id)
-        except PolicyUnavailableError:
-            logger.exception("access.policy_unavailable", user_id=str(user_id))
+        except PolicyUnavailableError as exc:
+            logger.exception(
+                "access.policy_unavailable", user_id=str(user_id), reason=exc.reason
+            )
             raise
         except Exception as exc:
             logger.exception("access.policy_failed", user_id=str(user_id))
@@ -72,8 +74,10 @@ class AccessService:
         set). Not cached: the user's current status is not what this answers."""
         try:
             return await self._resolve_if_active(user_id)
-        except PolicyUnavailableError:
-            logger.exception("access.policy_unavailable", user_id=str(user_id))
+        except PolicyUnavailableError as exc:
+            logger.exception(
+                "access.policy_unavailable", user_id=str(user_id), reason=exc.reason
+            )
             raise
         except Exception as exc:
             logger.exception("access.policy_failed", user_id=str(user_id))

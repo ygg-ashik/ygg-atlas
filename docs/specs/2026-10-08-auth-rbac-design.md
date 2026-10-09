@@ -391,8 +391,9 @@ never happen in the browser.
 - Every RBAC write audited and increments `policy_version`; an API write whose actor's Policy
   predates the current `policy_version` is refused (§5.3, write discipline).
 - **Ops: a corrupt grant fails closed.** The evaluator warnings name the grant (`grant_id`):
-  - `access.malformed_grant` (unknown effect or target kind): everyone the grant applies to loses
-    all data, all capabilities and all manager rights.
+  - `access.malformed_grant` (unknown effect or target kind, or a capability grant on a group, which
+    only direct SQL can create): everyone the grant applies to loses all data, all capabilities and
+    all manager rights.
   - `access.invalid_deny_pattern`: everyone it applies to loses all data.
   - `access.invalid_allow_pattern`: that allow is ignored, so its data is not granted.
 

@@ -411,3 +411,22 @@ def test_literal_rule_is_reported_before_same_depth_wildcard() -> None:
     decision = p.decide(REVENUE)
     assert decision.rule is not None
     assert decision.rule.pattern == REVENUE
+
+
+# ---- a group capability grant is malformed (only direct SQL can create one) --
+
+
+@pytest.mark.parametrize("effect", ["allow", "deny"])
+def test_a_group_capability_grant_fails_closed(effect: str) -> None:
+    allow_all = grant(USER, "*")
+    bad = grant(ROOT, MCP_USE, kind="capability", effect=effect)
+    with capture_logs() as logs:
+        p = policy(role="analyst", member_of={ROOT: "manager"}, grants=[allow_all, bad])
+    assert p.capabilities == frozenset()
+    assert not p.allows(REVENUE)
+    assert p.deny_reason(REVENUE) == f"denied by grant {bad.id} (group:marketing)"
+    assert p.managed_group_ids == frozenset()
+    events = [log for log in logs if log["event"] == "access.malformed_grant"]
+    assert len(events) == 1
+    assert events[0]["grant_id"] == str(bad.id)
+    assert events[0]["log_level"] == "warning"

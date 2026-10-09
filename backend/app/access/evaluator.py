@@ -79,9 +79,15 @@ def _applies(grant: GrantFacts, user_id: UUID, reach: frozenset[UUID]) -> bool:
 
 
 def _is_malformed(grant: GrantFacts) -> bool:
+    # Groups never grant capabilities (spec §5.2); the API refuses to write
+    # one, so a group capability grant came from direct SQL. Ignoring it would
+    # silently drop a deny, so it fails closed like any other corrupt grant.
     return (
         grant.effect not in _VALID_EFFECTS
         or grant.target_kind not in _VALID_TARGET_KINDS
+        or (
+            grant.subject_type == SUBJECT_GROUP and grant.target_kind == KIND_CAPABILITY
+        )
     )
 
 

@@ -69,5 +69,6 @@ async def test_bump_version_raises_when_the_row_is_missing(db) -> None:
     await db.execute(delete(PolicyState))
     await db.commit()
 
-    with pytest.raises(PolicyUnavailableError, match="policy_state has no row"):
+    with pytest.raises(PolicyUnavailableError) as raised:
         await AccessRepository(db).bump_version()
+    assert raised.value.reason == "policy_state has no row"

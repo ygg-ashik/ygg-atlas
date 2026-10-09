@@ -72,6 +72,8 @@ async def access_error_handler(_request: Request, exc: Exception) -> JSONRespons
     Anything else is a bug, not an access decision: it is logged and never
     exposes `str(exc)` to the caller.
     """
+    if isinstance(exc, PolicyUnavailableError):
+        logger.warning("access.policy_unavailable", reason=exc.reason)
     if isinstance(exc, AccessError):
         return JSONResponse({"detail": str(exc)}, status_code=exc.status_code)
     logger.exception("access.unhandled_error")

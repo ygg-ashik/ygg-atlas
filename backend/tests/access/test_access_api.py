@@ -175,4 +175,7 @@ async def test_access_error_handler_maps_status_and_message() -> None:
     assert denied_response.status_code == 403
     assert denied_response.json() == {"detail": "x"}
     assert unavailable_response.status_code == 503
-    assert unavailable_response.json() == {"detail": "y"}
+    # The internal reason is logged, never sent: clients get a business message.
+    assert unavailable_response.json() == {
+        "detail": "The access check is unavailable right now."
+    }
