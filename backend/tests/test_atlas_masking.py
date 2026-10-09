@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
+from structlog.testing import capture_logs
 
 from app.atlas import AtlasCaller, AtlasRegistry, AtlasTools
 from app.atlas.models import EntityDef, MetricDef
@@ -239,9 +240,14 @@ async def test_a_malformed_mode_suppresses(broken: _BrokenMode) -> None:
         registry=_registry(),
         pseudonym_key="k",
     )
-    result = await _breakdown(tools)
+    with capture_logs() as logs:
+        result = await _breakdown(tools)
     assert result["rows"] == []
     assert result["suppressed_rows"] == 3
+    [event] = [e for e in logs if e["event"] == "atlas.mask_mode_malformed"]
+    assert event["log_level"] == "warning"
+    assert set(event) == {"event", "log_level", "label_class"}  # no values
+    assert event["label_class"] == "person_name"
 
 
 @dataclass(frozen=True)

@@ -421,3 +421,49 @@ async def test_a_failing_freshness_compile_is_logged_without_values(
     [event] = [e for e in logs if e["event"] == "atlas.freshness_scope_failed"]
     assert event["entity"] == "order"
     assert "b2c" not in repr(event)
+
+
+class _LeakyConnector(RecordingConnector):
+    """A driver error that echoes the bound scope values, as raw DB errors can."""
+
+    async def fetch_one(self, query: str, params: dict[str, Any]) -> dict[str, Any]:
+        raise RuntimeError(f"db exploded on {query} with {params}")
+
+
+async def test_an_unexpected_error_is_audited_without_scope_values(
+    db: AsyncSession, registry: AtlasRegistry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    connector = _LeakyConnector()
+    monkeypatch.setattr("app.atlas.tools.get_connector", lambda _source: connector)
+    user_id = uuid4()
+    tools = make_tools(
+        db=db, registry=registry, row_scopes=[(ORDERS, B2C)], user_id=user_id
+    )
+    result = await tools.execute("query_metric", {"metric_id": "revenue", **WEEK})
+
+    assert result == {"error": "Internal error executing query_metric"}
+    [row] = await _audit_rows(db, user_id)
+    assert row.success is False
+    assert row.error == "Internal error executing query_metric (RuntimeError)"
+    assert "b2c" not in (row.error or "")
+
+
+@pytest.mark.parametrize(
+    ("scope", "level"),
+    [
+        (({"region": frozenset({"gcc"})},), "info"),  # undeclared: routine
+        (({"channel": frozenset({f"gcc{i}" for i in range(101)})},), "warning"),
+    ],
+    ids=["undeclared", "over_cap"],
+)
+async def test_a_hidden_resource_is_logged_without_values(
+    registry: AtlasRegistry, scope: RowScope, level: str
+) -> None:
+    tools = make_tools(registry=registry, row_scopes=[(ORDERS, scope)])
+    with capture_logs() as logs:
+        await tools.execute("list_metrics", {})
+    hidden = [e for e in logs if e["event"] == "atlas.scope_hidden"]
+    assert hidden
+    for event in hidden:
+        assert event["log_level"] == level
+        assert "gcc" not in repr(event)

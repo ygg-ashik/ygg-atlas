@@ -28,6 +28,7 @@ from app.atlas.provenance import build_provenance
 from app.atlas.registry import AtlasRegistry, get_registry
 from app.atlas.scope import (
     SCOPE_TOKEN,
+    UNDECLARED,
     CompiledScope,
     RowScope,
     ScopeCompileError,
@@ -272,9 +273,18 @@ class AtlasTools:
             outcome = _Outcome(False, f"Invalid arguments: {exc}")
             result = {"error": f"Invalid arguments: {exc}"}
         except Exception as exc:  # unexpected — log loudly, keep the answer honest
-            logger.exception("atlas.tool_failed", tool=tool)
-            outcome = _Outcome(False, str(exc))
-            result = {"error": f"Internal error executing {tool}"}
+            logger.exception(
+                "atlas.tool_failed",
+                tool=tool,
+                user_id=str(self.caller.user_id),
+                session_id=str(self.caller.session_id),
+            )
+            # Raw errors can echo bound scope values, so the audit row and the
+            # answer carry none (the class name carries no values). Driver
+            # errors in the log are value-free via hide_parameters.
+            error = f"Internal error executing {tool}"
+            outcome = _Outcome(False, f"{error} ({type(exc).__name__})")
+            result = {"error": error}
         return result, outcome
 
     async def _audit(
@@ -347,7 +357,12 @@ class AtlasTools:
             logger.exception("atlas.policy_error", resource=resource)
             return False
         except ScopeCompileError as exc:
-            logger.debug("atlas.scope_hidden", resource=resource, reason=str(exc))
+            # The reason is fixed text, never values. A dimension this data
+            # lacks is routine (a csm scope over deepsales/*); others are
+            # misconfiguration (empty scope, a cap, bad column text).
+            reason = str(exc)
+            log = logger.info if reason == UNDECLARED else logger.warning
+            log("atlas.scope_hidden", resource=resource, reason=reason)
             return False
         return True
 
@@ -499,7 +514,11 @@ class AtlasTools:
         except Exception:
             logger.exception("atlas.policy_error", label_class=label_class)
             return False, None
-        return False, mode if _well_formed(mode) else None
+        if mode is not None and not _well_formed(mode):
+            # The label class only: never the mode's (possibly sensitive) fields.
+            logger.warning("atlas.mask_mode_malformed", label_class=label_class)
+            return False, None
+        return False, mode
 
     def _key(self) -> str:
         if self._pseudonym_key is not None:
