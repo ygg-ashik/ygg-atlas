@@ -1,6 +1,7 @@
 """Response shapes for the insights endpoints (contract §2)."""
 
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -73,3 +74,39 @@ class Overview(BaseModel):
     end_date: str
     kpis: list[OverviewKpi]
     breakdown: OverviewBreakdown | None
+
+
+# Catalog metadata for the grant picker and the per-user preview (phase 5).
+# Metadata only: no numeric field anywhere, no data, no scope dimensions.
+
+
+class ResourceDecisionOut(BaseModel):
+    allowed: bool
+    reason: str
+    origin: str | None  # "user" or "group:<name>"; None when no grant decided it
+
+
+class CatalogItemOut(BaseModel):
+    path: str
+    id: str
+    name: str
+    kind: Literal["metric", "funnel"]
+    decision: ResourceDecisionOut | None = None
+
+
+class CatalogEntityOut(BaseModel):
+    path: str
+    name: str
+    items: list[CatalogItemOut]
+    decision: ResourceDecisionOut | None = None
+
+
+class CatalogSourceOut(BaseModel):
+    id: str
+    name: str
+    entities: list[CatalogEntityOut]
+
+
+class CatalogResourcesOut(BaseModel):
+    sources: list[CatalogSourceOut]
+    as_user: UUID | None = None

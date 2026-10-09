@@ -3,6 +3,7 @@
 Other modules import only from here.
 """
 
+from app.access.admin import AccessAdmin, Actor
 from app.access.catalog import (
     ADMIN_AUDIT,
     ADMIN_GROUPS,
@@ -10,7 +11,13 @@ from app.access.catalog import (
     CHAT_USE,
     MCP_USE,
 )
-from app.access.dependencies import access_error_handler, get_policy, require_capability
+from app.access.dependencies import (
+    access_error_handler,
+    get_access_admin,
+    get_actor,
+    get_policy,
+    require_capability,
+)
 from app.access.errors import AccessError, PolicyUnavailableError
 from app.access.evaluator import evaluate
 from app.access.facts import GrantFacts, PolicyInputs, UserFacts
@@ -25,7 +32,9 @@ __all__ = [
     "ADMIN_USERS",
     "CHAT_USE",
     "MCP_USE",
+    "AccessAdmin",
     "AccessError",
+    "Actor",
     "GrantFacts",
     "Policy",
     "PolicyInputs",
@@ -34,6 +43,8 @@ __all__ = [
     "access_error_handler",
     "access_router",
     "evaluate",
+    "get_access_admin",
+    "get_actor",
     "get_policy",
     "policy_for",
     "prepare_access",

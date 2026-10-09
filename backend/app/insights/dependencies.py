@@ -7,7 +7,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.access import Policy, get_policy
-from app.atlas import AtlasCaller, AtlasTools
+from app.atlas import AtlasCaller, AtlasRegistry, AtlasTools, get_registry
 from app.database import get_db
 from app.identity import Principal, get_principal
 from app.insights.service import InsightsService
@@ -23,3 +23,8 @@ def get_insights_service(
         user_id=principal.user_id, auth_method=principal.auth_method, surface="api"
     )
     return InsightsService(AtlasTools(caller, policy, db=db))
+
+
+def get_catalog_registry() -> AtlasRegistry:
+    """The loaded atlas registry: catalog metadata only, never a connector."""
+    return get_registry()
