@@ -16,15 +16,20 @@ import asyncio
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import UUID, uuid4
 
 import yaml
 
-from app.agent.loop import run_chat_turn
+from app.access import GrantFacts, Policy, PolicyInputs, UserFacts, evaluate
+from app.agent import run_chat_turn
+from app.atlas import AtlasCaller, AtlasTools
 from app.atlas.registry import get_registry
 from app.config import get_settings
 from app.database import get_session_factory
+from app.identity import ensure_service_user
 from app.models.chat import ChatSession
 
 GOLDENS_DIR = Path(__file__).parent / "goldens"
@@ -146,17 +151,50 @@ def _record(turn: Turn, event: dict[str, Any]) -> None:
         turn.answer = f"[{event['type']}] {detail}"
 
 
-async def _run_question(question: str) -> Turn:
-    async with get_session_factory()() as db:
-        session = ChatSession(
-            user_uid="eval-runner", user_email="evals@yougotagift.com"
+EVAL_EMAIL = "evals@yougotagift.com"
+
+
+def _policy(user_id: UUID, golden: Golden) -> Policy:
+    """The eval user sees what the golden allows (default: everything)."""
+    grants = [
+        GrantFacts(
+            id=uuid4(),
+            subject_type="user",
+            subject_id=user_id,
+            effect="allow",
+            target_kind="resource",
+            target=pattern,
+            expires_at=None,
         )
+        for pattern in golden.get("allow", ["*"])
+    ]
+    inputs = PolicyInputs(
+        user=UserFacts(id=user_id, role="viewer", status="active", tenant="ygg"),
+        groups={},
+        memberships={},
+        grants=grants,
+        policy_version=0,
+    )
+    return evaluate(inputs, datetime.now(UTC))
+
+
+async def _run_question(golden: Golden) -> Turn:
+    async with get_session_factory()() as db:
+        user = await ensure_service_user(db, EVAL_EMAIL, "Eval runner", "viewer")
+        session = ChatSession(user_id=user.id, user_email=EVAL_EMAIL)
         db.add(session)
         await db.commit()
         await db.refresh(session)
 
+        caller = AtlasCaller(
+            user_id=user.id,
+            auth_method="service",
+            surface="chat",
+            session_id=session.id,
+        )
+        tools = AtlasTools(caller, _policy(user.id, golden), db=db)
         turn = Turn()
-        async for event in run_chat_turn("eval-runner", session.id, question, [], db):
+        async for event in run_chat_turn(tools, golden["question"], [], db):
             _record(turn, event)
         return turn
 
@@ -190,7 +228,7 @@ async def main() -> int:
 
     passed = 0
     for golden in goldens:
-        turn = await _run_question(golden["question"])
+        turn = await _run_question(golden)
         failures = _check(golden, turn)
         passed += not failures
         print(f"[{'FAIL' if failures else 'PASS'}] {golden['id']}")
