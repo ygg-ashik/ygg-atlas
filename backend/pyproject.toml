@@ -179,6 +179,7 @@ forbidden_modules = [
 name = "Identity module layering (ARCHITECTURE.md §2.2)"
 type = "layers"
 containers = ["app.identity"]
+exhaustive = true
 layers = [
     "router",
     "dependencies | bootstrap",
@@ -202,6 +203,7 @@ forbidden_modules = [
 name = "Access module layering (ARCHITECTURE.md §2.2)"
 type = "layers"
 containers = ["app.access"]
+exhaustive = true
 layers = [
     "router | cli",
     "dependencies",

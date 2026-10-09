@@ -90,6 +90,16 @@ irreversible (`alembic downgrade base` refuses), so back up before risky migrati
 `ENVIRONMENT=development` or the backend will not start. `BOOTSTRAP_ADMINS` (comma-separated emails)
 creates the first admins; the dev user is a plain viewer.
 
+Server-only files on the box (not in git):
+- `backend/.env` — secrets: `ANTHROPIC_API_KEY`, `FIREBASE_PROJECT_ID`, `ATLAS_MCP_TOKEN`.
+  Currently `AUTH_DISABLED=true` for smoke testing; set `false` once Firebase is configured.
+- `docker-compose.override.yml` — binds all ports to `127.0.0.1` so nothing is publicly
+  exposed while auth is disabled. Remove the binds and add a reverse proxy (nginx/caddy
+  with HTTPS) when going live.
+
+MCP endpoint (for Claude Desktop / other agents): `http://127.0.0.1:8081/mcp-server/mcp`
+(streamable HTTP; set `ATLAS_MCP_TOKEN` and send it as a bearer token).
+
 ### Access control (phase 2)
 
 Signing in gives a **viewer** role with **no data**. Admins grant data with groups and grants;
@@ -104,13 +114,3 @@ the CLI on the box:
 Every change is in `rbac_changes`. The same operations exist as `/api/v1/admin/...` for admins.
 MCP is off unless `ATLAS_MCP_TOKEN` is set; it runs as `MCP_SERVICE_EMAIL` under that user's grants.
 Locally, `make dev-access` (after signing in once) grants the dev user all data.
-
-Server-only files on the box (not in git):
-- `backend/.env` — secrets: `ANTHROPIC_API_KEY`, `FIREBASE_PROJECT_ID`, `ATLAS_MCP_TOKEN`.
-  Currently `AUTH_DISABLED=true` for smoke testing; set `false` once Firebase is configured.
-- `docker-compose.override.yml` — binds all ports to `127.0.0.1` so nothing is publicly
-  exposed while auth is disabled. Remove the binds and add a reverse proxy (nginx/caddy
-  with HTTPS) when going live.
-
-MCP endpoint (for Claude Desktop / other agents): `http://127.0.0.1:8081/mcp-server/mcp`
-(streamable HTTP; set `ATLAS_MCP_TOKEN` and send it as a bearer token).

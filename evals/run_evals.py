@@ -28,7 +28,7 @@ from app.agent import run_chat_turn
 from app.atlas import AtlasCaller, AtlasTools, get_registry
 from app.config import get_settings
 from app.database import get_session_factory
-from app.identity import User, UserKind, ensure_service_user
+from app.identity import User, UserKind, UserStatus, ensure_service_user
 from app.models import ChatSession
 
 GOLDENS_DIR = Path(__file__).parent / "goldens"
@@ -168,7 +168,9 @@ def _policy(user: User, golden: Golden) -> Policy:
         for pattern in golden.get("allow", ["*"])
     ]
     inputs = PolicyInputs(
-        user=UserFacts(id=user.id, role=user.role, status="active", tenant=user.tenant),
+        user=UserFacts(
+            id=user.id, role=user.role, status=user.status, tenant=user.tenant
+        ),
         groups={},
         memberships={},
         grants=grants,
@@ -184,6 +186,12 @@ async def _run_question(golden: Golden) -> Turn:
             msg = (
                 f"{EVAL_EMAIL} exists as a {user.kind} user, not a service user. "
                 "Evals refuse to run as a person; fix or rename that users row."
+            )
+            raise SystemExit(msg)
+        if user.status != UserStatus.ACTIVE:
+            msg = (
+                f"{EVAL_EMAIL} is {user.status}, not active. "
+                "Evals refuse to run as a disabled user; re-enable that users row."
             )
             raise SystemExit(msg)
         session = ChatSession(user_id=user.id, user_email=EVAL_EMAIL)

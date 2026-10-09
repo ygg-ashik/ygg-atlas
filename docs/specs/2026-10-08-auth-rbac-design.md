@@ -54,7 +54,7 @@ Not copied:
 - A resource path is always 2 or 3 segments: `source/entity` (an entity) or `source/entity/item`
   (a metric, funnel or other item).
 - A trailing `*` covers its own prefix and everything under it: `demo/order/*` matches `demo/order`
-  and `demo/order/revenue`; `demo/*` matches `demo`, every `demo` entity and every item under them;
+  and `demo/order/revenue`; `demo/*` matches every `demo` entity and every item under them;
   a lone `*` matches everything. A `*` elsewhere matches exactly one segment (`demo/*/revenue`).
 - A literal pattern (no trailing `*`) must be a full 3-segment item path. `demo` or `demo/order`
   are rejected with a hint to use `demo/*` or `demo/order/*`, so a deny never leaves anything
@@ -198,6 +198,9 @@ trusted operator on the box and skips them):
 - Assign only roles whose capabilities are within your own.
 - You cannot change the role or status of a user whose effective capabilities exceed yours. A
   disabled target is judged by the capabilities it would have if it were active.
+- You cannot change your own role or status (`_not_self` in `app/access/admin.py`, a 409).
+- Revoking a deny on a group you belong to is allowed: like the carve-out below, it is
+  group-mediated, so it is not a self-grant.
 - D10 covers **direct** grants. Widening access through a group (an `admin:groups` holder granting
   their own group, or joining a group that already holds grants) is allowed by design; it is
   visible in, and relies on, the `rbac_changes` audit trail.
@@ -284,13 +287,16 @@ API routes use `require_capability(...)` dependencies built on the same Policy.
 | `rbac_changes` | id, actor_user_id, action, object_type, object_id, before jsonb, after jsonb, at — append-only |
 | `policy_state` | single row: policy_version bigint, incremented on every RBAC write |
 
-All timestamps are `TIMESTAMP(timezone=True)`, UTC. `chat_sessions.user_uid` and `atlas_audit_log`
-gain `user_id` foreign keys during migration.
+All timestamps are `TIMESTAMP(timezone=True)`, UTC. `chat_sessions` (whose `user_uid` was dropped,
+D6) and `atlas_audit_log` gain `user_id` foreign keys during migration.
 
-**Users are never hard-deleted.** The audit foreign key `fk_atlas_audit_log_user_id_users` has no
-`ON DELETE` action, so deleting a user with audit history fails. Disabling a user (`status =
-disabled`) is the only way to remove one, which also means a grant can never point at a missing
-subject.
+**Deleting users and groups.** No code path hard-deletes a user; by convention, disabling one
+(`status = disabled`) is the only way to remove it. The database backs this up only partly: the
+foreign keys from `atlas_audit_log`, `group_members` and `chat_sessions` have no `ON DELETE` action,
+so deleting a user with audit, membership or chat history fails. `grants.subject_id` has no foreign
+key, because it can point at a user or a group. Groups are protected in application code instead:
+`delete_group` refuses while `group_in_use` finds subgroups, members or grants. If a grant were
+orphaned anyway (say, by a manual `DELETE` on the box), it would apply to nobody.
 
 ## 8. Module layout
 

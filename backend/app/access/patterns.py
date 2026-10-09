@@ -4,9 +4,9 @@ A resource path is `source/entity/item` (an entity itself is `source/entity`);
 resource paths are always 2-3 segments, never a bare source.
 A pattern with a trailing `*` matches that prefix itself and everything under
 it: `demo/order/*` matches `demo/order` and `demo/order/revenue`; `demo/*`
-matches `demo`, `demo/order` and `demo/order/revenue`; a lone `*` matches
-everything. A pattern without a trailing `*` must be a full item path of
-exactly three segments (a mid-pattern `*` still matches exactly one segment,
+matches `demo/order` and `demo/order/revenue`; a lone `*` matches everything.
+A pattern without a trailing `*` must be a full item path of exactly three
+segments (a mid-pattern `*` still matches exactly one segment,
 e.g. `demo/*/revenue`) — shorter paths like `demo` or `demo/order` name an
 entity or source and are rejected in favor of the trailing-`*` form, which
 fails closed: it never leaves anything under a denied path reachable.
