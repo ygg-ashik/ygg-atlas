@@ -30,7 +30,7 @@ docs/       specs and plans
 Prereqs: Docker, Node 22 + pnpm, Python 3.12 + uv.
 
 ```bash
-cp backend/.env.example backend/.env      # fill ANTHROPIC_API_KEY etc.
+cp backend/.env.example backend/.env      # fill ANTHROPIC_API_KEY etc.; set ENVIRONMENT=development
 cp frontend/.env.example frontend/.env.local
 docker compose up -d postgres
 cd backend && uv sync && uv run alembic upgrade head
@@ -48,6 +48,9 @@ cd backend && uv run pytest --cov=app
 cd frontend && pnpm test
 cd backend && uv run python ../evals/run_evals.py   # golden suite (needs seeded demo data)
 ```
+
+Evals run each golden under a synthetic per-golden policy (its `allow` patterns, default `*`), not
+the database grants. They are an operator-only tool, never an access path for users.
 
 ## Deployment (AWS EC2)
 

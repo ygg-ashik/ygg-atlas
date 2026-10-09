@@ -9,6 +9,10 @@ Usage (from backend/, so the installed `app` package and its venv are used):
 
 Requires: an LLM key (OPENAI_API_KEY or ANTHROPIC_API_KEY), seeded demo data
 (uv run python scripts/seed_demo.py), and the ygg-atlas database per backend/.env.
+
+Access: each golden runs under a synthetic, in-memory policy built from its `allow`
+patterns (default `*`, everything), never from the grants in the database. This is
+an operator-only tool, run on a trusted box; it is not an access path for users.
 """
 
 import argparse

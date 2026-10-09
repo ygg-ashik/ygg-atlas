@@ -85,6 +85,7 @@ Violating this causes asyncpg insert errors.
 Backend:
 ```bash
 cd backend && uv sync
+# backend/.env from .env.example: set ENVIRONMENT=development locally (the example ships production)
 uv run uvicorn app.main:app --reload --port 8081
 uv run alembic upgrade head        # apply migrations (also run by the Docker image at start)
 uv run alembic revision -m "..."   # new migration in migrations/versions/

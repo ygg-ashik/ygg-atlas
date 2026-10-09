@@ -1,7 +1,9 @@
 """Loads and indexes the semantic registry from every enabled source plugin.
 
-Load-time validation is the enterprise guardrail: globally unique ids, and every
-SQL query may reference only tables its plugin has allowlisted. A definition
+Load-time validation is the enterprise guardrail: globally unique ids, ids that are
+safe resource-path segments (`^[a-z0-9_]+$`, and no metric and funnel sharing an
+id within one entity, since both map to `source/entity/id`), and every SQL query
+may reference only tables its plugin has allowlisted. A definition
 that fails validation prevents startup — bad metrics never reach the agent.
 """
 
@@ -16,11 +18,21 @@ import yaml
 from app.atlas.models import EntityDef, FunnelDef, MetricDef
 from app.sources import SourcePlugin, get_plugins
 
+_ID = re.compile(r"^[a-z0-9_]+$")
 _TABLE_REF = re.compile(r"\b(?:from|join)\s+([a-zA-Z_][a-zA-Z0-9_.]*)", re.IGNORECASE)
 
 
 def _referenced_tables(query: str) -> set[str]:
     return {t.lower() for t in _TABLE_REF.findall(query)}
+
+
+def _lint_id(kind: str, value: str, where: str) -> None:
+    """Ids are resource-path segments that grants match (`source/entity/id`)."""
+    if not _ID.fullmatch(value):
+        raise ValueError(
+            f"{kind} id '{value}' in {where} must match {_ID.pattern} "
+            "(lowercase letters, digits and underscores)"
+        )
 
 
 class AtlasRegistry:
@@ -43,6 +55,7 @@ class AtlasRegistry:
         entity = EntityDef(**raw)
         entity.source = plugin.id
         where = f"{plugin.id}:{path.name}"
+        _lint_id("entity", entity.id, where)
         if entity.id in self.entities:
             raise ValueError(f"Duplicate entity id '{entity.id}' in {where}")
         self.entities[entity.id] = entity
@@ -53,6 +66,13 @@ class AtlasRegistry:
         for funnel in entity.funnels:
             self._register_funnel(plugin, entity, funnel, where)
 
+        shared = {m.id for m in entity.metrics} & {f.id for f in entity.funnels}
+        if shared:
+            raise ValueError(
+                f"Metric and funnel ids {sorted(shared)} in {where} share "
+                f"the same resource path under entity '{entity.id}'"
+            )
+
         if entity.freshness_query:
             self._lint_tables(plugin, entity.freshness_query, "freshness query", where)
 
@@ -61,6 +81,7 @@ class AtlasRegistry:
     ) -> None:
         metric.entity = entity.id
         metric.source = plugin.id
+        _lint_id("metric", metric.id, where)
         if metric.id in self.metrics:
             raise ValueError(f"Duplicate metric id '{metric.id}' in {where}")
         if metric.time_scope not in ("range", "snapshot"):
@@ -84,6 +105,7 @@ class AtlasRegistry:
     ) -> None:
         funnel.entity = entity.id
         funnel.source = plugin.id
+        _lint_id("funnel", funnel.id, where)
         if funnel.id in self.funnels:
             raise ValueError(f"Duplicate funnel id '{funnel.id}' in {where}")
         for step in funnel.steps:
