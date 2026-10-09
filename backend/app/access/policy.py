@@ -3,8 +3,10 @@
 It is the only object enforcement code consults. Immutable, so it is safe to cache.
 """
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import datetime
+from types import MappingProxyType
 from typing import Self
 from uuid import UUID
 
@@ -13,12 +15,41 @@ from app.access.patterns import matches
 
 NO_GRANT = "no grant allows it"
 
+# One grant's row scope: sorted (dimension, values) pairs, ANDed. Concrete
+# values only ($self is resolved by the evaluator); hashable.
+type Conjunction = tuple[tuple[str, frozenset[str]], ...]
+# What the atlas compiles: alternatives ORed. () means no rows.
+type RowScope = tuple[dict[str, frozenset[str]], ...]
+
 
 @dataclass(frozen=True, slots=True)
 class Rule:
     pattern: str
     grant_id: UUID
     origin: str  # "user", or "group:<name>"
+    scope: Conjunction | None = None  # None = all rows
+
+
+@dataclass(frozen=True, slots=True)
+class SkippedRule:
+    """An allow left out for this user, e.g. its `$self` attribute is unset."""
+
+    pattern: str
+    grant_id: UUID
+    origin: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class LabelMode:
+    """How a label class is shown without its clearance (spec §5.6)."""
+
+    mode: str  # one of facts.MASK_MODES
+    bucket_size: int = 5
+
+
+def _no_label_modes() -> Mapping[str, LabelMode]:
+    return MappingProxyType({})
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +78,9 @@ class Policy:
     group_ids: frozenset[UUID] = frozenset()
     managed_group_ids: frozenset[UUID] = frozenset()
     valid_until: datetime | None = None  # earliest expiry among the grants used
+    clearances: frozenset[str] = frozenset()
+    label_modes: Mapping[str, LabelMode] = field(default_factory=_no_label_modes)
+    skipped: tuple[SkippedRule, ...] = ()
 
     @classmethod
     def deny_all(
@@ -73,6 +107,27 @@ class Policy:
             if matches(rule.pattern, resource):
                 return Decision(allowed=True, rule=rule)
         return Decision(allowed=False)
+
+    def row_scope(self, resource: str) -> RowScope | None:
+        """Which rows of an allowed resource (D3.3): `None` = all rows, else the
+        alternatives ORed; `()` = denied. Every matching allow counts, not only
+        the most specific one, and any unscoped one wins."""
+        if not self.decide(resource).allowed:
+            return ()
+        matching = [r for r in self.allow_rules if matches(r.pattern, resource)]
+        conjunctions: list[Conjunction] = []
+        for rule in matching:
+            if rule.scope is None:
+                return None
+            conjunctions.append(rule.scope)
+        return tuple(dict(c) for c in dict.fromkeys(conjunctions))
+
+    def has_clearance(self, clearance: str) -> bool:
+        return self.active and clearance in self.clearances
+
+    def mask_mode(self, label_class: str) -> LabelMode | None:
+        """`None` = no valid setting; the atlas then suppresses (fail closed)."""
+        return self.label_modes.get(label_class)
 
     def allows(self, resource: str) -> bool:
         return self.decide(resource).allowed
