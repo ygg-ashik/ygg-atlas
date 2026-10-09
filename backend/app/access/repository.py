@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID
 
+import structlog
 from sqlalchemy import ColumnElement, CursorResult, and_, func, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +19,7 @@ from sqlmodel import SQLModel, col, select
 
 from app.access.errors import PolicyUnavailableError
 from app.access.facts import (
+    BUILTIN_ATTRIBUTES,
     SUBJECT_GROUP,
     SUBJECT_USER,
     GrantFacts,
@@ -30,10 +32,15 @@ from app.access.models import (
     Grant,
     Group,
     GroupMember,
+    LabelClassSetting,
     PolicyState,
     RbacChange,
+    ScopeDimension,
+    UserAttribute,
 )
 from app.identity import User
+
+logger = structlog.get_logger()
 
 
 def _grant_facts(g: Grant) -> GrantFacts:
@@ -45,6 +52,7 @@ def _grant_facts(g: Grant) -> GrantFacts:
         g.target_kind,
         g.target,
         as_utc(g.expires_at),
+        g.row_scope,
     )
 
 
@@ -150,6 +158,67 @@ class AccessRepository:
             .all()
         )
         return [_grant_facts(g) for g in rows]
+
+    async def attributes_for(self, user_id: UUID) -> dict[str, str]:
+        """The user's stored attributes plus the built-ins, which win (C11).
+
+        Empty for an unknown user: there is nothing `$self` could resolve to.
+        """
+        user = await self._db.get(User, user_id, populate_existing=True)
+        if user is None:
+            return {}
+        rows = (
+            (
+                await self._db.execute(
+                    select(UserAttribute)
+                    .where(col(UserAttribute.user_id) == user_id)
+                    .execution_options(populate_existing=True)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        attributes = {a.key: a.value for a in rows if a.key not in BUILTIN_ATTRIBUTES}
+        attributes.update(email=user.email, user_id=str(user.id))
+        return attributes
+
+    async def label_modes(self) -> dict[str, tuple[str, int]]:
+        """label class -> (mode, bucket_size), as stored; the evaluator validates."""
+        rows = (
+            await self._db.execute(
+                select(LabelClassSetting).execution_options(populate_existing=True)
+            )
+        ).scalars()
+        return {s.label_class: (s.mode, s.bucket_size) for s in rows}
+
+    async def self_attributes(self) -> dict[str, str]:
+        """dimension -> the attribute its `$self` resolves to, from the mirror.
+
+        The registry lints one `self` per dimension (C1); should the mirror
+        disagree anyway, the dimension is left out, so `$self` on it resolves to
+        nothing and the grant is skipped (fail closed).
+        """
+        rows = (
+            await self._db.execute(
+                select(ScopeDimension).execution_options(populate_existing=True)
+            )
+        ).scalars()
+        declared: dict[str, set[str | None]] = {}
+        for row in rows:
+            declared.setdefault(row.dimension, set()).add(row.self_attribute)
+        mapping: dict[str, str] = {}
+        for dimension, attributes in sorted(declared.items()):
+            if len(attributes) > 1:
+                logger.error(
+                    "access.self_attribute_conflict",
+                    dimension=dimension,
+                    attributes=sorted(a or "" for a in attributes),
+                )
+                continue
+            (attribute,) = attributes
+            if attribute is not None:
+                mapping[dimension] = attribute
+        return mapping
 
     # ---- staged writes (the service commits) ----------------------------
 

@@ -159,6 +159,9 @@ def test_head_matches_model_columns(tmp_path: Path) -> None:
             "grants",
             "rbac_changes",
             "policy_state",
+            "user_attributes",
+            "label_class_settings",
+            "scope_dimensions",
         ):
             migrated = {c["name"] for c in inspector.get_columns(table)}
             declared = set(SQLModel.metadata.tables[table].columns.keys())
@@ -314,6 +317,90 @@ def test_malformed_grant_rows_are_rejected(tmp_path: Path) -> None:
                     ":subject, 'DENY', 'resource', '*', '', CURRENT_TIMESTAMP)"
                 ),
                 {"id": uuid4().hex, "subject": uuid4().hex},
+            )
+    finally:
+        engine.dispose()
+
+
+ROW_FIELD_TABLES = {"user_attributes", "label_class_settings", "scope_dimensions"}
+
+
+def _column_order(sync_url: str, table: str) -> list[str]:
+    engine = sa.create_engine(sync_url)
+    try:
+        return [c["name"] for c in sa.inspect(engine).get_columns(table)]
+    finally:
+        engine.dispose()
+
+
+def test_row_field_tables_and_seeds(tmp_path: Path) -> None:
+    db = tmp_path / "m.db"
+    command.upgrade(_config(f"sqlite+aiosqlite:///{db}"), "head")
+    sync_url = f"sqlite:///{db}"
+    engine = sa.create_engine(sync_url)
+    with engine.connect() as conn:
+        modes = set(
+            conn.execute(
+                sa.text(
+                    "SELECT label_class, mode, bucket_size FROM label_class_settings"
+                )
+            ).tuples()
+        )
+    engine.dispose()
+
+    assert _tables(sync_url) >= ROW_FIELD_TABLES
+    assert modes == {
+        ("person_name", "suppress", 5),
+        ("business_name", "pseudonymise", 5),
+    }
+    # Appended, so phase 4's columns rebase cleanly after them (contract K2).
+    assert _column_order(sync_url, "grants")[-1] == "row_scope"
+    assert _column_order(sync_url, "atlas_audit_log")[-2:] == ["scope", "masking"]
+
+
+def test_row_field_model_columns_are_appended() -> None:
+    def last(table: str, n: int) -> list[str]:
+        return list(SQLModel.metadata.tables[table].columns.keys())[-n:]
+
+    assert last("grants", 1) == ["row_scope"]
+    assert last("atlas_audit_log", 2) == ["scope", "masking"]
+
+
+def test_row_field_downgrade_round_trips(tmp_path: Path) -> None:
+    db = tmp_path / "m.db"
+    sync_url = f"sqlite:///{db}"
+    config = _config(f"sqlite+aiosqlite:///{db}")
+    command.upgrade(config, "head")
+
+    command.downgrade(config, "0003")
+
+    assert not ROW_FIELD_TABLES & _tables(sync_url)
+    assert "row_scope" not in _column_order(sync_url, "grants")
+    assert not {"scope", "masking"} & set(_column_order(sync_url, "atlas_audit_log"))
+
+    command.upgrade(config, "head")
+
+    assert _tables(sync_url) >= ROW_FIELD_TABLES
+    assert _column_order(sync_url, "atlas_audit_log")[-2:] == ["scope", "masking"]
+
+
+@pytest.mark.parametrize(
+    ("mode", "bucket_size"), [("hide", 5), ("bucket", 0)], ids=["mode", "bucket_size"]
+)
+def test_bad_label_mode_is_rejected(
+    tmp_path: Path, mode: str, bucket_size: int
+) -> None:
+    db = tmp_path / "m.db"
+    command.upgrade(_config(f"sqlite+aiosqlite:///{db}"), "head")
+    engine = sa.create_engine(f"sqlite:///{db}")
+    try:
+        with pytest.raises(IntegrityError), engine.begin() as conn:
+            conn.execute(
+                sa.text(
+                    "UPDATE label_class_settings SET mode = :mode, "
+                    "bucket_size = :size WHERE label_class = 'person_name'"
+                ),
+                {"mode": mode, "size": bucket_size},
             )
     finally:
         engine.dispose()

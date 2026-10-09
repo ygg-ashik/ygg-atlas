@@ -1,15 +1,24 @@
 """Direct-to-database helpers for tests. They skip AccessAdmin on purpose."""
 
+from collections.abc import Iterable
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import update
+from sqlalchemy import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 
 from app.access.admin import AccessAdmin, Actor
 from app.access.cache import PolicyCache
-from app.access.models import Grant, Group, GroupMember, PolicyState
+from app.access.models import (
+    Grant,
+    Group,
+    GroupMember,
+    LabelClassSetting,
+    PolicyState,
+    ScopeDimension,
+    UserAttribute,
+)
 from app.access.repository import AccessRepository
 from app.access.service import AccessService
 from app.identity import TokenVerifier
@@ -78,6 +87,7 @@ async def add_grant(
     kind: str = "resource",
     expires_at: datetime | None = None,
     bump_version: bool = True,
+    row_scope: dict[str, list[str]] | None = None,
 ) -> Grant:
     grant = Grant(
         subject_type="group" if isinstance(subject, Group) else "user",
@@ -87,12 +97,61 @@ async def add_grant(
         target=target,
         reason="test",
         expires_at=expires_at,
+        row_scope=row_scope,
     )
     db.add(grant)
     await db.commit()
     if bump_version:
         await bump(db)
     return grant
+
+
+async def set_attribute(db: AsyncSession, user: User, key: str, value: str) -> None:
+    """Upsert one user attribute (no reserved-key check: that is AccessAdmin's)."""
+    row = await db.get(UserAttribute, (user.id, key))
+    if row is None:
+        row = UserAttribute(user_id=user.id, key=key, value=value)
+    row.value = value
+    db.add(row)
+    await db.commit()
+    await bump(db)
+
+
+async def seed_label_classes(
+    db: AsyncSession,
+    *,
+    person: str = "suppress",
+    business: str = "pseudonymise",
+    bucket: int = 5,
+) -> None:
+    """What migration 0004 seeds; conftest's create_all leaves the table empty (C17)."""
+    for label_class, mode in (("person_name", person), ("business_name", business)):
+        row = await db.get(LabelClassSetting, label_class)
+        if row is None:
+            row = LabelClassSetting(label_class=label_class, mode=mode)
+        row.mode = mode
+        row.bucket_size = bucket
+        db.add(row)
+    await db.commit()
+    await bump(db)
+
+
+async def mirror_dimensions(
+    db: AsyncSession, rows: Iterable[tuple[str, str, str, str | None]]
+) -> None:
+    """Replace the scope_dimensions mirror with (source, entity, dimension, self)."""
+    await db.execute(delete(ScopeDimension))
+    for source, entity, dimension, self_attribute in rows:
+        db.add(
+            ScopeDimension(
+                source=source,
+                entity=entity,
+                dimension=dimension,
+                self_attribute=self_attribute,
+            )
+        )
+    await db.commit()
+    await bump(db)
 
 
 async def bump(db: AsyncSession) -> None:

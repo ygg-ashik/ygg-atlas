@@ -119,7 +119,7 @@ def _check_names(conn: Connection, table: str) -> set[str | None]:
 
 async def test_check_constraints_match_the_models(engine: AsyncEngine) -> None:
     await _upgrade("head")
-    tables = ("grants", "group_members", "policy_state")
+    tables = ("grants", "group_members", "policy_state", "label_class_settings")
     async with engine.connect() as conn:
         for table in tables:
             migrated = await conn.run_sync(_check_names, table)

@@ -102,6 +102,9 @@ class AccessService:
             memberships=await self._repo.memberships(user.id),
             grants=await self._repo.grants_for(user.id, groups),
             policy_version=version,
+            attributes=await self._repo.attributes_for(user.id),
+            self_attributes=await self._repo.self_attributes(),
+            label_modes=await self._repo.label_modes(),
         )
 
     async def describe(self, policy: Policy) -> MeAccessOut:
