@@ -327,38 +327,53 @@ class AccessAdmin:
         actor.require_member_admin(group_id)
         _no_self_membership(actor, user_id)
         async with self._write(actor):
-            group = await self._group(actor, group_id)
-            user = await self._user(actor, user_id)
-            if user.kind == UserKind.SERVICE:
-                # A service identity (the shared MCP user) gains whatever its
-                # groups hold, for every caller of that door: admin:groups only.
-                actor.require(ADMIN_GROUPS)
-            member = await self._repo.member(group.id, user.id)
-            # Only admin:groups appoints a manager, demotes one or edits one's
-            # standing further (decision D8): a manager may only ever change
-            # the membership of a plain member.
-            if standing == STANDING_MANAGER or (
-                member is not None and member.standing == STANDING_MANAGER
-            ):
-                actor.require(ADMIN_GROUPS)
-            before = _snapshot(member)
-            if member is None:
-                member = GroupMember(
-                    group_id=group.id,
-                    user_id=user.id,
-                    standing=standing,
-                    added_by=actor.user_id,
-                )
-            else:
-                member.standing = standing
-            after = _snapshot(member)
-            if before == after:
+            out, change = await self._stage_member(actor, group_id, user_id, standing)
+            if change is None:
                 await self._repo.commit()  # release the lock; nothing changed
-                return _member_out(member, user)
-            self._repo.add(member)
-            target = ("group_member", f"{group.id}:{user.id}")
-            await self._commit(_change(actor, "member.put", target, before, after))
-        return _member_out(member, user)
+                return out
+            await self._commit(change)
+        return out
+
+    async def _stage_member(
+        self, actor: Actor, group_id: UUID, user_id: UUID, standing: str
+    ) -> tuple[MemberOut, RbacChange | None]:
+        """Stage a member put under the caller's `_write`; None means no-op."""
+        if standing not in (STANDING_MEMBER, STANDING_MANAGER):
+            msg = f"'{standing}' isn't a standing a member can have."
+            raise InvalidChangeError(msg)
+        actor.require_member_admin(group_id)
+        _no_self_membership(actor, user_id)
+        group = await self._group(actor, group_id)
+        user = await self._user(actor, user_id)
+        if user.kind == UserKind.SERVICE:
+            # A service identity (the shared MCP user) gains whatever its
+            # groups hold, for every caller of that door: admin:groups only.
+            actor.require(ADMIN_GROUPS)
+        member = await self._repo.member(group.id, user.id)
+        # Only admin:groups appoints a manager, demotes one or edits one's
+        # standing further (decision D8): a manager may only ever change
+        # the membership of a plain member.
+        if standing == STANDING_MANAGER or (
+            member is not None and member.standing == STANDING_MANAGER
+        ):
+            actor.require(ADMIN_GROUPS)
+        before = _snapshot(member)
+        if member is None:
+            member = GroupMember(
+                group_id=group.id,
+                user_id=user.id,
+                standing=standing,
+                added_by=actor.user_id,
+            )
+        else:
+            member.standing = standing
+        after = _snapshot(member)
+        if before == after:
+            return _member_out(member, user), None
+        self._repo.add(member)
+        target = ("group_member", f"{group.id}:{user.id}")
+        change = _change(actor, "member.put", target, before, after)
+        return _member_out(member, user), change
 
     async def remove_member(self, actor: Actor, group_id: UUID, user_id: UUID) -> None:
         actor.require_member_admin(group_id)
@@ -401,38 +416,53 @@ class AccessAdmin:
             # D10: no self-grants; only capabilities you hold.
             actor.require(target)
         async with self._write(actor):
-            await self._subject(actor, payload.subject_type, payload.subject_id)
-            subject = (payload.subject_type, payload.subject_id)
-            existing = await self._repo.find_grant(
-                subject, payload.effect, payload.target_kind, target
-            )
-            if existing is not None:
-                expiry = as_utc(existing.expires_at)
-                if expiry is not None and expiry <= now:
-                    msg = (
-                        f"An expired grant {existing.id} for that target exists; "
-                        "revoke it first."
-                    )
-                    raise ConflictError(msg)
-                msg = "That grant already exists."
-                raise ConflictError(msg)
-            grant = Grant(
-                subject_type=payload.subject_type,
-                subject_id=payload.subject_id,
-                effect=payload.effect,
-                target_kind=payload.target_kind,
-                target=target,
-                reason=payload.reason.strip(),
-                expires_at=payload.expires_at,
-                created_by=actor.user_id,
-            )
-            self._repo.add(grant)
-            await self._commit(
-                _change(
-                    actor, "grant.create", ("grant", grant.id), None, _snapshot(grant)
-                )
-            )
+            grant, change = await self._stage_grant(actor, payload, now)
+            await self._commit(change)
         return grant
+
+    async def _stage_grant(
+        self, actor: Actor, payload: GrantCreate, now: datetime
+    ) -> tuple[Grant, RbacChange]:
+        """Stage a new grant under the caller's `_write`; a duplicate is a 409."""
+        actor.require(_grant_capability(payload.subject_type))
+        if payload.subject_type == SUBJECT_USER and actor.user_id == payload.subject_id:
+            # D10: no self-grants; only capabilities you hold.
+            msg = "You can't grant access to yourself. Ask another admin."
+            raise AccessDeniedError(msg)
+        target = _validated_target(payload, now)
+        if payload.target_kind == KIND_CAPABILITY:
+            # D10: no self-grants; only capabilities you hold.
+            actor.require(target)
+        await self._subject(actor, payload.subject_type, payload.subject_id)
+        subject = (payload.subject_type, payload.subject_id)
+        existing = await self._repo.find_grant(
+            subject, payload.effect, payload.target_kind, target
+        )
+        if existing is not None:
+            expiry = as_utc(existing.expires_at)
+            if expiry is not None and expiry <= now:
+                msg = (
+                    f"An expired grant {existing.id} for that target exists; "
+                    "revoke it first."
+                )
+                raise ConflictError(msg)
+            msg = "That grant already exists."
+            raise ConflictError(msg)
+        grant = Grant(
+            subject_type=payload.subject_type,
+            subject_id=payload.subject_id,
+            effect=payload.effect,
+            target_kind=payload.target_kind,
+            target=target,
+            reason=payload.reason.strip(),
+            expires_at=payload.expires_at,
+            created_by=actor.user_id,
+        )
+        self._repo.add(grant)
+        change = _change(
+            actor, "grant.create", ("grant", grant.id), None, _snapshot(grant)
+        )
+        return grant, change
 
     async def revoke_grant(self, actor: Actor, grant_id: UUID) -> None:
         actor.require_any(ADMIN_GROUPS, ADMIN_USERS)
@@ -484,20 +514,32 @@ class AccessAdmin:
             msg = "Nothing to change: send a role or a status."
             raise InvalidChangeError(msg)
         async with self._write(actor):
-            user = await self._user(actor, user_id)
-            _not_self(actor, user)
-            await self._check_not_above_actor(actor, user)
-            before, after = _apply_user_update(actor, user, payload)
-            if not before:
+            user, change = await self._stage_user_update(actor, user_id, payload)
+            if change is None:
                 await self._repo.commit()  # release the lock; nothing changed
                 return user
-            self._repo.add(user)
-            await self._commit(
-                _change(actor, _update_action(before), ("user", user.id), before, after)
-            )
+            after = change.after or {}
+            await self._commit(change)
         if after.get("status") == UserStatus.DISABLED:
             await self._end_firebase_sessions(user)
         return user
+
+    async def _stage_user_update(
+        self, actor: Actor, user_id: UUID, payload: UserUpdate
+    ) -> tuple[User, RbacChange | None]:
+        """Stage a role/status change under the caller's `_write`; None is no-op."""
+        actor.require(ADMIN_USERS)
+        user = await self._user(actor, user_id)
+        _not_self(actor, user)
+        await self._check_not_above_actor(actor, user)
+        before, after = _apply_user_update(actor, user, payload)
+        if not before:
+            return user, None
+        self._repo.add(user)
+        change = _change(
+            actor, _update_action(before), ("user", user.id), before, after
+        )
+        return user, change
 
     async def effective_access(self, actor: Actor, user_id: UUID) -> Policy:
         """The user's evaluated Policy, for the preview (spec §10)."""
@@ -574,16 +616,19 @@ class AccessAdmin:
             await self._repo.rollback()
             raise
 
-    async def _commit(self, change: RbacChange) -> None:
-        self._repo.add(change)
+    async def _commit(self, *changes: RbacChange) -> None:
+        """Stage every row, bump policy_version ONCE, commit, log each action."""
+        for change in changes:
+            self._repo.add(change)
         await self._repo.bump_version()
         await self._repo.commit()
-        logger.info(
-            "access.changed",
-            action=change.action,
-            object_id=change.object_id,
-            via=change.via,
-        )
+        for change in changes:
+            logger.info(
+                "access.changed",
+                action=change.action,
+                object_id=change.object_id,
+                via=change.via,
+            )
 
     async def _group(self, actor: Actor, group_id: UUID) -> Group:
         group = await self._repo.group(group_id)
