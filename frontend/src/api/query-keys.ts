@@ -32,13 +32,16 @@ export const queryKeys = {
   groupList: ['admin', 'groups', 'list'] as const,
   groupDetail: (groupId: string) => ['admin', 'groups', 'detail', groupId] as const,
   groupMembers: (groupId: string) => ['admin', 'groups', 'members', groupId] as const,
+  memberCandidates: (groupId: string, q: string) =>
+    ['admin', 'groups', 'candidates', groupId, q] as const,
 
   grants: ['admin', 'grants'] as const,
   grantList: (subjectType: SubjectType, subjectId: string) =>
     ['admin', 'grants', subjectType, subjectId] as const,
 
   requestQueue: ['admin', 'requests'] as const,
-  requestQueueList: (status: RequestStatusFilter) => ['admin', 'requests', status] as const,
+  requestQueueList: (status: RequestStatusFilter, userId: string | null = null) =>
+    ['admin', 'requests', status, userId] as const,
 
   audit: ['admin', 'audit'] as const,
   changes: (filters: ChangeFilters) => ['admin', 'audit', 'changes', filters] as const,

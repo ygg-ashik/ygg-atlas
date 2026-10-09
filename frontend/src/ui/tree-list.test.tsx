@@ -46,6 +46,8 @@ describe('TreeList', () => {
     expect(root).toHaveAttribute('tabindex', '0');
     expect(item('marketing-paid')).toHaveAttribute('aria-level', '2');
     expect(item('growth')).toHaveAttribute('aria-disabled', 'true');
+    expect(item('growth')).toHaveAccessibleDescription('Outside your scope');
+    expect(item('marketing-paid')).not.toHaveAccessibleDescription();
     expect(screen.getByText('4 · 2')).toHaveClass('font-mono');
   });
 

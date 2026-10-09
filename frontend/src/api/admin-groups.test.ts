@@ -6,6 +6,7 @@ import {
   fetchGroupDetail,
   listGrants,
   listGroups,
+  listMemberCandidates,
   listMembers,
   putMember,
   removeMember,
@@ -43,6 +44,13 @@ describe('admin groups client', () => {
     });
     await removeMember('g1', 'u1');
     expect(http.delete).toHaveBeenCalledWith('/admin/groups/g1/members/u1');
+  });
+
+  it('searches member candidates with q', async () => {
+    await listMemberCandidates('g 1', 'sar');
+    expect(http.get).toHaveBeenCalledWith('/admin/groups/g%201/member-candidates', {
+      params: { q: 'sar' },
+    });
   });
 
   it('maps grant routes', async () => {

@@ -49,11 +49,21 @@ export function useCancelRequest() {
   });
 }
 
+export interface RequestQueueOptions {
+  enabled?: boolean;
+  /** Only this requester's requests (still inside the caller's decide scope). */
+  userId?: string;
+}
+
 /** The decision queue (requests the caller may decide), newest first. */
-export function useRequestQueue(status: RequestStatusFilter = 'pending', enabled = true) {
+export function useRequestQueue(
+  status: RequestStatusFilter = 'pending',
+  { enabled = true, userId }: RequestQueueOptions = {},
+) {
   return useCursorList(
-    queryKeys.requestQueueList(status),
-    (cursor) => listDecidableRequests({ status, cursor, limit: REQUEST_PAGE_SIZE }),
+    queryKeys.requestQueueList(status, userId ?? null),
+    (cursor) =>
+      listDecidableRequests({ status, user_id: userId, cursor, limit: REQUEST_PAGE_SIZE }),
     { enabled },
   );
 }

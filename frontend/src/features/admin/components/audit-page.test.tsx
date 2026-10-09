@@ -36,7 +36,7 @@ function decision(id: string, overrides: Partial<AuditDecision> = {}): AuditDeci
   return {
     id,
     user: { user_id: 'u-omar', email: 'omar@yougotagift.com', display_name: 'Omar Khalil' },
-    auth_method: 'firebase',
+    auth_method: 'web',
     surface: 'chat',
     tool: 'query_metric',
     arguments: { metric: 'demo/order/revenue' },
@@ -163,6 +163,20 @@ describe('AuditPage', () => {
     expect(lastCall(listChanges)?.filters).toEqual({});
   });
 
+  it('a reversed date range shows an inline hint and is not sent', async () => {
+    renderPage();
+    await screen.findByRole('table', { name: 'Access changes' });
+    const from = screen.getByRole('textbox', { name: 'From (UTC)' });
+    await fast().type(from, '2026-10-09');
+    await fast().type(screen.getByRole('textbox', { name: 'To (UTC)' }), '2026-10-01');
+    expect(await screen.findByText(/“To” is before “From”/)).toBeInTheDocument();
+    expect(from).toHaveAttribute('aria-invalid', 'true');
+    expect(from).toHaveAccessibleDescription(/“To” is before “From”/);
+    // Neither date is sent while reversed.
+    expect(lastCall(listChanges)?.filters).toEqual({});
+    expect(listChanges.mock.calls.some(([req]) => 'until' in (req?.filters ?? {}))).toBe(false);
+  });
+
   it('"Load more" follows the keyset cursor and appends', async () => {
     renderPage();
     await fast().click(await screen.findByRole('button', { name: 'Load more' }));
@@ -228,6 +242,25 @@ describe('AuditPage', () => {
         tool: 'query_metric',
       }),
     );
+  });
+
+  it('the sign-in method filter goes to the decisions query as auth_method', async () => {
+    renderPage();
+    await openTab('Decisions');
+    await screen.findByRole('table', { name: 'Tool decisions' });
+    await fast().selectOptions(screen.getByRole('combobox', { name: 'Sign-in' }), 'pat');
+    await waitFor(() => expect(lastCall(listDecisions)?.filters).toEqual({ auth_method: 'pat' }));
+  });
+
+  it('Top denied users falls back to the user id when the name is empty', async () => {
+    fetchAuditSummary.mockResolvedValue({
+      ...SUMMARY,
+      top_denied_users: [{ user_id: 'u-nameless', display_name: '', count: 3 }],
+    });
+    renderPage();
+    await openTab('Summary');
+    const users = await screen.findByRole('list', { name: 'Top denied users' });
+    expect(within(users).getByText('u-nameless')).toBeInTheDocument();
   });
 
   it('Credentials shows "Not available yet" until phase 4 ships', async () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   grantCreateLines,
   memberPutLines,
+  revokeAllLines,
   roleChangeLines,
   statusChangeLines,
 } from './review-lines';
@@ -55,5 +56,16 @@ describe('review lines mirror the rbac_changes row', () => {
       { kind: 'remove', text: 'standing  —' },
       { kind: 'add', text: 'standing  member' },
     ]);
+  });
+
+  it('revoke all never claims connected apps keep working', () => {
+    const pat = { prefix: 'atl_pat_1', name: 'laptop', kind: 'pat' };
+    const oauth = { prefix: 'atl_oat_2', name: 'Claude', kind: 'oauth_access' };
+    const patOnly = revokeAllLines('a@x.com', [pat]).map((l) => l.text);
+    expect(patOnly.join('\n')).not.toMatch(/keep working/);
+    expect(patOnly.at(-1)).toBe('every live token of any kind; each gets 401 on its next call');
+    const withApps = revokeAllLines('a@x.com', [pat, oauth]).map((l) => l.text);
+    expect(withApps).toContain('token     atl_oat_2…  Claude');
+    expect(withApps.at(-1)).toBe('connected apps lose access too: their OAuth tokens are revoked');
   });
 });

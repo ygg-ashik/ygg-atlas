@@ -110,6 +110,31 @@ describe('AdminTokensPage', () => {
     );
   });
 
+  it('revoke all lists OAuth tokens and says connected apps lose access', async () => {
+    tokens.listAdminTokens.mockResolvedValue({
+      available: true,
+      data: [token('77c1', KARIM), token('0a11', KARIM, { kind: 'oauth_access', name: 'Claude' })],
+    });
+    const user = renderPage();
+    await user.click(await screen.findByRole('button', { name: `Revoke all tokens of ${KARIM}` }));
+    const card = screen.getByRole('region', { name: `Revoke all tokens · ${KARIM}` });
+    expect(card).toHaveTextContent('atl_pat_0a11…');
+    expect(card).toHaveTextContent('connected apps lose access too');
+    expect(card).not.toHaveTextContent('keep working');
+  });
+
+  it('a kind filter hides revoke all: it would revoke tokens the filtered list hides', async () => {
+    const user = renderPage();
+    await screen.findByRole('table', { name: `Tokens of ${KARIM}` });
+    await user.click(screen.getByRole('radio', { name: 'Personal' }));
+    await waitFor(() => expect(tokens.listAdminTokens).toHaveBeenLastCalledWith({ kind: 'pat' }));
+    expect(await screen.findByText(/Revoke all is on the All view/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: `Revoke all tokens of ${KARIM}` }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Revoke Token 77c1' })).toBeInTheDocument();
+  });
+
   it('before phase 4 ships: "Not available yet"', async () => {
     tokens.listAdminTokens.mockResolvedValue({ available: false, reason: 'missing' });
     renderPage();

@@ -293,7 +293,12 @@ describe('AdminRequestsPage', () => {
     expect(within(done).getByText(/Yousef Darwish/)).toBeInTheDocument();
     expect(within(done).getByText(/Paid search moved to the agency\./)).toBeInTheDocument();
     expect(within(done).queryByRole('button')).not.toBeInTheDocument();
-    expect(listDecidableRequests).toHaveBeenCalledWith(expect.objectContaining({ status: 'all' }));
+    expect(listDecidableRequests).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'decided' }),
+    );
+    expect(listDecidableRequests).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'all' }),
+    );
   });
 
   it('a manager reads that only their subtree group requests are here', async () => {
@@ -323,6 +328,38 @@ describe('AdminRequestsPage', () => {
     await fast().click(within(review).getByRole('button', { name: 'Approve' }));
     expect(within(review).getByText(/Enter a date as YYYY-MM-DD/)).toBeInTheDocument();
     expect(approveRequest).not.toHaveBeenCalled();
+  });
+
+  it('an expiry of today or earlier blocks the approval (must be after today, UTC)', async () => {
+    renderPage();
+    const review = await openApprove('Sara Mansour');
+    const expiry = within(review).getByLabelText(/Expiry/);
+    await fast().clear(expiry);
+    await fast().type(expiry, todayUtc());
+    await fast().click(within(review).getByRole('button', { name: 'Approve' }));
+    expect(within(review).getByText(/Pick a date after today \(UTC\)/)).toBeInTheDocument();
+    expect(approveRequest).not.toHaveBeenCalled();
+    await fast().clear(expiry);
+    await fast().type(expiry, plusDays(todayUtc(), 1));
+    approveRequest.mockResolvedValue({ ...RESOURCE, status: 'approved' });
+    await fast().click(within(review).getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(approveRequest).toHaveBeenCalled());
+  });
+
+  it('a stale-actor decline 409 on a still-pending row reads Retry', async () => {
+    declineRequest.mockRejectedValueOnce(
+      httpError(409, { detail: 'Access changed while this request was running; retry.' }),
+    );
+    renderPage();
+    const row = await screen.findByRole('article', { name: /Omar Khalil/ });
+    await fast().click(within(row).getByRole('button', { name: 'Decline' }));
+    await fast().click(within(row).getByRole('button', { name: 'Decline request' }));
+    expect(
+      await within(row).findByText('Access changed while this request was running; retry.'),
+    ).toBeInTheDocument();
+    declineRequest.mockResolvedValue({ ...GROUP, status: 'declined' });
+    await fast().click(within(row).getByRole('button', { name: 'Retry' }));
+    expect(declineRequest).toHaveBeenCalledTimes(2);
   });
 
   it('a declined request shows its outcome in place', async () => {

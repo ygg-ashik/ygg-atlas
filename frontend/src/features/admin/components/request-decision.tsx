@@ -31,6 +31,15 @@ const defaultExpiry = () => plusDays(todayUtc(), DEFAULT_DAYS);
 const firstName = (request: AccessRequest) =>
   request.requester?.display_name.split(' ')[0] || 'the requester';
 
+/** Why a resource approval's expiry can't be sent, or null. '' means no expiry;
+ * a date must be after today in UTC (the backend refuses a past expiry). */
+export function approvalExpiryError(expiry: string, today: string = todayUtc()): string | null {
+  if (expiry === '') return null;
+  if (!isIsoDate(expiry)) return 'Enter a date as YYYY-MM-DD (UTC), or clear it for no expiry.';
+  if (expiry <= today) return 'Pick a date after today (UTC), or clear it for no expiry.';
+  return null;
+}
+
 /** The approval body. Resource: always an explicit expiry, a date or null (no
  * expiry), never absent (absent would mean the backend's default). Others: empty. */
 function approvalBody(request: AccessRequest, expiry: string): RequestDecision {
@@ -91,16 +100,23 @@ export function useApproval(request: AccessRequest, handlers: DecisionHandlers) 
     });
   };
 
-  const invalid = request.kind === 'resource' && expiry !== '' && !isIsoDate(expiry);
+  const expiryError = request.kind === 'resource' ? approvalExpiryError(expiry) : null;
   const apply = () => {
-    if (invalid) {
+    if (expiryError) {
       setShowInvalid(true);
       return;
     }
     void write.apply();
   };
 
-  return { write, start, expiry, setExpiry, invalid: invalid && showInvalid, apply };
+  return {
+    write,
+    start,
+    expiry,
+    setExpiry,
+    expiryError: showInvalid ? expiryError : null,
+    apply,
+  };
 }
 
 type Approval = ReturnType<typeof useApproval>;
@@ -137,11 +153,7 @@ export function ApproveReview({
           <Field
             label="Expiry"
             hint="Prefilled at 90 days; resource grants should expire. Clear it for no expiry."
-            error={
-              approval.invalid
-                ? 'Enter a date as YYYY-MM-DD (UTC), or clear it for no expiry.'
-                : undefined
-            }
+            error={approval.expiryError ?? undefined}
           >
             <DateField
               value={approval.expiry}
@@ -188,6 +200,9 @@ export function DeclinePanel({ request, onClose, onSettled, stillPending }: Decl
   const decline = useDeclineRequest();
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // A 409 on a still-pending request is the stale-actor case: nothing was
+  // written, and the button reads Retry, as on an approval's review card.
+  const [conflict, setConflict] = useState(false);
   const submit = async () => {
     setError(null);
     const text = note.trim();
@@ -199,7 +214,9 @@ export function DeclinePanel({ request, onClose, onSettled, stillPending }: Decl
       onSettled({ request: decided(request, out) });
     } catch (e) {
       if (await settledElsewhere(e, request, { onSettled, stillPending })) return;
-      setError(describeMutationError(e).message);
+      const info = describeMutationError(e);
+      setConflict(info.kind === 'conflict');
+      setError(info.message);
     }
   };
   return (
@@ -234,7 +251,7 @@ export function DeclinePanel({ request, onClose, onSettled, stillPending }: Decl
       )}
       <div className="mt-3 flex flex-wrap gap-2">
         <Button onClick={() => void submit()} disabled={decline.isPending}>
-          Decline request
+          {conflict ? 'Retry' : 'Decline request'}
         </Button>
         <Button variant="pill" onClick={onClose} disabled={decline.isPending}>
           Keep pending

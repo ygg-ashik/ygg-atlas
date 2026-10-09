@@ -1,10 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { type GroupStanding } from '../access';
 import {
+  CANDIDATE_QUERY_MAX,
+  CANDIDATE_QUERY_MIN,
   createGroup,
   deleteGroup,
   fetchGroupDetail,
   listGroups,
+  listMemberCandidates,
   listMembers,
   putMember,
   removeMember,
@@ -32,6 +35,19 @@ export function useGroupMembers(groupId: string | null) {
     queryKey: queryKeys.groupMembers(groupId ?? ''),
     queryFn: () => listMembers(groupId as string),
     enabled: !!groupId,
+  });
+}
+
+/** Colleagues who could join `groupId`, for a search of 3..100 characters
+ * (idle otherwise). A 403 is not retried: the viewer may not add members. */
+export function useMemberCandidates(groupId: string, q: string, enabled = true) {
+  const search = q.trim();
+  const valid = search.length >= CANDIDATE_QUERY_MIN && search.length <= CANDIDATE_QUERY_MAX;
+  return useQuery({
+    queryKey: queryKeys.memberCandidates(groupId, search),
+    queryFn: () => listMemberCandidates(groupId, search),
+    enabled: enabled && valid,
+    retry: false,
   });
 }
 

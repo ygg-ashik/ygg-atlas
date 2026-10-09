@@ -1,10 +1,12 @@
 // Shared pieces of the audit tabs: option pickers, the UTC date range, the
 // list states (skeleton, failure, "Load more") and the collapsed JSON view.
 import type * as React from 'react';
+import { useId } from 'react';
 import {
   Button,
   DateField,
   ErrorNotice,
+  FieldError,
   isIsoDate,
   Select,
   SkeletonRegion,
@@ -70,10 +72,18 @@ const nextDay = (iso: string) => {
   return d.toISOString().slice(0, 10);
 };
 
+/** True when both dates are real and `to` is before `from`. */
+export function rangeReversed({ from, to }: DateRange): boolean {
+  return isIsoDate(from) && isIsoDate(to) && to < from;
+}
+
 /** The API's `since` (inclusive) and `until` (exclusive) for whole UTC days;
- * a date that isn't complete and real yet is not sent. */
-export function rangeQuery({ from, to }: DateRange): { since?: string; until?: string } {
+ * a date that isn't complete and real yet is not sent, nor is a reversed
+ * range (the fields say so instead of asking for an empty answer). */
+export function rangeQuery(range: DateRange): { since?: string; until?: string } {
+  const { from, to } = range;
   const out: { since?: string; until?: string } = {};
+  if (rangeReversed(range)) return out;
   if (isIsoDate(from)) out.since = `${from}T00:00:00Z`;
   if (isIsoDate(to)) out.until = `${nextDay(to)}T00:00:00Z`;
   return out;
@@ -86,20 +96,31 @@ export function DateRangeFields({
   value: DateRange;
   onChange: (value: DateRange) => void;
 }) {
+  const hintId = useId();
+  const reversed = rangeReversed(value);
+  // Only when reversed: an undefined aria-invalid would mask DateField's own flag.
+  const flag = reversed ? { 'aria-invalid': true, 'aria-describedby': hintId } : {};
   return (
     <>
       <DateField
         aria-label="From (UTC)"
         placeholder="From YYYY-MM-DD"
         value={value.from}
+        {...flag}
         onChange={(e) => onChange({ ...value, from: e.target.value })}
       />
       <DateField
         aria-label="To (UTC)"
         placeholder="To YYYY-MM-DD"
         value={value.to}
+        {...flag}
         onChange={(e) => onChange({ ...value, to: e.target.value })}
       />
+      {reversed && (
+        <FieldError id={hintId}>
+          “To” is before “From”: swap them. The dates aren&apos;t applied until then.
+        </FieldError>
+      )}
     </>
   );
 }

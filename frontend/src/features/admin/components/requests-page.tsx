@@ -33,7 +33,7 @@ export function AdminRequestsPage() {
   // refetches without them; cleared when the tab changes.
   const [settled, setSettled] = useState<ReadonlyMap<string, QueueRow>>(new Map());
   const pending = useRequestQueue('pending');
-  const decided = useRequestQueue('all', tab === 'decided');
+  const decided = useRequestQueue('decided', { enabled: tab === 'decided' });
 
   const onSettled = useCallback((row: QueueRow) => {
     setSettled((m) => new Map(m).set(row.request.id, row));
@@ -54,10 +54,7 @@ export function AdminRequestsPage() {
     const gone = [...settled.values()].filter((r) => !live.has(r.request.id));
     return [...rows, ...gone].sort(newestFirst);
   }, [pending.items, settled]);
-  const decidedRows = useMemo(
-    () => decided.items.filter((r) => r.status !== 'pending').map((r) => ({ request: r })),
-    [decided.items],
-  );
+  const decidedRows = useMemo(() => decided.items.map((r) => ({ request: r })), [decided.items]);
 
   const changeTab = (next: Tab) => {
     setTab(next);

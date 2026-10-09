@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Network } from 'lucide-react';
 import { type Group } from '@/api/admin-groups';
 import { useGroups } from '@/api/hooks/use-admin-groups';
-import { useMyAccess, type MyAccessView } from '@/api/hooks/use-my-access';
+import { useMyAccess } from '@/api/hooks/use-my-access';
 import { Button, EmptyState, ErrorNotice, Skeleton, SkeletonRegion } from '@/ui';
 import { buildGroupTree } from '../group-tree';
 import { AdminPage } from './admin-page';
@@ -11,20 +11,14 @@ import { GroupDetailPanel } from './group-detail-page';
 import { GroupForm } from './group-form';
 import { GroupTree } from './group-tree';
 
-/** A manager without admin:groups can't list groups; they see the groups they
- * manage (from `/me/access`), each opening its own detail. */
-function managedGroups(me: MyAccessView): Group[] {
-  return (me.access?.groups ?? [])
-    .filter((g) => g.standing === 'manager')
-    .map((g) => ({ id: g.id, name: g.name, description: '', parent_id: null, created_at: '' }));
-}
-
+/** `GET /admin/groups`: every group for admin:groups; for a group manager,
+ * the groups they manage and their subgroups, with real parent ids (P5-D22).
+ * A managed group whose parent is outside that set shows as a root. */
 function useVisibleGroups() {
   const me = useMyAccess();
   const admin = me.can('admin:groups');
-  const list = useGroups({ enabled: admin });
-  const groups = admin ? (list.data ?? []) : managedGroups(me);
-  return { me, admin, list, groups, ready: !admin || list.isSuccess };
+  const list = useGroups({ enabled: admin || me.isManager });
+  return { admin, list, groups: list.data ?? [], ready: list.isSuccess };
 }
 
 function GroupsSkeleton() {

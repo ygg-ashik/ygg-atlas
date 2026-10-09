@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { Network } from 'lucide-react';
 import { type UserDetail } from '@/api/admin-users';
 import { EmptyState, StandingPill, buttonVariants } from '@/ui';
-import { CARD, INSET_LIST } from './surfaces';
+import { INSET_LIST } from './surfaces';
 
 /** The user's group memberships with their standing. */
 export function UserGroupsPanel({ user }: { user: UserDetail }) {
@@ -32,19 +32,5 @@ export function UserGroupsPanel({ user }: { user: UserDetail }) {
         </li>
       ))}
     </ul>
-  );
-}
-
-/** The user's own requests: a count here; they are decided in the queue. */
-export function UserRequestsPanel({ user }: { user: UserDetail }) {
-  return (
-    <p className={`${CARD} px-5 py-4 text-sm text-body`}>
-      <span className="tabular-nums">{user.pending_requests}</span> pending{' '}
-      {user.pending_requests === 1 ? 'request' : 'requests'}.{' '}
-      <Link to="/admin/requests" className="text-primary-text underline-offset-4 hover:underline">
-        Open the access requests queue
-      </Link>{' '}
-      to decide them.
-    </p>
   );
 }

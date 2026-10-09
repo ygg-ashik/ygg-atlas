@@ -1,7 +1,5 @@
-import { Link } from 'react-router-dom';
 import { type GroupStanding } from '@/api/access';
 import { type Member } from '@/api/admin-groups';
-import { type User } from '@/api/admin-users';
 import { useGroupMembers, usePutMember, useRemoveMember } from '@/api/hooks/use-admin-groups';
 import { useMyAccess } from '@/api/hooks/use-my-access';
 import {
@@ -17,7 +15,7 @@ import {
 import { plural } from '../format';
 import { useReviewedWrite, type ReviewedWrite } from '../hooks/use-reviewed-write';
 import { memberPutLines, memberRemoveLines } from '../review-lines';
-import { MemberPicker } from './member-picker';
+import { MemberPicker, PickerDenied, type PickedPerson, type PickerSource } from './member-picker';
 import { ReviewSlot } from './review-slot';
 import { INSET_LIST } from './surfaces';
 
@@ -88,7 +86,7 @@ function useMemberWrites(
 ) {
   const put = usePutMember();
   const remove = useRemoveMember();
-  const add = (u: User, standing: GroupStanding) => {
+  const add = (u: PickedPerson, standing: GroupStanding) => {
     const existing = members.find((m) => m.user_id === u.id)?.standing ?? null;
     write.open({
       slot: 'member',
@@ -113,6 +111,13 @@ function useMemberWrites(
   return { add, drop };
 }
 
+/** admin:users searches every user; a member-admin (admin:groups or a manager)
+ * searches the group's candidates, where the backend checks this exact group. */
+function pickerSource(adminUsers: boolean, memberAdmin: boolean): PickerSource | null {
+  if (adminUsers) return 'users';
+  return memberAdmin ? 'candidates' : null;
+}
+
 /** Members of one group. Managers add and remove plain members only; admin:groups does the rest. */
 export function MembersPanel({ groupId, groupName }: MembersPanelProps) {
   const me = useMyAccess();
@@ -121,6 +126,7 @@ export function MembersPanel({ groupId, groupName }: MembersPanelProps) {
   const list = members.data ?? [];
   const { add, drop } = useMemberWrites(write, groupId, groupName, list);
   const who: Authority = { meId: me.access?.user_id ?? null, admin: me.can('admin:groups') };
+  const source = pickerSource(me.can('admin:users'), who.admin || me.isManager);
   return (
     <section aria-label="Members">
       <h3 className="mb-2.5 mt-1.5 flex flex-wrap items-baseline gap-2 font-serif text-section text-ink">
@@ -129,19 +135,10 @@ export function MembersPanel({ groupId, groupName }: MembersPanelProps) {
           {plural(list.length, 'member')} · managers decide requests for this subtree
         </span>
       </h3>
-      {me.can('admin:users') ? (
-        <MemberPicker canAppoint={who.admin} onPick={add} />
+      {source ? (
+        <MemberPicker groupId={groupId} source={source} canAppoint={who.admin} onPick={add} />
       ) : (
-        <p className="mb-2.5 text-caption text-muted-foreground">
-          People join through their access requests, which you decide in{' '}
-          <Link
-            to="/admin/requests"
-            className="text-primary-text underline-offset-4 hover:underline"
-          >
-            Access requests
-          </Link>
-          . Finding people by name needs <span className="font-mono">admin:users</span>.
-        </p>
+        <PickerDenied />
       )}
       <ReviewSlot write={write} slot="member" />
       {members.isPending && (

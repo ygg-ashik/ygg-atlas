@@ -21,11 +21,14 @@ import { EffectPill } from './effect-pill';
 
 /** `atlas_audit_log.surface` values. */
 const SURFACES = plainOptions(['api', 'chat', 'mcp']);
+/** `Principal.auth_method` values (identity `AuthMethod`). */
+const AUTH_METHODS = plainOptions(['web', 'oauth', 'pat', 'service', 'dev']);
 
 interface FilterState {
   tool: string;
   denyOnly: boolean;
   surface: string;
+  authMethod: string;
   user: PickOption | null;
   range: DateRange;
 }
@@ -34,6 +37,7 @@ const NO_FILTERS: FilterState = {
   tool: '',
   denyOnly: false,
   surface: '',
+  authMethod: '',
   user: null,
   range: NO_RANGE,
 };
@@ -43,6 +47,7 @@ function toQuery(f: FilterState): DecisionFilters {
   if (f.tool.trim()) out.tool = f.tool.trim();
   if (f.denyOnly) out.decision = 'deny';
   if (f.surface) out.surface = f.surface;
+  if (f.authMethod) out.auth_method = f.authMethod;
   if (f.user) out.user_id = f.user.value;
   return { ...out, ...rangeQuery(f.range) };
 }
@@ -138,6 +143,12 @@ export function DecisionsTable() {
           value={filters.surface}
           options={SURFACES}
           onChange={(surface) => set({ surface })}
+        />
+        <Pick
+          label="Sign-in"
+          value={filters.authMethod}
+          options={AUTH_METHODS}
+          onChange={(authMethod) => set({ authMethod })}
         />
         <Pick
           label="User"

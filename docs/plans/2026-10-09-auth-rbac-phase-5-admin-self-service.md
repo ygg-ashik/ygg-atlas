@@ -929,6 +929,12 @@ into this branch after the user approves a mode.
   from `/me/requests/options`; manager names only), `denied-block.test.tsx`, `request-rules.test.ts`.
 - Accept: a new viewer signs in, sees "No data access yet", requests `demo/*` via a suggested group,
   and sees it pending.
+- Contract with B7: the chat block's discriminator is `kind: 'denied'`, shaped
+  `{kind: 'denied', resource, label}` (`DeniedBlock` in `frontend/src/api/chat.ts`). B7's
+  `denied_from_result` must emit exactly that; any other shape renders nothing.
+- Known gap ("Browse groups"): requesters can't list groups (`GET /admin/groups` needs admin:groups
+  or managing one, P5-D22), so there is no browse-all-groups picker. The Group kind discovers groups
+  through `/me/requests/options?resource=` (the groups that hold a resource, with managers' names).
 - Commit: `feat(account): my access, access requests and request-from-denial`
 
 ### Task 13 (F5): Admin users, detail, preview
@@ -985,6 +991,12 @@ into this branch after the user approves a mode.
   empty; populated → revoke via `DELETE /me/connected-apps/{family_id}` with a review card;
   `hosted_connectors=false` → no claude.ai copy), `tokens-page.test.tsx` (admin revoke-all review card).
 - Accept: works against mocked `api/tokens.ts`; on the real backend 404 flags render disabled.
+- Deferred: `service-accounts-page.tsx` is not built in this phase. It is not in the approved mockup;
+  the client and hooks exist (`createServiceAccount`, `createServiceToken`,
+  `useCreateServiceAccount`, `useCreateServiceToken` in `api/tokens.ts` and
+  `api/hooks/use-tokens.ts`) for a follow-up screen once it is mocked and approved.
+- Admin "Revoke all" shows only on the unfiltered (All) list: the endpoint revokes every live token
+  of the user, OAuth included, so its review card lists them all and says connected apps lose access.
 - Commit: `feat(account): tokens and connected apps`
 
 ---

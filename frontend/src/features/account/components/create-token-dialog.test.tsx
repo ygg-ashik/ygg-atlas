@@ -139,6 +139,22 @@ describe('CreateTokenDialog', () => {
     expect(screen.queryByText(SECRET)).not.toBeInTheDocument();
   });
 
+  it('nothing closes the dialog while the create is in flight', async () => {
+    let finish: (t: TokenCreated) => void = () => undefined;
+    createMyToken.mockReturnValue(new Promise<TokenCreated>((resolve) => (finish = resolve)));
+    const user = renderDialog();
+    const dialog = await openForm(user);
+    await user.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'Eval runner');
+    await user.click(within(dialog).getByRole('button', { name: 'Create token' }));
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    await user.keyboard('{Escape}');
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+    expect(screen.getByRole('dialog', { name: 'New personal token' })).toBeInTheDocument();
+    finish(CREATED);
+    const reveal = await screen.findByRole('dialog', { name: 'Copy your token' });
+    expect(within(reveal).getByText(SECRET)).toBeInTheDocument();
+  });
+
   it("shows the backend's sentence when the create is refused", async () => {
     createMyToken.mockRejectedValue(httpError(403, { detail: 'This needs tokens:create.' }));
     const user = renderDialog();

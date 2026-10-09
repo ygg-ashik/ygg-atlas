@@ -41,6 +41,24 @@ describe('useRequestQueue', () => {
     expect(result.current.items.map((r) => r.id)).toEqual(['r1', 'r2', 'r3']);
     expect(result.current.hasNextPage).toBe(false);
   });
+
+  it("narrows to one requester's requests under its own cache key", async () => {
+    http.get.mockResolvedValue({ data: { items: [row('r9')], next_cursor: null } });
+    const { client, wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => useRequestQueue('all', { userId: 'u-omar' }), { wrapper });
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    expect(http.get).toHaveBeenLastCalledWith('/admin/requests', {
+      params: { status: 'all', user_id: 'u-omar', limit: 50 },
+    });
+    expect(client.getQueryData(queryKeys.requestQueueList('all', 'u-omar'))).toBeDefined();
+  });
+
+  it('stays idle while disabled', () => {
+    renderHook(() => useRequestQueue('decided', { enabled: false }), {
+      wrapper: createQueryWrapper().wrapper,
+    });
+    expect(http.get).not.toHaveBeenCalled();
+  });
 });
 
 describe('request mutations', () => {

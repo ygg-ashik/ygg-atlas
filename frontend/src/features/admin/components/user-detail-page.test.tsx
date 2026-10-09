@@ -17,6 +17,8 @@ vi.mock('@/api/hooks/use-my-access', () => ({ useMyAccess: () => PERSONAS.admin 
 const listAdminTokens = vi.hoisted(() => vi.fn());
 const revokeAllUserTokens = vi.hoisted(() => vi.fn());
 vi.mock('@/api/tokens', () => ({ listAdminTokens, revokeAllUserTokens }));
+const listDecidableRequests = vi.hoisted(() => vi.fn());
+vi.mock('@/api/access-requests', () => ({ listDecidableRequests }));
 
 const TOKEN = {
   id: 't1',
@@ -65,6 +67,7 @@ describe('UserDetailPage', () => {
     );
     listAdminTokens.mockReset();
     revokeAllUserTokens.mockReset();
+    listDecidableRequests.mockReset();
   });
 
   it('shows the user with their groups', async () => {
@@ -132,5 +135,48 @@ describe('UserDetailPage', () => {
     fetchUserDetail.mockRejectedValue(httpError(404, { detail: 'No such user.' }));
     renderAt('/admin/users/nope');
     expect(await screen.findByText("Couldn't load this user")).toBeInTheDocument();
+  });
+
+  it("requests tab: lists this user's requests from the scoped queue", async () => {
+    listDecidableRequests.mockResolvedValue({
+      items: [
+        {
+          id: 'r1',
+          kind: 'resource',
+          target: 'demo/checkout/checkout_funnel',
+          target_label: 'demo/checkout/checkout_funnel',
+          note: 'Funnel QA',
+          status: 'declined',
+          created_at: '2026-10-08T11:00:00Z',
+          decided_by: null,
+          decided_at: null,
+          decision_note: '',
+        },
+      ],
+      next_cursor: null,
+    });
+    renderAt('/admin/users/karim?tab=requests');
+    const list = await screen.findByRole('list', { name: 'Requests from Karim Nasser' });
+    const item = within(list).getByRole('listitem');
+    expect(within(item).getByText('demo/checkout/checkout_funnel')).toHaveClass('font-mono');
+    expect(within(item).getByText('declined')).toBeInTheDocument();
+    expect(listDecidableRequests).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'all', user_id: 'karim' }),
+    );
+  });
+
+  it('requests tab: none in scope reads as an empty state', async () => {
+    listDecidableRequests.mockResolvedValue({ items: [], next_cursor: null });
+    renderAt('/admin/users/karim?tab=requests');
+    expect(await screen.findByText('No requests')).toBeInTheDocument();
+  });
+
+  it('requests tab: a viewer who decides nothing reads the backend sentence', async () => {
+    listDecidableRequests.mockRejectedValue(
+      httpError(403, { detail: 'You have no access requests to decide.' }),
+    );
+    renderAt('/admin/users/karim?tab=requests');
+    expect(await screen.findByText('Not in your queue')).toBeInTheDocument();
+    expect(screen.getByText(/You have no access requests to decide\./)).toBeInTheDocument();
   });
 });

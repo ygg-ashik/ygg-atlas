@@ -18,7 +18,8 @@ import { AttributesEditor } from './attributes-editor';
 import { DirectGrants } from './direct-grants';
 import { EffectiveAccessPanel } from './effective-access-panel';
 import { RoleStatusEditor } from './role-status-editor';
-import { UserGroupsPanel, UserRequestsPanel } from './user-groups-panel';
+import { UserGroupsPanel } from './user-groups-panel';
+import { UserRequestsPanel } from './user-requests-panel';
 import { UserTokensPanel } from './user-tokens-panel';
 import { CARD } from './surfaces';
 

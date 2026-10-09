@@ -202,7 +202,8 @@ function SummaryBody({ summary, onWiden }: { summary: Summary; onWiden?: () => v
             empty="No denials in this range."
             rows={summary.top_denied_users.map((u) => ({
               key: u.user_id,
-              label: u.display_name,
+              // Display names only (never an email); fall back to the id.
+              label: u.display_name || u.user_id,
               count: u.count,
             }))}
           />

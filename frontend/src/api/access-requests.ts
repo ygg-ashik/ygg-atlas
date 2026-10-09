@@ -6,8 +6,9 @@ import { compactParams, seg } from './params';
 
 export type RequestKind = 'group' | 'role' | 'resource';
 export type RequestStatus = 'pending' | 'approved' | 'declined' | 'cancelled';
-/** The queue filter: one status, or every status. */
-export type RequestStatusFilter = RequestStatus | 'all';
+/** The queue filter: one status, `decided` (approved or declined; P5-D23),
+ * or every status. */
+export type RequestStatusFilter = RequestStatus | 'decided' | 'all';
 
 export interface Requester {
   user_id: string;
@@ -66,6 +67,8 @@ export interface RequestOptions {
 
 export interface RequestQueueRequest {
   status?: RequestStatusFilter;
+  /** One requester's requests, still inside the caller's decide scope (P5-D24). */
+  user_id?: string;
   cursor?: string;
   limit?: number;
 }
@@ -93,8 +96,13 @@ export async function cancelRequest(requestId: string): Promise<AccessRequest> {
 }
 
 /** Requests the caller may decide, newest first (the backend defaults to pending). */
-export async function listDecidableRequests({ status, cursor, limit }: RequestQueueRequest = {}) {
-  const params = compactParams({ status, cursor, limit });
+export async function listDecidableRequests({
+  status,
+  user_id,
+  cursor,
+  limit,
+}: RequestQueueRequest = {}) {
+  const params = compactParams({ status, user_id, cursor, limit });
   const { data } = await api.get<Page<AccessRequest>>('/admin/requests', { params });
   return data;
 }

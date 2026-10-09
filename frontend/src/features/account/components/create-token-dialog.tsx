@@ -41,11 +41,14 @@ interface CreateTokenDialogProps {
 }
 
 /** New personal token (screen 4): name and lifetime, then the secret exactly
- * once. Closing the reveal resets the mutation, so the secret leaves memory. */
+ * once. Closing the reveal resets the mutation, so the secret leaves memory.
+ * While the create is in flight nothing closes the dialog (Escape, outside
+ * click, ✕, Cancel): a token minted after close would never be shown. */
 export function CreateTokenDialog({ open, onOpenChange, pat }: CreateTokenDialogProps) {
   const create = useCreateMyToken();
   const close = (next: boolean) => {
     if (next) return onOpenChange(true);
+    if (create.isPending) return;
     create.reset();
     onOpenChange(false);
   };
@@ -130,7 +133,7 @@ function TokenForm({ pat, busy, error, onCancel, onSubmit }: TokenFormProps) {
         </div>
       )}
       <div className="mt-1.5 flex justify-end gap-2">
-        <Button type="button" variant="pill" onClick={onCancel}>
+        <Button type="button" variant="pill" disabled={busy} onClick={onCancel}>
           Cancel
         </Button>
         <Button type="submit" disabled={busy} aria-busy={busy}>

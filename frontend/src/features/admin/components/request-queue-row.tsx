@@ -12,7 +12,8 @@ import {
 } from './request-decision';
 import { CARD } from './surfaces';
 
-const TONE: Record<RequestStatus, StatusTone> = {
+/** A request status as a pill tone (the queue and the user's Requests tab). */
+export const REQUEST_TONE: Record<RequestStatus, StatusTone> = {
   pending: 'warning',
   approved: 'positive',
   declined: 'negative',
@@ -140,7 +141,7 @@ function RowStatus({ row }: { row: QueueRow }) {
   if (row.notice) return <StatusPill tone="muted">decided</StatusPill>;
   const { status } = row.request;
   return (
-    <StatusPill tone={TONE[status]} diamond={status === 'declined'}>
+    <StatusPill tone={REQUEST_TONE[status]} diamond={status === 'declined'}>
       {status}
     </StatusPill>
   );

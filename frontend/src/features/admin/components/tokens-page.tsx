@@ -84,12 +84,22 @@ export function AdminTokensPage() {
           Tokens arrive with MCP sign-in on this deployment. Until then there is nothing to revoke.
         </Notice>
       )}
-      {tokens.data?.available && <TokenGroups tokens={tokens.data.data} write={write} />}
+      {tokens.data?.available && (
+        <TokenGroups tokens={tokens.data.data} write={write} revokeAll={kind === 'all'} />
+      )}
     </AdminPage>
   );
 }
 
-function TokenGroups({ tokens, write }: { tokens: readonly Token[]; write: ReviewedWrite }) {
+interface TokenGroupsProps {
+  tokens: readonly Token[];
+  write: ReviewedWrite;
+  /** Only on the unfiltered list: revoke-all revokes every kind, so its review
+   * card must list every live token of the user. */
+  revokeAll: boolean;
+}
+
+function TokenGroups({ tokens, write, revokeAll }: TokenGroupsProps) {
   const groups = byUser(tokens);
   if (!groups.length) {
     return (
@@ -100,8 +110,19 @@ function TokenGroups({ tokens, write }: { tokens: readonly Token[]; write: Revie
   }
   return (
     <div className="grid gap-6">
+      {!revokeAll && (
+        <p className="text-caption text-muted-foreground">
+          Revoke all is on the All view: it revokes every token of a user, whatever its kind.
+        </p>
+      )}
       {groups.map(([userId, list]) => (
-        <UserTokens key={userId} userId={userId} tokens={list} write={write} />
+        <UserTokens
+          key={userId}
+          userId={userId}
+          tokens={list}
+          write={write}
+          revokeAll={revokeAll}
+        />
       ))}
     </div>
   );
@@ -111,9 +132,10 @@ interface UserTokensProps {
   userId: string;
   tokens: readonly Token[];
   write: ReviewedWrite;
+  revokeAll: boolean;
 }
 
-function UserTokens({ userId, tokens, write }: UserTokensProps) {
+function UserTokens({ userId, tokens, write, revokeAll: canRevokeAll }: UserTokensProps) {
   const view = useMyAccess();
   const revokeOne = useRevokeAdminToken();
   const revokeAll = useRevokeAllUserTokens();
@@ -174,15 +196,17 @@ function UserTokens({ userId, tokens, write }: UserTokensProps) {
         <span className="text-caption tabular-nums text-muted-foreground">
           {plural(tokens.length, 'live token')}
         </span>
-        <Button
-          variant="pill"
-          size="sm"
-          className="ml-auto"
-          aria-label={`Revoke all tokens of ${userId}`}
-          onClick={all}
-        >
-          Revoke all
-        </Button>
+        {canRevokeAll && (
+          <Button
+            variant="pill"
+            size="sm"
+            className="ml-auto"
+            aria-label={`Revoke all tokens of ${userId}`}
+            onClick={all}
+          >
+            Revoke all
+          </Button>
+        )}
       </div>
       <ReviewSlot write={write} slot={`all:${userId}`} />
       <DataTable

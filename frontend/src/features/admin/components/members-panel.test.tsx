@@ -11,8 +11,16 @@ import { MembersPanel } from './members-panel';
 const listMembers = vi.hoisted(() => vi.fn());
 const putMember = vi.hoisted(() => vi.fn());
 const removeMember = vi.hoisted(() => vi.fn());
+const listMemberCandidates = vi.hoisted(() => vi.fn());
 vi.mock('../hooks/use-debounced-value', () => ({ useDebouncedValue: <T,>(value: T) => value }));
-vi.mock('@/api/admin-groups', () => ({ listMembers, putMember, removeMember }));
+vi.mock('@/api/admin-groups', () => ({
+  listMembers,
+  putMember,
+  removeMember,
+  listMemberCandidates,
+  CANDIDATE_QUERY_MIN: 3,
+  CANDIDATE_QUERY_MAX: 100,
+}));
 const listUsers = vi.hoisted(() => vi.fn());
 vi.mock('@/api/admin-users', () => ({ listUsers }));
 let view: MyAccessView = PERSONAS.manager;
@@ -41,6 +49,10 @@ describe('MembersPanel', () => {
     ]);
     putMember.mockReset();
     removeMember.mockReset();
+    listMemberCandidates.mockReset();
+    listMemberCandidates.mockResolvedValue([
+      { user_id: 'sara', display_name: 'Sara Mansour', email: 'sara@yougotagift.com' },
+    ]);
     listUsers.mockReset();
     listUsers.mockResolvedValue({
       items: [user('sara', { display_name: 'Sara Mansour' })],
@@ -96,6 +108,37 @@ describe('MembersPanel', () => {
       ).toBeInTheDocument();
     });
 
+    it('adds a plain member through the candidate search (3+ characters)', async () => {
+      putMember.mockResolvedValue(member('sara'));
+      renderPanel();
+      const search = await screen.findByRole('combobox', { name: 'Find a person' });
+      await fast().type(search, 'sa');
+      expect(await screen.findByText(/Type at least 3 characters/)).toBeInTheDocument();
+      expect(listMemberCandidates).not.toHaveBeenCalled();
+      await fast().type(search, 'r');
+      await fast().click(await screen.findByRole('option', { name: /Sara Mansour/ }));
+      expect(listMemberCandidates).toHaveBeenCalledWith('g-m', 'sar');
+      expect(listUsers).not.toHaveBeenCalled();
+      await fast().click(screen.getByRole('button', { name: 'Add member' }));
+      const card = screen.getByRole('region', { name: 'Add member' });
+      expect(diffLines(card).at(-1)).toEqual(['add', 'standing  member']);
+      await fast().click(within(card).getByRole('button', { name: 'Add member' }));
+      expect(putMember).toHaveBeenCalledWith('g-m', 'sara', 'member');
+    });
+
+    it('a 403 from the candidate search hides the picker with the sentence', async () => {
+      listMemberCandidates.mockRejectedValue(
+        httpError(403, { detail: 'Only managers of this group can add members.' }),
+      );
+      renderPanel();
+      await fast().type(await screen.findByRole('combobox', { name: 'Find a person' }), 'sar');
+      expect(
+        await screen.findByText(/Only managers of this group can add members\./),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('combobox', { name: 'Find a person' })).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Access requests' })).toBeInTheDocument();
+    });
+
     it('cannot appoint managers: no standing choice', async () => {
       renderPanel();
       await screen.findByRole('list', { name: 'Members of marketing' });
@@ -135,5 +178,13 @@ describe('MembersPanel', () => {
         within(row('Yousef')).getByRole('button', { name: 'Remove Yousef' }),
       ).toBeInTheDocument();
     });
+  });
+
+  it('a viewer who is neither admin nor manager gets no picker', async () => {
+    view = PERSONAS.viewer;
+    renderPanel();
+    await screen.findByRole('list', { name: 'Members of marketing' });
+    expect(screen.queryByRole('combobox', { name: 'Find a person' })).not.toBeInTheDocument();
+    expect(screen.getByText(/People join through their access requests/)).toBeInTheDocument();
   });
 });

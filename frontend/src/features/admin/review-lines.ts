@@ -123,17 +123,28 @@ export function groupDeleteLines(name: string, parent: string | null): DiffLine[
 export interface TokenLine {
   prefix: string;
   name: string;
+  /** `TokenKind`; `oauth_*` tokens belong to connected apps. */
+  kind?: string;
 }
+
+const isOAuth = (t: TokenLine) => t.kind?.startsWith('oauth') ?? false;
 
 /** The phase-4 credential event a revoke-all records (`credential_events`, not `rbac_changes`). */
 export const TOKEN_REVOKE_ALL = 'token.revoke_all';
 
-/** Phase-4 revoke-all (a credential event, not an rbac change). */
+/** Phase-4 revoke-all (a credential event, not an rbac change). The endpoint
+ * revokes every live token of the user, whatever its kind, so `tokens` must be
+ * the unfiltered list; OAuth tokens mean connected apps lose access too. */
 export function revokeAllLines(email: string, tokens: readonly TokenLine[]): DiffLine[] {
+  const apps = tokens.some(isOAuth);
   return [
     ctx(`${TOKEN_REVOKE_ALL}  ${email}`),
     ...tokens.map((t) => rm(kv('token', `${t.prefix}…  ${t.name}`))),
-    ctx('connected apps keep working until revoked separately'),
+    ctx(
+      apps
+        ? 'connected apps lose access too: their OAuth tokens are revoked'
+        : 'every live token of any kind; each gets 401 on its next call',
+    ),
   ];
 }
 

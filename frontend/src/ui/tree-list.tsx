@@ -126,6 +126,7 @@ function Item({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Ctx })
       aria-expanded={expanded}
       aria-selected={select ? node.id === ctx.selectedId : undefined}
       aria-disabled={node.locked || undefined}
+      aria-describedby={node.locked ? `${ctx.idBase}-locked` : undefined}
       tabIndex={node.id === ctx.focusId ? 0 : -1}
       onFocus={(e) => {
         e.stopPropagation();
@@ -216,10 +217,17 @@ export function TreeList({
     else activate(move.activate);
   };
   return (
-    <ul role="tree" aria-label={label} onKeyDown={onKeyDown} className={cn('p-2', className)}>
-      {nodes.map((n) => (
-        <Item key={n.id} node={n} depth={0} ctx={ctx} />
-      ))}
-    </ul>
+    <>
+      <ul role="tree" aria-label={label} onKeyDown={onKeyDown} className={cn('p-2', className)}>
+        {nodes.map((n) => (
+          <Item key={n.id} node={n} depth={0} ctx={ctx} />
+        ))}
+      </ul>
+      {locked.size > 0 && (
+        <span id={`${idBase}-locked`} className="sr-only">
+          Outside your scope
+        </span>
+      )}
+    </>
   );
 }

@@ -36,6 +36,10 @@ describe('access requests client', () => {
     });
     await listDecidableRequests();
     expect(http.get).toHaveBeenLastCalledWith('/admin/requests', { params: {} });
+    await listDecidableRequests({ status: 'decided', user_id: 'u-omar' });
+    expect(http.get).toHaveBeenLastCalledWith('/admin/requests', {
+      params: { status: 'decided', user_id: 'u-omar' },
+    });
   });
 
   it('keeps absent vs null expiry distinct on approve', async () => {

@@ -47,6 +47,18 @@ export interface Member {
   status: string;
 }
 
+/** `MemberCandidateOut`: a colleague the group's managers may add (P5-D21):
+ * active, human, not already a member, never the caller. */
+export interface MemberCandidate {
+  user_id: string;
+  display_name: string;
+  email: string;
+}
+
+/** The candidate search length the backend accepts (`CANDIDATE_QUERY`). */
+export const CANDIDATE_QUERY_MIN = 3;
+export const CANDIDATE_QUERY_MAX = 100;
+
 export type SubjectType = 'group' | 'user';
 export type GrantEffect = 'allow' | 'deny';
 export type GrantTargetKind = 'resource' | 'capability' | 'clearance';
@@ -104,6 +116,16 @@ export async function deleteGroup(groupId: string): Promise<void> {
 
 export async function listMembers(groupId: string): Promise<Member[]> {
   const { data } = await api.get<Member[]>(`/admin/groups/${seg(groupId)}/members`);
+  return data;
+}
+
+/** Up to ten colleagues matching `q` (3..100 characters) who could join the
+ * group; needs admin:groups or managing the group or an ancestor (403 otherwise). */
+export async function listMemberCandidates(groupId: string, q: string) {
+  const { data } = await api.get<MemberCandidate[]>(
+    `/admin/groups/${seg(groupId)}/member-candidates`,
+    { params: { q } },
+  );
   return data;
 }
 

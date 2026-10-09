@@ -12,6 +12,7 @@ import {
   useGroupDetail,
   useGroupMembers,
   useGroups,
+  useMemberCandidates,
   usePutMember,
   useRemoveMember,
   useUpdateGroup,
@@ -41,6 +42,20 @@ async function settle<T>(useHook: () => { isSuccess: boolean } & T) {
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   return result;
 }
+
+describe('useMemberCandidates', () => {
+  it('stays idle below 3 characters and above 100, then searches trimmed', async () => {
+    const { wrapper } = createQueryWrapper();
+    renderHook(() => useMemberCandidates('g1', ' sa '), { wrapper });
+    renderHook(() => useMemberCandidates('g1', 'x'.repeat(101)), { wrapper });
+    expect(http.get).not.toHaveBeenCalled();
+    http.get.mockResolvedValue({ data: [] });
+    await settle(() => useMemberCandidates('g1', ' sar '));
+    expect(http.get).toHaveBeenLastCalledWith('/admin/groups/g1/member-candidates', {
+      params: { q: 'sar' },
+    });
+  });
+});
 
 describe('admin reads', () => {
   it('call their routes', async () => {

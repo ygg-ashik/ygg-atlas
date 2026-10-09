@@ -17,7 +17,7 @@ const api = vi.hoisted(() => ({
   listGrants: vi.fn(),
   deleteGroup: vi.fn(),
 }));
-vi.mock('@/api/admin-groups', () => api);
+vi.mock('@/api/admin-groups', () => ({ ...api, CANDIDATE_QUERY_MIN: 3, CANDIDATE_QUERY_MAX: 100 }));
 let view: MyAccessView = PERSONAS.admin;
 vi.mock('@/api/hooks/use-my-access', () => ({ useMyAccess: () => view }));
 
@@ -95,17 +95,43 @@ describe('Groups', () => {
     await waitFor(() => expect(screen.getByTestId('route')).toHaveTextContent(/^\/admin\/groups$/));
   });
 
-  it('a manager sees only the groups they manage, and no grant controls', async () => {
+  it('a manager sees their managed subtree from GET /admin/groups, and no grant controls', async () => {
     view = accessView({
       ...PERSONAS.manager.access,
       groups: [{ id: 'g-m', name: 'marketing', standing: 'manager' }],
     });
+    // The backend answers a manager with their subtree, real parent ids kept.
+    api.listGroups.mockResolvedValue(GROUPS.filter((g) => g.id !== 'g-r'));
     renderAt('/admin/groups');
     expect(await screen.findByRole('heading', { level: 2, name: 'marketing' })).toBeInTheDocument();
-    expect(api.listGroups).not.toHaveBeenCalled();
+    expect(api.listGroups).toHaveBeenCalled();
+    const tree = screen.getByRole('tree', { name: 'Groups' });
+    expect(within(tree).getByRole('treeitem', { name: 'marketing' })).toHaveAttribute(
+      'aria-level',
+      '1',
+    );
+    expect(within(tree).getByRole('treeitem', { name: 'marketing-paid' })).toHaveAttribute(
+      'aria-level',
+      '2',
+    );
+    expect(within(tree).queryByRole('treeitem', { name: 'risk-ops' })).not.toBeInTheDocument();
     expect(api.listGrants).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: '＋ New group' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '＋ Add grant' })).not.toBeInTheDocument();
     expect(screen.getByText(/Managing grants needs/)).toBeInTheDocument();
+  });
+
+  it('a manager whose groups fail to load sees the failure, not an empty tree', async () => {
+    view = PERSONAS.manager;
+    api.listGroups.mockRejectedValue(new Error('down'));
+    renderAt('/admin/groups');
+    expect(await screen.findByText("Couldn't load groups")).toBeInTheDocument();
+    expect(screen.queryByText('No groups yet')).not.toBeInTheDocument();
+  });
+
+  it('without admin:groups or management nothing is listed', () => {
+    view = PERSONAS.viewer;
+    renderAt('/admin/groups');
+    expect(api.listGroups).not.toHaveBeenCalled();
   });
 });

@@ -21,6 +21,18 @@ const MAX_REASON = 500;
 export const grantReason = (request: AccessRequest) =>
   `Access request ${request.id}: ${request.note}`.slice(0, MAX_REASON);
 
+/** The backend skips the write when the access is already held (P5-D7): the
+ * approval then records the decision only. Never promise a write it skips. */
+export const NO_CHANGE_IF_HELD: Record<AccessRequest['kind'], string> = {
+  group: 'no change if already a member (any standing): records the decision only',
+  role: 'no change if already at or above this role: records the decision only',
+  resource: 'no change if the same live allow exists: records the decision only',
+};
+
+/** Catalog order is rank order (viewer < analyst < builder < admin); -1 unknown. */
+const rankOf = (roles: readonly RoleInfo[], role: string) =>
+  roles.findIndex((r) => r.name === role);
+
 /** The capabilities `to` adds over `from` (empty when the catalog is not loaded). */
 function gained(roles: readonly RoleInfo[], from: string, to: string): string[] {
   const before = new Set(roles.find((r) => r.name === from)?.capabilities ?? []);
@@ -50,15 +62,24 @@ export function approveLines(
   const email = request.requester?.email ?? 'the requester';
   const head = ctx(`request ${request.id.slice(0, 8)}  ${email}`);
   if (request.kind === 'group') {
-    return [head, add(`member ${email} in ${request.target_label}`)];
+    return [head, add(`member ${email} in ${request.target_label}`), ctx(NO_CHANGE_IF_HELD.group)];
   }
   if (request.kind === 'role') {
     const from = request.requester?.role ?? '—';
+    const fromRank = rankOf(roles, from);
+    const toRank = rankOf(roles, request.target);
+    if (fromRank >= 0 && toRank >= 0 && fromRank >= toRank) {
+      return [
+        head,
+        ctx(`role ${from} already at or above ${request.target}: records the decision only`),
+      ];
+    }
     const gains = gained(roles, from, request.target);
     return [
       head,
       add(`role ${from} → ${request.target}`),
       ...(gains.length ? [ctx(kv('gains', gains.join(', ')))] : []),
+      ctx(NO_CHANGE_IF_HELD.role),
     ];
   }
   const until = expiry ? ` until ${expiry}` : ', no expiry';
@@ -66,5 +87,6 @@ export function approveLines(
     head,
     add(`grant allow ${request.target} for ${email}${until}`),
     ctx(kv('reason', grantReason(request))),
+    ctx(NO_CHANGE_IF_HELD.resource),
   ];
 }
