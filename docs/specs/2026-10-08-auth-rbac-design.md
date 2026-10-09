@@ -49,6 +49,20 @@ Not copied:
 | **Resource path** | `source/entity/item`, e.g. `deepsales/ds_task/ds_open_tasks`. Wildcards per segment: `deepsales/*`, `deepsales/ds_task/*` |
 | **Policy** | The effective, evaluated access of one principal at one `policy_version`. The only object enforcement code consults |
 
+**Resource paths and patterns** (`app/access/patterns.py`):
+
+- A resource path is always 2 or 3 segments: `source/entity` (an entity) or `source/entity/item`
+  (a metric, funnel or other item).
+- A trailing `*` covers its own prefix and everything under it: `demo/order/*` matches `demo/order`
+  and `demo/order/revenue`; `demo/*` matches `demo`, every `demo` entity and every item under them;
+  a lone `*` matches everything. A `*` elsewhere matches exactly one segment (`demo/*/revenue`).
+- A literal pattern (no trailing `*`) must be a full 3-segment item path. `demo` or `demo/order`
+  are rejected with a hint to use `demo/*` or `demo/order/*`, so a deny never leaves anything
+  under the denied path reachable.
+- Trade-off: there is no entity-only grant. An entity becomes visible through its items (any
+  allowed item under it makes the entity discoverable); `demo/order/*` grants the entity and all
+  of its items together.
+
 ## 3. Authentication
 
 ### 3.1 The doors
@@ -173,6 +187,21 @@ now and enforced when those features ship.
 | reason | free text; **mandatory for user-subject grants**, optional for group grants |
 | expires_at | optional on any grant; expired grants are ignored by the evaluator |
 
+Grants are unique per `(subject, effect, target_kind, target)` (`uq_grants_subject_target`). An
+expired duplicate still occupies that slot: revoke it before granting the same target again.
+
+**Admin write rules (decision D10).** These hold for every admin write through the API (the CLI is a
+trusted operator on the box and skips them):
+
+- No self-grants, and no lifting a deny on yourself.
+- Grant or lift only capabilities you hold yourself.
+- Assign only roles whose capabilities are within your own.
+- You cannot change the role or status of a user whose effective capabilities exceed yours. A
+  disabled target is judged by the capabilities it would have if it were active.
+- D10 covers **direct** grants. Widening access through a group (an `admin:groups` holder granting
+  their own group, or joining a group that already holds grants) is allowed by design; it is
+  visible in, and relies on, the `rbac_changes` audit trail.
+
 ### 5.4 Evaluation (the single function `access.policy_for(principal)`)
 
 1. **Capabilities** = the role's bundle ∪ user capability allows − user capability denies.
@@ -258,6 +287,11 @@ API routes use `require_capability(...)` dependencies built on the same Policy.
 All timestamps are `TIMESTAMP(timezone=True)`, UTC. `chat_sessions.user_uid` and `atlas_audit_log`
 gain `user_id` foreign keys during migration.
 
+**Users are never hard-deleted.** The audit foreign key `fk_atlas_audit_log_user_id_users` has no
+`ON DELETE` action, so deleting a user with audit history fails. Disabling a user (`status =
+disabled`) is the only way to remove one, which also means a grant can never point at a missing
+subject.
+
 ## 8. Module layout
 
 ```
@@ -328,6 +362,14 @@ never happen in the browser.
 - Token hashes only; raw tokens shown once. Refresh reuse detection.
 - OAuth redirect URIs allowlisted; codes single-use, 60 s.
 - Every RBAC write audited and increments `policy_version`.
+- **Ops: a corrupt grant fails closed.** The evaluator warnings name the grant (`grant_id`):
+  - `access.malformed_grant` (unknown effect or target kind): everyone the grant applies to loses
+    all data, all capabilities and all manager rights.
+  - `access.invalid_deny_pattern`: everyone it applies to loses all data.
+  - `access.invalid_allow_pattern`: that allow is ignored, so its data is not granted.
+
+  A corrupt **group** grant hits every member of that group and of its child groups at once.
+  Investigate how the row got corrupt and fix or revoke it; do not work around it with new grants.
 
 ## 13. Testing
 

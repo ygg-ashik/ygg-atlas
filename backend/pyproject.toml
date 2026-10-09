@@ -143,7 +143,7 @@ type = "forbidden"
 source_modules = ["app.sources"]
 forbidden_modules = [
     "app.main", "app.api", "app.mcp", "app.insights", "app.agent", "app.atlas",
-    "app.models", "app.database", "app.middleware", "app.identity",
+    "app.models", "app.database", "app.identity", "app.access",
 ]
 
 [[tool.importlinter.contracts]]
@@ -157,19 +157,14 @@ type = "forbidden"
 source_modules = ["app.config", "app.database", "app.models"]
 forbidden_modules = [
     "app.main", "app.api", "app.mcp", "app.insights", "app.agent", "app.atlas",
-    "app.sources", "app.identity", "app.middleware",
+    "app.sources", "app.identity", "app.access",
 ]
 
 [[tool.importlinter.contracts]]
-name = "Agent and atlas never use HTTP-layer auth"
+name = "Agent and atlas never import identity or access (they get a policy)"
 type = "forbidden"
 source_modules = ["app.agent", "app.atlas"]
-forbidden_modules = [
-    "app.middleware",
-    "app.identity.router",
-    "app.identity.dependencies",
-    "app.identity.firebase",
-]
+forbidden_modules = ["app.identity", "app.access"]
 
 [[tool.importlinter.contracts]]
 name = "Identity depends only on platform modules"
@@ -177,7 +172,7 @@ type = "forbidden"
 source_modules = ["app.identity"]
 forbidden_modules = [
     "app.main", "app.api", "app.mcp", "app.insights", "app.agent", "app.atlas",
-    "app.sources", "app.middleware",
+    "app.sources", "app.access",
 ]
 
 [[tool.importlinter.contracts]]
@@ -192,6 +187,32 @@ layers = [
     "models",
     "schemas",
     "principal | tokens | errors",
+]
+
+[[tool.importlinter.contracts]]
+name = "Access depends only on identity and platform modules"
+type = "forbidden"
+source_modules = ["app.access"]
+forbidden_modules = [
+    "app.main", "app.api", "app.mcp", "app.insights", "app.agent", "app.atlas",
+    "app.sources",
+]
+
+[[tool.importlinter.contracts]]
+name = "Access module layering (ARCHITECTURE.md §2.2)"
+type = "layers"
+containers = ["app.access"]
+layers = [
+    "router | cli",
+    "dependencies",
+    "admin",
+    "service | startup",
+    "repository",
+    "models",
+    "schemas",
+    "cache | evaluator",
+    "policy",
+    "catalog | patterns | facts | errors",
 ]
 
 [tool.coverage.run]

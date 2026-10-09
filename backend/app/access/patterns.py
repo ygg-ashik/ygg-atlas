@@ -1,6 +1,7 @@
 """Resource paths and grant patterns (spec §2).
 
-A resource path is `source/entity/item` (an entity itself is `source/entity`).
+A resource path is `source/entity/item` (an entity itself is `source/entity`);
+resource paths are always 2-3 segments, never a bare source.
 A pattern with a trailing `*` matches that prefix itself and everything under
 it: `demo/order/*` matches `demo/order` and `demo/order/revenue`; `demo/*`
 matches `demo`, `demo/order` and `demo/order/revenue`; a lone `*` matches
