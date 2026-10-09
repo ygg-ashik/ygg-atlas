@@ -30,7 +30,9 @@ Deployment: AWS EC2 (`ssh atlas`), docker compose, reverse proxy + HTTPS. NOT GC
    at a production primary for heavy queries. Source DBs are IP-restricted: connect only from the atlas
    EC2 box (`ssh atlas`), never from a laptop.
 4. **Scope from token, never from prompt.** Auth/permissions come from the Firebase token (domain-locked
-   to `@yougotagift.com`). Nothing user-typed can widen data access.
+   to `@yougotagift.com`). Nothing user-typed can widen data access. Data access is evaluated
+   server-side from groups and grants (`backend/app/access`); the agent and atlas only ever receive
+   the evaluated policy.
 5. **Audit everything.** Every atlas tool execution is written to the audit log (`backend/app/models/audit.py`).
 6. **Evals gate merges.** New agent/prompt/registry behavior needs golden coverage in `evals/goldens/`.
 
@@ -83,9 +85,11 @@ Violating this causes asyncpg insert errors.
 Backend:
 ```bash
 cd backend && uv sync
+# backend/.env from .env.example: set ENVIRONMENT=development locally (the example ships production)
 uv run uvicorn app.main:app --reload --port 8081
 uv run alembic upgrade head        # apply migrations (also run by the Docker image at start)
 uv run alembic revision -m "..."   # new migration in migrations/versions/
+make -C .. dev-access              # local dev: grant the dev user all data (no admin bypass)
 TEST_PG_URL=postgresql+asyncpg://… uv run pytest tests/test_alembic_postgres.py   # migrations on a disposable Postgres
 uv run pytest --cov=app            # >80% coverage on new code
 uv run ruff check . && uv run ruff format --check .

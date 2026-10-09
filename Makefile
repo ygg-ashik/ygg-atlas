@@ -2,7 +2,7 @@
 # PNPM can be overridden, e.g. `make check PNPM=pnpm` where pnpm is installed globally.
 PNPM ?= COREPACK_INTEGRITY_KEYS=0 corepack pnpm
 
-.PHONY: check check-backend check-frontend format format-backend format-frontend audit audit-backend audit-frontend install hooks migrate
+.PHONY: check check-backend check-frontend format format-backend format-frontend audit audit-backend audit-frontend install hooks migrate dev-access
 
 check: check-backend check-frontend ## Run every gate (backend + frontend)
 
@@ -41,6 +41,9 @@ install: ## Install backend + frontend dependencies
 
 migrate: ## Apply database migrations (backend/.env DATABASE_URL)
 	cd backend && uv run alembic upgrade head
+
+dev-access: ## Local dev: give the dev user every resource (sign in once first)
+	cd backend && uv run python -m app.access.cli grant user:dev@yougotagift.com allow '*' --reason "local development"
 
 hooks: ## Install the git pre-commit hooks
 	uvx pre-commit install

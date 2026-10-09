@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     max_input_chars: int = 4000
 
     atlas_mcp_token: str = ""
+    # MCP calls run as this service user until per-user MCP auth (spec phase 4).
+    mcp_service_email: str = "mcp-shared@atlas.internal"
 
     cors_origins: str = "http://localhost:5173,http://localhost:8080"
 

@@ -5,10 +5,11 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.access import AccessError, access_error_handler, access_router, prepare_access
 from app.api import chat_router
 from app.config import get_settings
 from app.database import get_session_factory
-from app.identity import bootstrap_admins, identity_router
+from app.identity import ensure_service_user, identity_router
 from app.insights import router as insights_router
 
 logger = structlog.get_logger()
@@ -23,15 +24,25 @@ except Exception:  # MCP is optional at runtime; never block the chat API
     _mcp_app = None
 
 
-async def apply_bootstrap_admins() -> None:
+MCP_SERVICE_NAME = "MCP (shared token)"
+MCP_SERVICE_ROLE = "analyst"
+
+
+async def apply_startup() -> None:
+    settings = get_settings()
     async with get_session_factory()() as db:
-        await bootstrap_admins(db, get_settings().bootstrap_admin_list)
+        await ensure_service_user(
+            db, settings.mcp_service_email, MCP_SERVICE_NAME, MCP_SERVICE_ROLE
+        )
+        # Bootstrap admins are created by access: a role is an authorization
+        # change, audited and versioned in the same commit (spec §3.3).
+        await prepare_access(db, settings.bootstrap_admin_list)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Schema is owned by Alembic: `alembic upgrade head` runs before the app starts.
-    await apply_bootstrap_admins()
+    await apply_startup()
     logger.info("startup.complete")
     if mcp is not None:
         # The mounted streamable-HTTP app requires its session manager running.
@@ -50,9 +61,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_exception_handler(AccessError, access_error_handler)
 
 app.include_router(chat_router)
 app.include_router(identity_router)
+app.include_router(access_router)
 app.include_router(insights_router)
 
 

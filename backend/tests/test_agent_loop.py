@@ -2,12 +2,14 @@
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 from sqlmodel import select
 
 from app.agent.loop import run_chat_turn
 from app.models.audit import AtlasAuditLog
-from app.models.chat import ChatSession
+from app.models.chat import ChatMessage, ChatSession
+from tests.fakes import make_tools
 
 
 @dataclass
@@ -94,12 +96,18 @@ class FakeAnthropicClient:
         self.messages = FakeMessages(responses)
 
 
-async def _make_session(db, uid="u1") -> ChatSession:
-    session = ChatSession(user_uid=uid, user_email=f"{uid}@yougotagift.com")
+async def _make_session(db) -> ChatSession:
+    session = ChatSession(user_id=uuid4(), user_email="u1@yougotagift.com")
     db.add(session)
     await db.commit()
     await db.refresh(session)
     return session
+
+
+def _tools(db, session: ChatSession, allowed: tuple[str, ...] = ("*",)):
+    return make_tools(
+        db=db, user_id=session.user_id, session_id=session.id, allowed=allowed
+    )
 
 
 async def collect(gen):
@@ -116,7 +124,9 @@ async def test_plain_answer_streams_and_finishes(db):
             )
         ]
     )
-    events = await collect(run_chat_turn("u1", session.id, "hi", [], db, client=client))
+    events = await collect(
+        run_chat_turn(_tools(db, session), "hi", [], db, client=client)
+    )
     types = [e["type"] for e in events]
     assert "token" in types
     assert types[-1] == "done"
@@ -153,7 +163,7 @@ async def test_tool_round_collects_provenance(db):
         ]
     )
     events = await collect(
-        run_chat_turn("u1", session.id, "revenue last week?", [], db, client=client)
+        run_chat_turn(_tools(db, session), "revenue last week?", [], db, client=client)
     )
     types = [e["type"] for e in events]
     assert "tool_status" in types
@@ -167,7 +177,9 @@ async def test_guardrail_blocks_before_model(db):
     session = await _make_session(db)
     # An empty script would raise StopIteration if the model were ever called.
     client = FakeAnthropicClient([])
-    events = await collect(run_chat_turn("u1", session.id, "", [], db, client=client))
+    events = await collect(
+        run_chat_turn(_tools(db, session), "", [], db, client=client)
+    )
     assert events == [{"type": "blocked", "reason": "Empty message"}]
 
 
@@ -179,7 +191,7 @@ async def test_tool_budget_exhaustion_yields_error(db):
     )
     client = FakeAnthropicClient([tool_response] * 10)  # never stops calling tools
     events = await collect(
-        run_chat_turn("u1", session.id, "loop!", [], db, client=client)
+        run_chat_turn(_tools(db, session), "loop!", [], db, client=client)
     )
     assert events[-1]["type"] == "error"
     assert "budget" in events[-1]["message"].lower()
@@ -215,7 +227,7 @@ async def test_clarify_tool_is_offered_and_becomes_a_block(db):
         ]
     )
     events = await collect(
-        run_chat_turn("u1", session.id, "how is revenue?", [], db, client=client)
+        run_chat_turn(_tools(db, session), "how is revenue?", [], db, client=client)
     )
 
     offered = {t["name"] for t in client.messages.calls[0]["tools"]}
@@ -242,7 +254,7 @@ async def test_clarify_tool_is_not_audited(db):
     client = FakeAnthropicClient(
         [_clarify_call("Q?", [{"label": "a"}, {"label": "b"}]), _text("Q?")]
     )
-    await collect(run_chat_turn("u1", session.id, "q", [], db, client=client))
+    await collect(run_chat_turn(_tools(db, session), "q", [], db, client=client))
     rows = (await db.execute(select(AtlasAuditLog))).scalars().all()
     assert all(r.tool != "ask_clarification" for r in rows)
 
@@ -252,7 +264,9 @@ async def test_invalid_clarify_returns_error_to_model_and_no_block(db):
     client = FakeAnthropicClient(
         [_clarify_call("Q?", [{"label": "only one"}]), _text("Sorry.")]
     )
-    events = await collect(run_chat_turn("u1", session.id, "q", [], db, client=client))
+    events = await collect(
+        run_chat_turn(_tools(db, session), "q", [], db, client=client)
+    )
     assert events[-1]["blocks"] == []
     tool_result = client.messages.calls[1]["messages"][-1]["content"][0]
     assert "error" in tool_result["content"]
@@ -267,7 +281,9 @@ async def test_only_first_clarify_block_is_kept(db):
             _text("First?"),
         ]
     )
-    events = await collect(run_chat_turn("u1", session.id, "q", [], db, client=client))
+    events = await collect(
+        run_chat_turn(_tools(db, session), "q", [], db, client=client)
+    )
     assert [b["question"] for b in events[-1]["blocks"]] == ["First?"]
 
 
@@ -296,7 +312,7 @@ async def test_breakdown_result_becomes_artifact_block(db):
         ]
     )
     events = await collect(
-        run_chat_turn("u1", session.id, "split revenue", [], db, client=client)
+        run_chat_turn(_tools(db, session), "split revenue", [], db, client=client)
     )
     blocks = events[-1]["blocks"]
     assert len(blocks) == 1
@@ -311,5 +327,51 @@ async def test_breakdown_result_becomes_artifact_block(db):
 async def test_plain_answer_has_empty_blocks(db):
     session = await _make_session(db)
     client = FakeAnthropicClient([_text("Hi")])
-    events = await collect(run_chat_turn("u1", session.id, "hi", [], db, client=client))
+    events = await collect(
+        run_chat_turn(_tools(db, session), "hi", [], db, client=client)
+    )
     assert events[-1]["blocks"] == []
+
+
+async def test_clarify_cannot_offer_metrics_the_user_cannot_see(db):
+    session = await _make_session(db)
+    options = [
+        {"label": "Corporate revenue", "metric_id": "b2b_revenue"},
+        {"label": "All revenue", "metric_id": "revenue"},
+    ]
+    client = FakeAnthropicClient(
+        [_clarify_call("Which revenue?", options), _text("Which revenue?")]
+    )
+    tools = _tools(db, session, allowed=("demo/order/revenue",))
+
+    events = await collect(
+        run_chat_turn(tools, "how is revenue?", [], db, client=client)
+    )
+
+    offered = events[-1]["blocks"][0]["options"]
+    assert [o["metric_id"] for o in offered] == [None, "revenue"]
+
+
+async def test_guardrail_blocks_by_user_id_across_sessions(db):
+    """A heavy user who used up their daily limit in another session of theirs
+    is blocked here too: the guardrail keys on tools.caller.user_id, not
+    session_id."""
+    heavy = uuid4()
+    other_session = ChatSession(user_id=heavy, user_email="h@yougotagift.com")
+    db.add(other_session)
+    await db.commit()
+    for i in range(5):  # test env sets CHAT_DAILY_MESSAGE_LIMIT=5
+        db.add(ChatMessage(session_id=other_session.id, role="user", content=f"q{i}"))
+    await db.commit()
+
+    session = ChatSession(user_id=heavy, user_email="h@yougotagift.com")
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+
+    client = FakeAnthropicClient([])
+    events = await collect(
+        run_chat_turn(_tools(db, session), "one more", [], db, client=client)
+    )
+    assert events[-1]["type"] == "blocked"
+    assert "limit" in events[-1]["reason"].lower()

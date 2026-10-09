@@ -9,6 +9,10 @@ Usage (from backend/, so the installed `app` package and its venv are used):
 
 Requires: an LLM key (OPENAI_API_KEY or ANTHROPIC_API_KEY), seeded demo data
 (uv run python scripts/seed_demo.py), and the ygg-atlas database per backend/.env.
+
+Access: each golden runs under a synthetic, in-memory policy built from its `allow`
+patterns (default `*`, everything), never from the grants in the database. This is
+an operator-only tool, run on a trusted box; it is not an access path for users.
 """
 
 import argparse
@@ -16,16 +20,20 @@ import asyncio
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import yaml
 
-from app.agent.loop import run_chat_turn
-from app.atlas.registry import get_registry
+from app.access import GrantFacts, Policy, PolicyInputs, UserFacts, evaluate
+from app.agent import run_chat_turn
+from app.atlas import AtlasCaller, AtlasTools, get_registry
 from app.config import get_settings
 from app.database import get_session_factory
-from app.models.chat import ChatSession
+from app.identity import User, UserKind, UserStatus, ensure_service_user
+from app.models import ChatSession
 
 GOLDENS_DIR = Path(__file__).parent / "goldens"
 
@@ -146,17 +154,64 @@ def _record(turn: Turn, event: dict[str, Any]) -> None:
         turn.answer = f"[{event['type']}] {detail}"
 
 
-async def _run_question(question: str) -> Turn:
-    async with get_session_factory()() as db:
-        session = ChatSession(
-            user_uid="eval-runner", user_email="evals@yougotagift.com"
+EVAL_EMAIL = "evals@yougotagift.com"
+
+
+def _policy(user: User, golden: Golden) -> Policy:
+    """The eval user sees what the golden allows (default: everything)."""
+    grants = [
+        GrantFacts(
+            id=uuid4(),
+            subject_type="user",
+            subject_id=user.id,
+            effect="allow",
+            target_kind="resource",
+            target=pattern,
+            expires_at=None,
         )
+        for pattern in golden.get("allow", ["*"])
+    ]
+    inputs = PolicyInputs(
+        user=UserFacts(
+            id=user.id, role=user.role, status=user.status, tenant=user.tenant
+        ),
+        groups={},
+        memberships={},
+        grants=grants,
+        policy_version=0,
+    )
+    return evaluate(inputs, datetime.now(UTC))
+
+
+async def _run_question(golden: Golden) -> Turn:
+    async with get_session_factory()() as db:
+        user = await ensure_service_user(db, EVAL_EMAIL, "Eval runner", "viewer")
+        if user.kind != UserKind.SERVICE:
+            msg = (
+                f"{EVAL_EMAIL} exists as a {user.kind} user, not a service user. "
+                "Evals refuse to run as a person; fix or rename that users row."
+            )
+            raise SystemExit(msg)
+        if user.status != UserStatus.ACTIVE:
+            msg = (
+                f"{EVAL_EMAIL} is {user.status}, not active. "
+                "Evals refuse to run as a disabled user; re-enable that users row."
+            )
+            raise SystemExit(msg)
+        session = ChatSession(user_id=user.id, user_email=EVAL_EMAIL)
         db.add(session)
         await db.commit()
         await db.refresh(session)
 
+        caller = AtlasCaller(
+            user_id=user.id,
+            auth_method="service",
+            surface="chat",
+            session_id=session.id,
+        )
+        tools = AtlasTools(caller, _policy(user, golden), db=db)
         turn = Turn()
-        async for event in run_chat_turn("eval-runner", session.id, question, [], db):
+        async for event in run_chat_turn(tools, golden["question"], [], db):
             _record(turn, event)
         return turn
 
@@ -190,7 +245,7 @@ async def main() -> int:
 
     passed = 0
     for golden in goldens:
-        turn = await _run_question(golden["question"])
+        turn = await _run_question(golden)
         failures = _check(golden, turn)
         passed += not failures
         print(f"[{'FAIL' if failures else 'PASS'}] {golden['id']}")

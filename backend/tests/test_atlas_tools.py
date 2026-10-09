@@ -1,9 +1,10 @@
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
-from sqlmodel import select
+from sqlmodel import col, select
 
-from app.atlas.tools import AtlasTools
 from app.models.audit import AtlasAuditLog
+from tests.fakes import make_tools
 
 
 def _range(days: int) -> tuple[str, str]:
@@ -14,7 +15,7 @@ def _range(days: int) -> tuple[str, str]:
 
 
 async def test_list_metrics_grouped_by_source(db):
-    tools = AtlasTools(user_uid="u1", db=db)
+    tools = make_tools(db=db)
     result = await tools.execute("list_metrics", {})
     demo = next(s for s in result["sources"] if s["id"] == "demo")
     ids = [m["id"] for m in demo["metrics"]]
@@ -26,21 +27,21 @@ async def test_list_metrics_grouped_by_source(db):
 
 
 async def test_snapshot_metric_needs_no_dates(db):
-    tools = AtlasTools(user_uid="u1", db=db)
+    tools = make_tools(db=db)
     result = await tools.execute("query_metric", {"metric_id": "customers_total"})
     assert result["value"] == 30  # 10 seeded days x 3 customers
     assert "as_of" in result
 
 
 async def test_range_metric_without_dates_is_guided_error(db):
-    tools = AtlasTools(user_uid="u1", db=db)
+    tools = make_tools(db=db)
     result = await tools.execute("query_metric", {"metric_id": "revenue"})
     assert "error" in result
     assert "start_date" in result["error"]
 
 
 async def test_metric_breakdown(db):
-    tools = AtlasTools(user_uid="u1", db=db)
+    tools = make_tools(db=db)
     start, end = _range(7)
     result = await tools.execute(
         "metric_breakdown",
@@ -52,14 +53,14 @@ async def test_metric_breakdown(db):
 
 
 async def test_breakdown_on_metric_without_view_errors(db):
-    tools = AtlasTools(user_uid="u1", db=db)
+    tools = make_tools(db=db)
     result = await tools.execute("metric_breakdown", {"metric_id": "aov"})
     assert "error" in result
     assert "no breakdown" in result["error"]
 
 
 async def test_compare_periods_rejects_snapshot_metric(db):
-    tools = AtlasTools(user_uid="u1", db=db)
+    tools = make_tools(db=db)
     result = await tools.execute(
         "compare_periods",
         {
@@ -75,7 +76,7 @@ async def test_compare_periods_rejects_snapshot_metric(db):
 
 
 async def test_query_metric_revenue(db):
-    tools = AtlasTools(user_uid="u1", db=db)
+    tools = make_tools(db=db)
     start, end = _range(7)
     result = await tools.execute(
         "query_metric", {"metric_id": "revenue", "start_date": start, "end_date": end}
@@ -89,7 +90,7 @@ async def test_query_metric_revenue(db):
 
 
 async def test_query_metric_unknown_id_is_guided_error(db):
-    tools = AtlasTools(user_uid="u1", db=db)
+    tools = make_tools(db=db)
     result = await tools.execute(
         "query_metric",
         {
@@ -103,7 +104,7 @@ async def test_query_metric_unknown_id_is_guided_error(db):
 
 
 async def test_query_metric_invalid_dates(db):
-    tools = AtlasTools(user_uid="u1", db=db)
+    tools = make_tools(db=db)
     result = await tools.execute(
         "query_metric",
         {"metric_id": "revenue", "start_date": "not-a-date", "end_date": "2026-01-01"},
@@ -118,7 +119,7 @@ async def test_query_metric_invalid_dates(db):
 
 
 async def test_funnel_analyze(db):
-    tools = AtlasTools(user_uid="u1", db=db)
+    tools = make_tools(db=db)
     start, end = _range(7)
     result = await tools.execute(
         "funnel_analyze",
@@ -133,7 +134,7 @@ async def test_funnel_analyze(db):
 
 
 async def test_compare_periods(db):
-    tools = AtlasTools(user_uid="u1", db=db)
+    tools = make_tools(db=db)
     today = datetime.now(UTC).date()
     result = await tools.execute(
         "compare_periods",
@@ -152,7 +153,7 @@ async def test_compare_periods(db):
 
 
 async def test_describe_entity(db):
-    tools = AtlasTools(user_uid="u1", db=db)
+    tools = make_tools(db=db)
     result = await tools.execute("describe_entity", {"entity_id": "order"})
     assert result["source"] == "demo"
     assert "customer_email" in result["pii_fields"]
@@ -160,20 +161,21 @@ async def test_describe_entity(db):
 
 
 async def test_search_atlas_no_match_gives_clarify_hint(db):
-    tools = AtlasTools(user_uid="u1", db=db)
+    tools = make_tools(db=db)
     result = await tools.execute("search_atlas", {"query": "quarterly ebitda"})
     assert result["results"] == []
     assert "clarifying" in result["hint"].lower()
 
 
 async def test_unknown_tool(db):
-    tools = AtlasTools(user_uid="u1", db=db)
+    tools = make_tools(db=db)
     result = await tools.execute("run_sql", {"sql": "SELECT 1"})
     assert "error" in result
 
 
 async def test_every_execution_is_audited(db):
-    tools = AtlasTools(user_uid="auditme", db=db)
+    user_id = uuid4()
+    tools = make_tools(db=db, user_id=user_id)
     start, end = _range(2)
     await tools.execute(
         "query_metric", {"metric_id": "revenue", "start_date": start, "end_date": end}
@@ -185,7 +187,7 @@ async def test_every_execution_is_audited(db):
     rows = (
         (
             await db.execute(
-                select(AtlasAuditLog).where(AtlasAuditLog.user_uid == "auditme")
+                select(AtlasAuditLog).where(col(AtlasAuditLog.user_id) == user_id)
             )
         )
         .scalars()
@@ -194,3 +196,4 @@ async def test_every_execution_is_audited(db):
     assert len(rows) == 2
     assert {r.success for r in rows} == {True, False}
     assert all(r.tool == "query_metric" for r in rows)
+    assert {r.decision for r in rows} == {"allow"}  # an unknown id is not a denial

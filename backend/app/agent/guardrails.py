@@ -5,6 +5,7 @@ Cheap, deterministic, enforced before the model runs.
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +22,7 @@ class GuardrailVerdict:
 
 
 async def check_input(
-    content: str, user_uid: str, db: AsyncSession
+    content: str, user_id: UUID, db: AsyncSession
 ) -> GuardrailVerdict:
     settings = get_settings()
 
@@ -39,7 +40,7 @@ async def check_input(
         .select_from(ChatMessage)
         .join(ChatSession, col(ChatMessage.session_id) == col(ChatSession.id))
         .where(
-            col(ChatSession.user_uid) == user_uid,
+            col(ChatSession.user_id) == user_id,
             col(ChatMessage.role) == "user",
             col(ChatMessage.created_at) >= midnight,
         )

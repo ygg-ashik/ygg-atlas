@@ -5,16 +5,16 @@ Data access goes through UserRepository; nothing here knows about HTTP.
 
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
 
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.identity.errors import ForbiddenError, UnauthenticatedError
-from app.identity.models import User, UserStatus
+from app.identity.models import User, UserKind, UserStatus
 from app.identity.principal import AuthMethod, Principal
 from app.identity.repository import UserRepository
-from app.identity.tokens import TokenVerifier, VerifiedToken
+from app.identity.tokens import VerifiedToken
 
 logger = structlog.get_logger()
 
@@ -80,19 +80,6 @@ class IdentityService:
             )
         return to_principal(user, "dev")
 
-    async def disable_user(self, user_id: UUID, verifier: TokenVerifier) -> User:
-        """Block the user on the next request and end their Firebase sessions."""
-        user = await self._users.get(user_id)
-        if user is None:
-            msg = f"No user {user_id}"
-            raise LookupError(msg)
-        user.status = UserStatus.DISABLED
-        user = await self._users.save(user)
-        if user.firebase_uid:
-            await verifier.revoke(user.firebase_uid)
-        logger.info("identity.user_disabled", user_id=str(user.id))
-        return user
-
     def _check_sign_in(self, token: VerifiedToken) -> None:
         domain = self._settings.allowed_email_domain.lower()
         if not token.email_verified or not token.email.lower().endswith(f"@{domain}"):
@@ -116,6 +103,7 @@ class IdentityService:
     async def _find_or_link(self, token: VerifiedToken) -> User:
         user = await self._users.get_by_firebase_uid(token.uid)
         if user is not None:
+            self._reject_service_identity(user)
             return user
         user = await self._users.get_by_email(token.email)
         if user is None:
@@ -123,6 +111,7 @@ class IdentityService:
             return await self._users.create_or_get(
                 User(email=token.email, firebase_uid=token.uid, display_name=token.name)
             )
+        self._reject_service_identity(user)
         if user.status != UserStatus.ACTIVE:
             return user  # rejected by the caller; never mutate a disabled row
         if user.firebase_uid and user.firebase_uid != token.uid:
@@ -133,9 +122,26 @@ class IdentityService:
             user.display_name = token.name
         return await self._users.save(user)
 
+    @staticmethod
+    def _reject_service_identity(user: User) -> None:
+        """A service identity has no Firebase session; never link one to it."""
+        if user.kind == UserKind.SERVICE:
+            msg = "This account can't sign in."
+            raise ForbiddenError(msg)
+
     async def _touch(self, user: User) -> None:
         now = self._clock()
         last = user.last_seen_at
         if last is None or now - _as_utc(last) >= LAST_SEEN_INTERVAL:
             user.last_seen_at = now
             await self._users.save(user)
+
+
+async def service_principal(db: AsyncSession, email: str) -> Principal | None:
+    """The Principal for an active service identity, or None (fail closed)."""
+    user = await UserRepository(db).get_by_email(email)
+    if user is None or user.kind != UserKind.SERVICE:
+        return None
+    if user.status != UserStatus.ACTIVE:
+        return None
+    return to_principal(user, "service")

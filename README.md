@@ -30,7 +30,7 @@ docs/       specs and plans
 Prereqs: Docker, Node 22 + pnpm, Python 3.12 + uv.
 
 ```bash
-cp backend/.env.example backend/.env      # fill ANTHROPIC_API_KEY etc.
+cp backend/.env.example backend/.env      # fill ANTHROPIC_API_KEY etc.; set ENVIRONMENT=development
 cp frontend/.env.example frontend/.env.local
 docker compose up -d postgres
 cd backend && uv sync && uv run alembic upgrade head
@@ -48,6 +48,9 @@ cd backend && uv run pytest --cov=app
 cd frontend && pnpm test
 cd backend && uv run python ../evals/run_evals.py   # golden suite (needs seeded demo data)
 ```
+
+Evals run each golden under a synthetic per-golden policy (its `allow` patterns, default `*`), not
+the database grants. They are an operator-only tool, never an access path for users.
 
 ## Deployment (AWS EC2)
 
@@ -88,7 +91,8 @@ irreversible (`alembic downgrade base` refuses), so back up before risky migrati
 `ENVIRONMENT` fails closed: unset means `production`, which refuses `AUTH_DISABLED=true` and requires
 `FIREBASE_PROJECT_ID`. While the box still runs with `AUTH_DISABLED=true`, `backend/.env` must set
 `ENVIRONMENT=development` or the backend will not start. `BOOTSTRAP_ADMINS` (comma-separated emails)
-creates the first admins; the dev user is a plain viewer.
+creates the first admins (only emails with no user yet; an existing user's role is never changed,
+so promote one with the CLI's `set-role`); the dev user is a plain viewer.
 
 Server-only files on the box (not in git):
 - `backend/.env` — secrets: `ANTHROPIC_API_KEY`, `FIREBASE_PROJECT_ID`, `ATLAS_MCP_TOKEN`.
@@ -99,3 +103,18 @@ Server-only files on the box (not in git):
 
 MCP endpoint (for Claude Desktop / other agents): `http://127.0.0.1:8081/mcp-server/mcp`
 (streamable HTTP; set `ATLAS_MCP_TOKEN` and send it as a bearer token).
+
+### Access control (phase 2)
+
+Signing in gives a **viewer** role with **no data**. Admins grant data with groups and grants;
+deny always wins, and admins see data only through grants too. Until the admin UI (phase 5), use
+the CLI on the box:
+
+    docker compose exec backend uv run --no-dev python -m app.access.cli groups
+    docker compose exec backend uv run --no-dev python -m app.access.cli add-member someone@yougotagift.com marketing
+    docker compose exec backend uv run --no-dev python -m app.access.cli grant group:marketing allow 'demo/*' --reason "launch"
+    docker compose exec backend uv run --no-dev python -m app.access.cli access someone@yougotagift.com
+
+Every change is in `rbac_changes`. The same operations exist as `/api/v1/admin/...` for admins.
+MCP is off unless `ATLAS_MCP_TOKEN` is set; it runs as `MCP_SERVICE_EMAIL` under that user's grants.
+Locally, `make dev-access` (after signing in once) grants the dev user all data.

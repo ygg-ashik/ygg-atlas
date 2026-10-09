@@ -1,3 +1,5 @@
+import importlib
+import pkgutil
 from pathlib import Path
 
 import pytest
@@ -40,6 +42,21 @@ def test_search_includes_source(db):
     registry = AtlasRegistry()
     results = registry.search("revenue")
     assert any(r["id"] == "revenue" and r["source"] == "demo" for r in results)
+
+
+def test_search_applies_the_visibility_predicate_before_the_limit(db):
+    registry = AtlasRegistry()
+    everything = registry.search("revenue customers orders", limit=50)
+    hidden = {r["id"] for r in everything[:3]}
+
+    results = registry.search(
+        "revenue customers orders",
+        limit=3,
+        visible=lambda kind, id_: id_ not in hidden,
+    )
+
+    assert len(results) == min(3, len(everything) - len(hidden))
+    assert not hidden & {r["id"] for r in results}
 
 
 def test_search_no_match_returns_empty(db):
@@ -116,3 +133,79 @@ metrics:
     plugins = dict(get_plugins()) | {"testsrc": plugin}
     with pytest.raises(ValueError, match="Duplicate metric id 'revenue'"):
         AtlasRegistry(plugins=plugins)
+
+
+# ---- ids are resource-path segments -------------------------------------------
+
+_FUNNEL = """
+funnels:
+  - id: {funnel_id}
+    name: A funnel
+    steps:
+      - id: first
+        name: First
+        query: SELECT 1 AS value
+"""
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "metric_id", "funnel_id", "what"),
+    [
+        ("Bad-Entity", "ok_metric", "ok_funnel", "entity id 'Bad-Entity'"),
+        ("ok", "orders/total", "ok_funnel", "metric id 'orders/total'"),
+        ("ok", "ok_metric", "Signup Funnel", "funnel id 'Signup Funnel'"),
+        ("ok", "*", "ok_funnel", "metric id '\\*'"),
+    ],
+)
+def test_ids_must_be_lowercase_path_safe(
+    tmp_path, entity_id: str, metric_id: str, funnel_id: str, what: str
+) -> None:
+    plugin = _plugin(
+        tmp_path,
+        f"""
+id: "{entity_id}"
+name: Entity
+metrics:
+  - id: "{metric_id}"
+    name: A metric
+    time_scope: snapshot
+    query: SELECT 1 AS value
+"""
+        + _FUNNEL.format(funnel_id=f'"{funnel_id}"'),
+    )
+    with pytest.raises(ValueError, match=f"{what}.*must match"):
+        AtlasRegistry(plugins={"testsrc": plugin})
+
+
+def test_a_metric_and_a_funnel_cannot_share_an_id_in_one_entity(tmp_path) -> None:
+    plugin = _plugin(
+        tmp_path,
+        """
+id: shop
+name: Shop
+metrics:
+  - id: checkout
+    name: Checkout
+    time_scope: snapshot
+    query: SELECT 1 AS value
+"""
+        + _FUNNEL.format(funnel_id="checkout"),
+    )
+    with pytest.raises(ValueError, match=r"'checkout'.*same resource path"):
+        AtlasRegistry(plugins={"testsrc": plugin})
+
+
+def test_every_shipped_definition_passes_the_lint() -> None:
+    """Every plugin's definitions, configured here or not."""
+    import app.sources as sources_pkg  # noqa: PLC0415
+
+    plugins: dict[str, SourcePlugin] = {}
+    for info in pkgutil.iter_modules(sources_pkg.__path__):
+        if info.ispkg:
+            manifest = importlib.import_module(f"app.sources.{info.name}.manifest")
+            plugins[manifest.SOURCE.id] = manifest.SOURCE
+
+    registry = AtlasRegistry(plugins=plugins)
+
+    assert {"demo", "deepsales"} <= set(plugins)
+    assert registry.metrics

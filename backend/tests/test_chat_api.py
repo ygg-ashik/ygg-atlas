@@ -1,20 +1,21 @@
 """API tests: auth-disabled dev user, fake agent for the streaming endpoint."""
 
 import json
+from uuid import uuid4
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 import app.api.chat as chat_module
 from app.main import app as asgi_app
 from app.models.chat import ChatSession
+from tests.access_helpers import add_grant, make_user
 
 
 @pytest_asyncio.fixture
 async def api(db, monkeypatch):
-    async def fake_run_chat_turn(
-        user_uid, session_id, content, history, db, client=None
-    ):
+    async def fake_run_chat_turn(tools, content, history, db, client=None):
         yield {"type": "token", "content": "42 "}
         yield {"type": "token", "content": "AED"}
         yield {
@@ -51,7 +52,6 @@ async def test_session_crud(api):
     assert created["title"] == "Weekly numbers"
     me = (await api.get("/api/v1/me")).json()
     assert created["user_id"] == me["user_id"]
-    assert created["user_uid"] == me["user_id"]  # owner key mirrors the atlas id
 
     sessions = (await api.get("/api/v1/chat/sessions")).json()
     assert any(s["id"] == created["id"] for s in sessions)
@@ -116,7 +116,7 @@ async def test_feedback(api):
 
 
 async def test_session_isolation_404_for_foreign_session(api, db):
-    foreign = ChatSession(user_uid="someone-else", user_email="x@yougotagift.com")
+    foreign = ChatSession(user_id=uuid4(), user_email="x@yougotagift.com")
     db.add(foreign)
     await db.commit()
     await db.refresh(foreign)
@@ -143,3 +143,29 @@ async def test_blocks_are_streamed_and_persisted(api):
     assert events[-1]["blocks"][0]["kind"] == "clarify"
     messages = (await api.get(f"/api/v1/chat/sessions/{session['id']}/messages")).json()
     assert messages[1]["blocks"][0]["question"] == "Which?"
+
+
+async def test_chat_needs_the_chat_capability(api, db):
+    dev = await make_user(db, "dev@yougotagift.com")
+    await add_grant(db, dev, "chat:use", effect="deny", kind="capability")
+    resp = await api.get("/api/v1/chat/sessions")
+    assert resp.status_code == 403
+    assert "chat:use" in resp.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        ("POST", "/api/v1/chat/sessions", {}),
+        ("GET", "/api/v1/chat/sessions/{id}/messages", None),
+        ("DELETE", "/api/v1/chat/sessions/{id}", None),
+        ("PATCH", "/api/v1/chat/messages/{id}/feedback", {"rating": "up"}),
+        ("POST", "/api/v1/chat/sessions/{id}/messages", {"content": "q"}),
+    ],
+)
+async def test_every_chat_route_needs_the_chat_capability(api, db, method, path, body):
+    dev = await make_user(db, "dev@yougotagift.com")
+    await add_grant(db, dev, "chat:use", effect="deny", kind="capability")
+    resp = await api.request(method, path.format(id=uuid4()), json=body)
+    assert resp.status_code == 403
+    assert "chat:use" in resp.json()["detail"]
