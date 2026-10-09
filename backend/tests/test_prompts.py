@@ -26,6 +26,16 @@ def test_prompt_treats_vague_unbounded_questions_as_ambiguous() -> None:
     assert "vague business word" in build_system_prompt()
 
 
+def test_prompt_forbids_defaulting_a_vague_question() -> None:
+    """Rule 8: without this the model answered "How did sales do?" with
+    month-to-date revenue in ~40% of runs (golden clarify-ambiguous-sales)."""
+    prompt = build_system_prompt()
+    assert "before querying any metric" in prompt
+    assert "do not fill in the missing period yourself" in prompt
+    # The no-default rule is tied to vague words, not snapshot questions.
+    assert "current snapshot metric needs no period" in prompt
+
+
 def test_prompt_explains_missing_access_honestly() -> None:
     prompt = build_system_prompt()
     assert "isn't available" in prompt
