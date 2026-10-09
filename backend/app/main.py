@@ -5,8 +5,15 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.access import AccessError, access_error_handler, access_router, prepare_access
+from app.access import (
+    AccessError,
+    access_error_handler,
+    access_router,
+    prepare_access,
+    sync_scope_dimensions,
+)
 from app.api import chat_router
+from app.atlas import get_registry
 from app.config import get_settings
 from app.database import get_session_factory
 from app.identity import ensure_service_user, identity_router
@@ -34,9 +41,18 @@ async def apply_startup() -> None:
         await ensure_service_user(
             db, settings.mcp_service_email, MCP_SERVICE_NAME, MCP_SERVICE_ROLE
         )
+        # Before prepare_access: its version bump invalidates any policy
+        # evaluated against the old scope-dimension mirror (C8).
+        await sync_scope_dimensions(db, get_registry().scope_catalog())
         # Bootstrap admins are created by access: a role is an authorization
         # change, audited and versioned in the same commit (spec §3.3).
         await prepare_access(db, settings.bootstrap_admin_list)
+    if (
+        settings.environment == "production"
+        and not settings.atlas_pseudonym_key.strip()
+    ):
+        # Not fatal: pseudonymised labels degrade to suppressed (C13).
+        logger.error("atlas.pseudonym_key_missing")
 
 
 @asynccontextmanager

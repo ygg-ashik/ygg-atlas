@@ -52,3 +52,17 @@ def test_prompt_access_rules_refer_to_the_person_as_the_user() -> None:
     assert "can check your access" not in prompt
     assert "If you expected" not in prompt
     assert "it may be outside your access" not in prompt
+
+
+def test_prompt_says_when_an_answer_is_restricted() -> None:
+    """Rule 11: a scoped figure is presented as covering only what the user sees."""
+    prompt = build_system_prompt()
+    assert "11. If a result's provenance says the scope is restricted" in prompt
+    assert '"across the accounts you can see"' in prompt
+
+
+def test_prompt_forbids_guessing_hidden_names() -> None:
+    """C14: masked or suppressed breakdown labels are never guessed."""
+    prompt = build_system_prompt()
+    assert "never guess the hidden names" in prompt
+    assert "hidden by access settings" in prompt

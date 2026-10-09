@@ -47,6 +47,11 @@ SYSTEM_PROMPT_TEMPLATE = (
     "catalog doesn't contain what was asked, it may be outside the user's "
     'access; tell them "this may be outside your access", don\'t claim it '
     "doesn't exist.\n"
+    "11. If a result's provenance says the scope is restricted, say briefly that "
+    "the figure covers only the data the user can see (e.g. "
+    '"across the accounts you can see"). If a breakdown\'s labels are '
+    "pseudonymised, bucketed or suppressed, never guess the hidden names; say "
+    "names are hidden by access settings.\n"
 )
 
 

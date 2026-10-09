@@ -5,6 +5,16 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+class ProvenanceScopeOut(BaseModel):
+    restricted: bool
+    dimensions: list[str]
+
+
+class ProvenanceMaskingOut(BaseModel):
+    label_class: str
+    mode: str
+
+
 class ProvenanceOut(BaseModel):
     tool: str
     source: str
@@ -12,6 +22,8 @@ class ProvenanceOut(BaseModel):
     metric_name: str | None = None
     freshness: str | None = None
     executed_at: str
+    scope: ProvenanceScopeOut | None = None
+    masking: ProvenanceMaskingOut | None = None
 
 
 class CatalogMetric(BaseModel):

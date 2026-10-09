@@ -143,8 +143,7 @@ def _settings_pseudonym_key() -> str:
     A missing or empty setting reads as "", which masking turns into
     `suppress` (fail closed).
     """
-    key = getattr(get_settings(), "atlas_pseudonym_key", "")
-    return key if isinstance(key, str) else ""
+    return get_settings().atlas_pseudonym_key.strip()
 
 
 def _audit_scope(compiled: CompiledScope) -> dict[str, Any]:
