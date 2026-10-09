@@ -46,6 +46,7 @@ platform: app.models · app.database · app.config   (+ app.core, new)
 | Access imports only identity and platform modules | "Access depends only on identity and platform modules" |
 | Agent and atlas take a policy object, never identity or access | "Agent and atlas never import identity or access" |
 | Identity and access follow the §2.2 anatomy | "Identity module layering", "Access module layering" |
+| MCP follows its own layering: `server \| cli` > `router` > `oauth_routes \| dependencies` > `oauth_provider` > `auth \| ratelimit \| schemas \| access_log` | "MCP module layering" |
 
 New top-level packages must be added to the contracts in `backend/pyproject.toml` in the same
 change. The plugin independence contract lists plugins by name: **a new source plugin must be
@@ -202,8 +203,12 @@ Each item is removed by the change that touches the code, and the matching rule 
 | `app/api/chat.py` queries the database directly | Split into `app/chat/{router,service,repository}` on the next chat change |
 | `app/config.py` and `app/database.py` predate `app/core` | Move into `app/core/` when next modified |
 | `atlas_audit_log.user_uid` is a legacy text owner key (the log is append-only); `user_id` is the real owner since migration 0003 | Stop writing `user_uid` once nothing reads it |
-| MCP uses one shared token and one service user | Per-user OAuth and PATs in auth phase 4 |
-| `[tool.pyright].strict` covers new modules (`insights`, `identity`, `access`) | Each new module joins it on creation |
+| `[tool.pyright].strict` covers new modules (`insights`, `identity`, `access`, `mcp`) | Each new module joins it on creation |
+| MCP per-source rate limits are global until 4b: uvicorn runs without trusted proxy headers, and `app/mcp/ratelimit.py` treats a loopback, private or link-local peer (nginx, the SSH tunnel, the compose network) as the source "unknown". So `/token`, `/authorize` and `/register` each share one global key, and the failed-bearer guard only logs for an unknown source, never blocks (ruling E1). It counts only bearers the door does not recognise, never an expired real token | At 4b run uvicorn with `--proxy-headers --forwarded-allow-ips=<compose subnet>`; a public client IP is then keyed as itself and the guard blocks it |
+| MCP rate limits are in process, so correctness needs a single uvicorn worker | Move to a shared store (Postgres or Redis) before adding workers or replicas |
+| OAuth consent is not bound to the browser that started `/authorize` (a victim could approve an attacker-started request) | Set an HttpOnly txn cookie on `/authorize` and require it on consent before hosted connectors (4b) |
+| `identity.revoke_user_tokens` swallows errors after the disable commit: if it fails and the user is later re-enabled, old tokens work again | Alert on the `identity.revoke_all_failed` log event; make the revocation part of the disable transaction when access and identity share a unit of work |
+| OAuth Client ID Metadata Documents (CIMD) are not supported; clients register with DCR | Add CIMD with port-agnostic loopback matching and an SSRF-safe fetch if a client needs it |
 | Frontend features are flat files | Split per §3.2 when a feature passes about 8 files |
 | An x86_64 macOS toolchain (an Intel Mac, or the x86_64 uv/Python under Rosetta used on the current M1 dev machine) gets `cryptography` 48.0.1, because no newer x86_64 macOS wheels exist; 3 advisories apply to that local venv only, so `make audit-backend` is expected red there. Linux (CI, Docker, EC2) and arm64 macOS use the patched 50.x | Switch dev machines to a native arm64 uv and Python, then drop the platform pin |
 | `@grpc/grpc-js` is forced to ^1.13.6 by a pnpm override (Firebase's Firestore pins a vulnerable 1.9.x; atlas uses only Firebase auth in the browser) | Remove when Firebase ships a fixed Firestore |

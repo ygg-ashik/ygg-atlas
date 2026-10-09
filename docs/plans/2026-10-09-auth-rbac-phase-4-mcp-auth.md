@@ -51,6 +51,44 @@ signing failure retry 2–3 times, never bypass, and report `SIGNING_FAILED`.
 
 ---
 
+## As built: deviations recorded during implementation
+
+The orchestrator's rulings and review outcomes (`scratchpad/p345/p4-rules.md`) supersede this plan
+where they differ:
+
+- **C5 (ruled):** `access/admin.py` has no `import re` and no helpers. Slug and email derivation
+  live in `app.identity.service_account_email(name) -> str | None` (None → `InvalidChangeError`);
+  `admin.py` only extends its existing identity import line, adds `create_service_account` and the
+  one revoke-all line in `update_user`. The `re.sub` snippet in Task 3 is superseded.
+- **C8 (ruled):** RFC behaviour kept: a reused code revokes the whole family, including the
+  winner's tokens.
+- **C4 (ruled):** `App.tsx` gets the import, a small composition wrapper and the route.
+- **Task 2:** `CredentialRepository.live_family_counts(now)` takes `now`; `RegisteredClient` ends
+  with `secret_hash` (`repr=False`); `list_events(tenant=…)` without `user_id` also returns user-less
+  events; extra identity exports (`REVOKED_BY_*`, `CredentialVia`, `Credential{Rule,Limit,NotFound}Error`).
+- **Tasks 3–5:** the bearer door runs on its own fresh DB session per call; redirect URIs are stored
+  and compared as `str(AnyUrl)`; the RFC 7009 handler checks the token's `client_id` against the
+  authenticated client before revoking. A refresh token presented to `/revoke` by a different
+  client revokes its family (detected as cross-client reuse) and still answers 200: an intentional
+  fail-safe.
+- **E1 (ruled, Task 6/7; as built in `app/mcp/ratelimit.py`):** a loopback, private (RFC 1918,
+  IPv6 ULA) or link-local peer is the source `"unknown"`, so behind nginx or the SSH tunnel (4a)
+  the per-source limits for `/token`, `/authorize` and `/register` each share one global key, and
+  the failed-bearer guard only logs (`ratelimit.bearer_failure_unattributed`), never blocks. It
+  counts only bearers the verifier does not recognise, never expired-but-valid tokens. The limiter
+  registry is keyed by the frozen policy.
+- **Task 6 (from reviews):** identity `ForbiddenError` carries a machine `reason`
+  (`user_disabled`, `not_company_account`, `service_account`); the consent route and the consent
+  page switch on it, so **the consent page shows fixed Atlas copy and never a backend message**.
+  `hash_secret` is exported from identity and reused by `app/mcp/auth.py`.
+- **Task 11:** nginx redacts the txn from access logs with a log-format map instead of
+  `access_log off` (Task 11 section). The discovery location is narrowed to
+  `location ^~ /.well-known/oauth-` (every backend discovery path starts with it), so an outer TLS
+  proxy can keep other `/.well-known/` paths such as ACME. `CLAUDE.md` is not edited by the
+  implementer (out of bounds for agents); the guardrail-4 sentence below is left to the user.
+  `backend/tests/test_deploy_config.py` was written in the Task 11 completion pass (after Task 6);
+  the config was also checked with `nginx -t` and a header and log smoke test.
+
 ## 0. Contradictions found while verifying (read first)
 
 Each item was checked against the installed SDK (`backend/.venv/lib/python3.12/site-packages/mcp`,
@@ -2272,7 +2310,7 @@ export function submitConsent(txn: string, decision: 'approve' | 'deny'): Promis
 // use-consent.ts
 export type ConsentState =
   | { kind: 'missing-txn' } | { kind: 'sign-in' } | { kind: 'loading' }
-  | { kind: 'expired' } | { kind: 'blocked'; message: string }       // 403 from get_principal
+  | { kind: 'expired' } | { kind: 'blocked'; message: string }       // 403; fixed copy chosen by detail.reason
   | { kind: 'ineligible'; prompt: ConsentPrompt } | { kind: 'ready'; prompt: ConsentPrompt }
   | { kind: 'done' } | { kind: 'error'; message: string };
 export function useConsent(txn: string | null, session: ConsentSession): {
@@ -2304,7 +2342,11 @@ function OAuthConsent() {
   MCP client."
 - Not signed in → the sign-in panel pattern with "Continue with Google" calling `session.signIn`.
 - 404 → "This request expired or was already used. Start again from your MCP client."
-- 403 from the GET (non-company or disabled) → the backend's message, no buttons.
+- 403 from the GET (non-company or disabled) → fixed Atlas copy chosen by the machine
+  `detail.reason` (`user_disabled` → "Your Atlas access is disabled. Contact an Atlas admin.",
+  `not_company_account` → "Atlas only accepts @yougotagift.com Google accounts.", anything else →
+  "This account can't approve MCP access. Contact an Atlas admin."), no buttons. The page never
+  renders a backend message.
 - Ineligible (`no_mcp_use`) → "Your role doesn't include MCP access yet." and a plain link
   **Request access** to `/account/requests/new?kind=role` (phase 5's route; 404s until then).
 - Ready → serif title "**{client_name}** wants to access Atlas", "as {user_email}", the redirect host
@@ -2330,7 +2372,7 @@ function OAuthConsent() {
     `disables both buttons while submitting`,
     `ineligible user sees Request access linking to /account/requests/new?kind=role`,
     `expired or used request shows the start-again message`,
-    `blocked account shows the backend message and no buttons`,
+    `blocked account shows fixed copy (never the backend message) and no buttons`,
     `signed-out visitor sees Continue with Google and it calls signIn`,
     `missing txn shows the incomplete-link message`, `renders on glass` (`[data-glass]`).
   - `use-consent.test.tsx`: state transitions for 401 → `sign-in`, 403 → `blocked`, 404 →
@@ -2358,39 +2400,22 @@ git commit -m "feat(frontend): OAuth consent page"
   `CLAUDE.md`, `docs/specs/2026-10-08-auth-rbac-design.md` (own sections only, contracts)
 - Test: `backend/tests/test_deploy_config.py`
 
-**nginx** (inside the existing `server`):
-
-```nginx
-    # MCP (streamable HTTP + OAuth endpoints) and discovery. $http_host keeps the port, which
-    # the MCP transport's DNS-rebinding check and ATLAS_PUBLIC_URL expect (D26).
-    location /mcp-server/ {
-        proxy_pass http://backend:8081;
-        proxy_http_version 1.1;
-        proxy_set_header Host $http_host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
-    location /.well-known/ {
-        proxy_pass http://backend:8081;
-        proxy_set_header Host $http_host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-    # The consent page: never framed (clickjacking), its ?txn= never logged.
-    location = /oauth/consent {
-        access_log off;
-        add_header X-Frame-Options "DENY" always;
-        add_header Content-Security-Policy "frame-ancestors 'none'" always;
-        try_files /index.html =404;
-    }
-```
-
-Plus `add_header X-Frame-Options "DENY" always;` at server level (locations that add their own
-headers repeat it).
+**nginx** (as built; validated with `nginx -t` and a header and log smoke test in `nginx:alpine`):
+- `location /mcp-server/` and `location ^~ /.well-known/oauth-` proxy to `backend:8081` with
+  `proxy_set_header Host $http_host` (keeps the port for the DNS-rebinding check, C1/D26),
+  `proxy_buffering off` and `proxy_cache off`; `/mcp-server/` keeps the 3600 s timeouts for SSE.
+- `location ~ ^/oauth/consent/?$` (with or without a trailing slash) serves `index.html` with
+  `X-Frame-Options: DENY`,
+  `Content-Security-Policy: frame-ancestors 'none'`, `Referrer-Policy: no-referrer` and
+  `Cache-Control: no-store`. `location /` (the SPA shell) also sends `X-Frame-Options: DENY` and
+  `frame-ancestors 'none'` (headers are set per location, because a location with its own
+  `add_header` drops the server-level ones).
+- The txn never reaches nginx logs: an `atlas` `log_format` logs a mapped URI (`/oauth/consent`
+  without its query or trailing slash, via `~^/oauth/consent(/|[?#]|$)`;
+  `/api/v1/oauth/consent/-` instead of the txn path) and a mapped Referer (`-` for any
+  consent-page referer, and `"" -` for an empty one), so the SPA route keeps its access log. `location ^~
+  /api/v1/oauth/consent` (no trailing slash: a prefix ending in `/` would 301 the POST) sets
+  `error_log … crit`, because upstream error lines echo the raw request line.
 
 **`.env.example`:** add `ATLAS_PUBLIC_URL=http://localhost:8080` (with the 4b note),
 `OAUTH_HOSTED_REDIRECT_URIS=https://claude.ai/api/mcp/auth_callback`, `PAT_DEFAULT_DAYS=90`,
@@ -2433,11 +2458,12 @@ handlers; redirect URIs; Claude Code DCR).
 
 - [ ] **Step 1: Write the failing test** (`tests/test_deploy_config.py`, text checks):
   `test_nginx_proxies_mcp_and_discovery_with_the_port` (both locations, `$http_host`, buffering off
-  for `/mcp-server/`), `test_consent_page_is_not_frameable_or_logged`,
+  for `/mcp-server/`), `test_discovery_location_covers_every_backend_discovery_path`,
+  `test_consent_page_is_not_frameable_or_logged`,
   `test_env_example_has_the_public_url_and_no_shared_token`.
 - [ ] **Step 2: Run to verify it fails.**
 - [ ] **Step 3: Edit the config and docs.**
-- [ ] **Step 4: Run the gate**; also `docker run --rm --add-host backend:127.0.0.1 -v
+- [ ] **Step 4: Run the gate**; also `timeout 60 docker run --rm --add-host backend:127.0.0.1 -v
   "$PWD/frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro" nginx:alpine nginx -t`.
 - [ ] **Step 5: Commit**
 
@@ -2587,8 +2613,9 @@ taken, open issues.
 | Audience switch at 4b | `invalid_grant` → one re-auth; PATs survive (D7) |
 | Token leakage | D28 carriers, hash-only storage, no `logger.exception` with secrets in scope, leak tests |
 | Consent phishing once hosted callbacks exist (a victim approves an attacker-started txn that redirects to the attacker's claude.ai) | Consent shows client, host, email and a "did you start this" warning; txn 10 min and single use; **before 4b**: bind the txn to the initiating browser with an HttpOnly cookie set on `/authorize` (ARCHITECTURE §6 debt row) |
-| `txn` in access logs (`GET /api/v1/oauth/consent/{txn}`, uvicorn) | 10-minute, single-use, approval binds the approver not the logger; nginx `access_log off` for the SPA route; acceptable for 4a |
-| Per-source limits global behind nginx (C15); `/register` 10/h for a team | Documented; raise or key by trusted proxy at 4b |
+| `txn` in access logs (`GET /api/v1/oauth/consent/{txn}`, uvicorn) | 10-minute, single-use, approval binds the approver not the logger; nginx logs a redacted URI and Referer for the SPA route and the consent API, and `Referrer-Policy: no-referrer` on the consent page (Task 11); uvicorn's own access log still prints the path inside the backend container: acceptable for 4a |
+| Per-source limits global behind nginx (C15, E1): private, loopback and link-local peers are "unknown", so `/token`, `/authorize` and `/register` share one global key each and the failed-bearer guard only logs; `/register` 10/h for a team | Documented (README, ARCHITECTURE §6); at 4b uvicorn `--proxy-headers --forwarded-allow-ips=<compose subnet>` keys by client IP |
+| `error_log … crit` on `location ^~ /api/v1/oauth/consent` hides that location's upstream errors (502, 504, timeouts) from the nginx error log, because those lines echo the raw request line with the txn | Diagnose consent failures from the backend's structured logs (`mcp.consent_*`) and the access log status; lower the level only temporarily, on the box, while debugging |
 | Shared-token users break at deploy | README deploy note; mint PATs before deploying; deploy only on the user's "deploy" |
 | Rebase onto phase 3 (hotspots `audit.py`, `tools.py`, `models`, `admin.py`, `config.py`, `main.py`, `pyproject.toml`, migration chain) | Appended columns, one-method/one-statement edits, `down_revision` comment; coordinator re-runs alembic tests on SQLite and PG |
 | Coverage | Every task carries tests; `app/mcp` no longer omitted; `fail_under=80` |
