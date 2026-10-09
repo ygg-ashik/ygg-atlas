@@ -128,6 +128,7 @@ class AccessService:
             capabilities=sorted(policy.capabilities),
             groups=sorted(refs, key=lambda ref: ref.name),
             has_data_access=policy.has_data_access,
+            clearances=sorted(policy.clearances) if policy.active else [],
         )
 
 

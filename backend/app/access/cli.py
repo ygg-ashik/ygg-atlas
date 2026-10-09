@@ -8,10 +8,25 @@
         --reason bootstrap
     uv run python -m app.access.cli grant user:dev@yougotagift.com allow '*' \
         --reason dev
+    uv run python -m app.access.cli grant group:csm allow 'deepsales/*' \
+        --scope 'csm=$self'
+    uv run python -m app.access.cli grant group:gcc allow 'deepsales/*' \
+        --scope 'country=AE,SA'
+    uv run python -m app.access.cli grant user:lead@yougotagift.com allow \
+        fields:people_names --kind clearance
     uv run python -m app.access.cli revoke <grant-id>
     uv run python -m app.access.cli set-role someone@yougotagift.com analyst
+    uv run python -m app.access.cli set-attr someone@yougotagift.com csm_name 'Sara K'
+    uv run python -m app.access.cli unset-attr someone@yougotagift.com csm_name
+    uv run python -m app.access.cli attrs someone@yougotagift.com
+    uv run python -m app.access.cli label-classes
+    uv run python -m app.access.cli label-class person_name bucket --bucket-size 3
+    uv run python -m app.access.cli scope-dimensions
     uv run python -m app.access.cli access someone@yougotagift.com \
         --resource demo/order/revenue
+
+Quote `'$self'` so the shell doesn't expand it. `--scope` repeats: values of one
+dimension merge, different dimensions are ANDed.
 
 On the server: `docker compose exec backend uv run --no-dev python -m app.access.cli
 ...`. Every change is recorded in rbac_changes with via="cli".
@@ -40,9 +55,18 @@ from app.access.errors import (
     NotFoundError,
     PolicyUnavailableError,
 )
-from app.access.facts import DEFAULT_TENANT, SUBJECT_GROUP, SUBJECT_USER
+from app.access.facts import (
+    DEFAULT_TENANT,
+    KIND_CAPABILITY,
+    KIND_CLEARANCE,
+    KIND_RESOURCE,
+    MASK_MODES,
+    SUBJECT_GROUP,
+    SUBJECT_USER,
+)
 from app.access.models import Group
 from app.access.patterns import is_resource_path
+from app.access.policy import Conjunction, RowScope
 from app.access.repository import AccessRepository
 from app.access.schemas import GrantCreate, UserUpdate
 from app.access.service import AccessService
@@ -67,6 +91,37 @@ def _aware_datetime(value: str) -> datetime:
         msg = "--expires needs a UTC offset, e.g. 2027-01-01T00:00+04:00"
         raise argparse.ArgumentTypeError(msg)
     return parsed
+
+
+def _parse_scope(values: Sequence[str] | None) -> dict[str, list[str]] | None:
+    """`['csm=$self', 'country=AE,SA']` -> `{csm: [$self], country: [AE, SA]}`.
+    A dimension given twice merges its values; GrantCreate validates the rest."""
+    if not values:
+        return None
+    scope: dict[str, list[str]] = {}
+    for item in values:
+        dimension, sep, raw = item.partition("=")
+        parts = [v.strip() for v in raw.split(",") if v.strip()]
+        if not sep or not dimension.strip() or not parts:
+            msg = f"--scope '{item}' must look like dimension=value[,value...]"
+            raise InvalidChangeError(msg)
+        scope.setdefault(dimension.strip(), []).extend(parts)
+    return scope
+
+
+def _conjunction_text(conjunction: Conjunction) -> str:
+    return " and ".join(
+        f"{dimension} in ({', '.join(sorted(values))})"
+        for dimension, values in conjunction
+    )
+
+
+def _rows_text(scope: RowScope | None) -> str:
+    if scope is None:
+        return "all"
+    if not scope:
+        return "none"
+    return " OR ".join(_conjunction_text(tuple(sorted(alt.items()))) for alt in scope)
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +197,7 @@ async def _grant(ctx: _Context, args: argparse.Namespace) -> None:
             "target": args.pattern,
             "reason": args.reason,
             "expires_at": args.expires,
+            "row_scope": _parse_scope(args.scope),
         }
     )
     grant = await ctx.admin.create_grant(ctx.actor, payload)
@@ -168,12 +224,64 @@ async def _access(ctx: _Context, args: argparse.Namespace) -> None:
     state = "active" if policy.active else "disabled"
     _out(f"{user.email}: role {policy.role}, {state}")
     _out("capabilities: " + ", ".join(sorted(policy.capabilities)))
+    _out("clearances: " + (", ".join(sorted(policy.clearances)) or "none"))
     for rule in policy.allow_rules:
-        _out(f"allow {rule.pattern}  ({rule.origin}, grant {rule.grant_id})")
+        rows = "" if rule.scope is None else f"  rows: {_conjunction_text(rule.scope)}"
+        _out(f"allow {rule.pattern}  ({rule.origin}, grant {rule.grant_id}){rows}")
     for rule in policy.deny_rules:
         _out(f"deny  {rule.pattern}  ({rule.origin}, grant {rule.grant_id})")
+    for skipped in policy.skipped:
+        _out(
+            f"skipped {skipped.pattern}  ({skipped.origin}, grant {skipped.grant_id}): "
+            f"{skipped.reason}"
+        )
     if args.resource:
         _out(f"{args.resource}: {policy.decide(args.resource).reason}")
+        # The policy view; the atlas also drops dimensions the entity lacks (D3.7).
+        _out(f"rows: {_rows_text(policy.row_scope(args.resource))}")
+
+
+async def _set_attr(ctx: _Context, args: argparse.Namespace) -> None:
+    user = await ctx.user(args.email)
+    await ctx.admin.set_attribute(ctx.actor, user.id, args.key, args.value)
+    _out(f"{user.email}: attribute {args.key} set")
+
+
+async def _unset_attr(ctx: _Context, args: argparse.Namespace) -> None:
+    user = await ctx.user(args.email)
+    await ctx.admin.delete_attribute(ctx.actor, user.id, args.key)
+    _out(f"{user.email}: attribute {args.key} removed")
+
+
+async def _attrs(ctx: _Context, args: argparse.Namespace) -> None:
+    user = await ctx.user(args.email)
+    rows = await ctx.admin.list_attributes(ctx.actor, user.id)
+    if not rows:
+        _out(f"{user.email} has no attributes")
+    for row in rows:
+        _out(f"{row.key} = {row.value}")
+
+
+async def _label_classes(ctx: _Context, _args: argparse.Namespace) -> None:
+    for row in await ctx.admin.list_label_classes(ctx.actor):
+        _out(f"{row.label_class}: {row.mode} (bucket size {row.bucket_size})")
+
+
+async def _label_class(ctx: _Context, args: argparse.Namespace) -> None:
+    row = await ctx.admin.set_label_class(
+        ctx.actor, args.label_class, args.mode, args.bucket_size
+    )
+    _out(f"{row.label_class}: {row.mode} (bucket size {row.bucket_size})")
+
+
+async def _scope_dimensions(ctx: _Context, _args: argparse.Namespace) -> None:
+    rows = await ctx.admin.list_scope_dimensions(ctx.actor)
+    if not rows:
+        _out("no scope dimensions (no enabled plugin declares any)")
+    for row in rows:
+        own = f"  ($self -> {row.self_attribute})" if row.self_attribute else ""
+        note = f"  {row.description}" if row.description else ""
+        _out(f"{row.source}/{row.entity}  {row.dimension}{own}{note}")
 
 
 _COMMANDS: dict[str, _Command] = {
@@ -184,6 +292,12 @@ _COMMANDS: dict[str, _Command] = {
     "revoke": _revoke,
     "set-role": _set_role,
     "access": _access,
+    "set-attr": _set_attr,
+    "unset-attr": _unset_attr,
+    "attrs": _attrs,
+    "label-classes": _label_classes,
+    "label-class": _label_class,
+    "scope-dimensions": _scope_dimensions,
 }
 
 
@@ -206,9 +320,16 @@ def _parser() -> argparse.ArgumentParser:
     grant.add_argument("pattern", help="e.g. '*', 'deepsales/*', 'demo/order/revenue'")
     grant.add_argument(
         "--kind",
-        choices=["resource", "capability"],
-        default="resource",
+        choices=[KIND_RESOURCE, KIND_CAPABILITY, KIND_CLEARANCE],
+        default=KIND_RESOURCE,
         help="what 'pattern' names (default: resource)",
+    )
+    grant.add_argument(
+        "--scope",
+        action="append",
+        default=None,
+        metavar="DIM=V1[,V2]",
+        help="limit rows, e.g. 'csm=$self' or 'country=AE,SA' (repeatable)",
     )
     grant.add_argument("--reason", default="")
     grant.add_argument(
@@ -225,6 +346,21 @@ def _parser() -> argparse.ArgumentParser:
     show = sub.add_parser("access", help="explain a user's effective access")
     show.add_argument("email")
     show.add_argument("--resource", default=None)
+    set_attr = sub.add_parser("set-attr", help="set a user attribute ($self uses it)")
+    set_attr.add_argument("email")
+    set_attr.add_argument("key")
+    set_attr.add_argument("value")
+    unset_attr = sub.add_parser("unset-attr", help="remove a user attribute")
+    unset_attr.add_argument("email")
+    unset_attr.add_argument("key")
+    attrs = sub.add_parser("attrs", help="list a user's attributes")
+    attrs.add_argument("email")
+    sub.add_parser("label-classes", help="how masked label classes are shown")
+    label = sub.add_parser("label-class", help="set how a label class is masked")
+    label.add_argument("label_class", help="business_name or person_name")
+    label.add_argument("mode", choices=list(MASK_MODES))
+    label.add_argument("--bucket-size", type=int, default=None)
+    sub.add_parser("scope-dimensions", help="dimensions a row scope may name")
     return parser
 
 
