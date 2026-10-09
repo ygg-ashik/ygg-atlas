@@ -34,7 +34,17 @@ export interface ArtifactBlock {
   provenance: Provenance;
 }
 
-export type AnswerBlock = ClarifyBlock | ArtifactBlock;
+/** A policy denial for one exact resource (backend B7, `denied_from_result`):
+ * the UI offers a prefilled access request. Never carries numbers. */
+export interface DeniedBlock {
+  kind: 'denied';
+  /** Exact resource path, e.g. `demo/checkout/checkout_funnel`. */
+  resource: string;
+  /** Business label, e.g. "Checkout funnel". */
+  label: string;
+}
+
+export type AnswerBlock = ClarifyBlock | ArtifactBlock | DeniedBlock;
 
 export interface ChatSession {
   id: string;

@@ -4,7 +4,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/api/query-client';
 import { useMyAccess } from '@/api/hooks/use-my-access';
 import { ThemeProvider } from '@/lib/theme-provider';
-import { Toaster } from '@/ui';
+import { Skeleton, SkeletonRegion, SkeletonRows, Toaster } from '@/ui';
 import {
   AuthProvider,
   LoginPage,
@@ -56,10 +56,33 @@ function AppShell() {
   );
 }
 
-/** Home route: the Overview dashboard, greeted by the signed-in user's name. */
+/** Home route: the Overview dashboard, greeted by the signed-in user's name.
+ * A first sign-in with no data access (and no admin capability) lands on My
+ * access instead, where the way to ask for data is. */
 function Home() {
   const { user } = useAuth();
+  const view = useMyAccess();
+  if (view.status === 'loading') return <HomeSkeleton />;
+  const admin = view.capabilities.some((c) => c.startsWith('admin:'));
+  if (view.access && !view.access.has_data_access && !admin) {
+    return <Navigate to="/account" replace state={{ firstRun: true }} />;
+  }
   return <OverviewPage userName={user?.name ?? ''} />;
+}
+
+/** Placeholder while `/me/access` decides where a first sign-in lands. */
+function HomeSkeleton() {
+  return (
+    <SkeletonRegion label="your workspace" className="mx-auto max-w-[760px] px-6 pb-16 pt-[84px]">
+      <div className="mb-6 mt-1.5 grid gap-2.5">
+        <Skeleton shape="heading" />
+        <Skeleton className="w-3/5" />
+      </div>
+      <div className="overflow-hidden rounded-card bg-card shadow-[0_0_0_1px_hsl(var(--border))]">
+        <SkeletonRows count={4} />
+      </div>
+    </SkeletonRegion>
+  );
 }
 
 /** A route opened only by `rule`; anything else renders the denied page in place. */
