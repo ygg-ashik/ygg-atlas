@@ -51,6 +51,11 @@ vi.mock('@/api/admin-groups', () => {
     listGrants: () => Promise.resolve([]),
   };
 });
+vi.mock('@/api/audit', () => ({
+  listChanges: () => Promise.resolve({ items: [], next_cursor: null }),
+  listDecisions: () => Promise.resolve({ items: [], next_cursor: null }),
+  fetchAuditSummary: () => new Promise(() => {}),
+}));
 vi.mock('@/api/catalog-admin', () => ({
   fetchCatalogResources: () => Promise.resolve({ sources: [] }),
 }));
