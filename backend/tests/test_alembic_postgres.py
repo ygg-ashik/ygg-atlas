@@ -20,14 +20,18 @@ from sqlmodel import SQLModel
 import app.access.models  # registers access tables
 import app.identity.models  # registers users on the metadata
 import app.models  # noqa: F401  # registers chat and audit tables
-from tests.pg_guard import is_disposable
+from tests.pg_guard import PG_XDIST_GROUP, is_disposable
 
 PG_URL = os.environ.get("TEST_PG_URL", "")
 
-pytestmark = pytest.mark.skipif(
-    not is_disposable(PG_URL),
-    reason="TEST_PG_URL not set, or its database name lacks 'test'/'scratch'",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not is_disposable(PG_URL),
+        reason="TEST_PG_URL not set, or its database name lacks 'test'/'scratch'",
+    ),
+    # Both PG modules reset the one TEST_PG_URL schema: one xdist worker runs them.
+    pytest.mark.xdist_group(PG_XDIST_GROUP),
+]
 
 BACKEND = Path(__file__).parents[1]
 

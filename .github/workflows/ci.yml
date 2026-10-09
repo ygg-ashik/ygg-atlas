@@ -35,7 +35,7 @@ jobs:
       - name: Architecture contracts
         run: uv run lint-imports
       - name: Tests and coverage
-        run: uv run pytest --cov=app -q
+        run: uv run pytest -n auto --cov=app -q
       - name: Dependency audit
         # Resolve markers for this runner's interpreter (pip-audit uses its own).
         run: |

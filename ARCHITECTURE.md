@@ -160,7 +160,8 @@ features/<name>/
 ## 4. Tests
 
 - Test-driven: write the failing test first.
-- Backend: pytest; coverage of `app` ≥ 80% (`fail_under`). Frontend: Vitest + Testing Library.
+- Backend: pytest, run in parallel with pytest-xdist (`-n auto`); coverage of `app` ≥ 80%
+  (`fail_under`). Frontend: Vitest + Testing Library.
 - Test behavior through public interfaces, not private helpers.
 - Never weaken, skip or delete a test to make a change pass. A test that encodes wrong behavior is
   fixed in the same change, with the reason in the commit message.
@@ -172,7 +173,7 @@ features/<name>/
 |---|---|---|
 | Claude | `engineering-standards` skill before writing code; `production-code-review` skill before calling work done | every coding task |
 | Pre-commit | Ruff (fix and format), Prettier, ESLint on changed files; import contracts; secret scan; whitespace and large-file checks | `git commit` |
-| `make check` | Backend: `ruff format --check`, `ruff check`, `pyright`, `lint-imports`, `pytest --cov`. Frontend: Prettier check, ESLint, `tsc`, Vitest, build | before every PR |
+| `make check` | Backend: `ruff format --check`, `ruff check`, `pyright`, `lint-imports`, `pytest -n auto --cov`. Frontend: Prettier check, ESLint, `tsc`, Vitest, build | before every PR |
 | `make audit` | Dependency scan: `pip-audit` on lockfile pins resolved for this platform (`scripts/locked_requirements.py`, because pip-audit evaluates markers against its own interpreter, not the project venv), and `pnpm audit --prod` | before dependency changes |
 | CI | Everything in `make check`, plus `make audit` and a gitleaks secret scan | every push and PR; a red build cannot merge |
 

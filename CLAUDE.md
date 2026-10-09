@@ -91,9 +91,11 @@ uv run alembic upgrade head        # apply migrations (also run by the Docker im
 uv run alembic revision -m "..."   # new migration in migrations/versions/
 make -C .. dev-access              # local dev: grant the dev user all data (no admin bypass)
 TEST_PG_URL=postgresql+asyncpg://… uv run pytest tests/test_alembic_postgres.py   # migrations on a disposable Postgres
-uv run pytest --cov=app            # >80% coverage on new code
+uv run pytest -n auto --cov=app    # >80% coverage on new code (parallel via pytest-xdist)
 uv run ruff check . && uv run ruff format --check .
 ```
+
+While iterating, run only the affected test files; run the full suite (parallel) once before each commit.
 
 Frontend:
 ```bash

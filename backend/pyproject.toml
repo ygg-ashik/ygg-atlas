@@ -44,11 +44,14 @@ dev = [
     "pyright>=1.1.390",
     "import-linter>=2.1",
     "packaging>=24",
+    "pytest-xdist>=3.8.0",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Registered here too so `-p no:xdist` (serial) runs do not warn on the PG modules.
+markers = ["xdist_group(name): run these tests on one xdist worker"]
 filterwarnings = [
     # aiosqlite datetime adapter — test database only; production uses asyncpg
     "ignore:The default datetime adapter is deprecated:DeprecationWarning",
