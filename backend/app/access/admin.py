@@ -4,7 +4,8 @@ Each write is one unit of work: the change, its rbac_changes row and the
 policy_version bump commit together, so no cached policy can miss a change.
 Every write also locks `policy_state` first (`AccessRepository.lock_for_write`),
 so concurrent admin writes serialize and a losing write sees a 409 instead of
-racing past another write's application-level checks.
+racing past another write's application-level checks; under that lock the
+actor's policy_version must still be current, or the write is a 409 too.
 
 A failed write rolls the session back, which expires loaded objects; reload
 them before reuse.
@@ -253,8 +254,7 @@ class AccessAdmin:
 
     async def create_group(self, actor: Actor, payload: GroupCreate) -> Group:
         actor.require(ADMIN_GROUPS)
-        async with self._write():
-            await self._repo.lock_for_write()
+        async with self._write(actor):
             await self._ensure_name_free(actor, payload.name)
             if payload.parent_id is not None:
                 await self._group(actor, payload.parent_id)
@@ -277,8 +277,7 @@ class AccessAdmin:
         self, actor: Actor, group_id: UUID, payload: GroupUpdate
     ) -> Group:
         actor.require(ADMIN_GROUPS)
-        async with self._write():
-            await self._repo.lock_for_write()
+        async with self._write(actor):
             group = await self._group(actor, group_id)
             before = _snapshot(group)
             if payload.name is not None and payload.name != group.name:
@@ -301,8 +300,7 @@ class AccessAdmin:
 
     async def delete_group(self, actor: Actor, group_id: UUID) -> None:
         actor.require(ADMIN_GROUPS)
-        async with self._write():
-            await self._repo.lock_for_write()
+        async with self._write(actor):
             group = await self._group(actor, group_id)
             if await self._repo.group_in_use(group.id):
                 msg = "Remove the group's subgroups, members and grants first."
@@ -328,8 +326,7 @@ class AccessAdmin:
             raise InvalidChangeError(msg)
         actor.require_member_admin(group_id)
         _no_self_membership(actor, user_id)
-        async with self._write():
-            await self._repo.lock_for_write()
+        async with self._write(actor):
             group = await self._group(actor, group_id)
             user = await self._user(actor, user_id)
             if user.kind == UserKind.SERVICE:
@@ -366,8 +363,7 @@ class AccessAdmin:
     async def remove_member(self, actor: Actor, group_id: UUID, user_id: UUID) -> None:
         actor.require_member_admin(group_id)
         _no_self_membership(actor, user_id)
-        async with self._write():
-            await self._repo.lock_for_write()
+        async with self._write(actor):
             group = await self._group(actor, group_id)
             member = await self._repo.member(group.id, user_id)
             if member is None:
@@ -404,8 +400,7 @@ class AccessAdmin:
         if payload.target_kind == KIND_CAPABILITY:
             # D10: no self-grants; only capabilities you hold.
             actor.require(target)
-        async with self._write():
-            await self._repo.lock_for_write()
+        async with self._write(actor):
             await self._subject(actor, payload.subject_type, payload.subject_id)
             subject = (payload.subject_type, payload.subject_id)
             existing = await self._repo.find_grant(
@@ -441,8 +436,7 @@ class AccessAdmin:
 
     async def revoke_grant(self, actor: Actor, grant_id: UUID) -> None:
         actor.require_any(ADMIN_GROUPS, ADMIN_USERS)
-        async with self._write():
-            await self._repo.lock_for_write()
+        async with self._write(actor):
             grant = await self._repo.grant(grant_id)
             if grant is None:
                 msg = "No such grant."
@@ -489,8 +483,7 @@ class AccessAdmin:
         if payload.role is None and payload.status is None:
             msg = "Nothing to change: send a role or a status."
             raise InvalidChangeError(msg)
-        async with self._write():
-            await self._repo.lock_for_write()
+        async with self._write(actor):
             user = await self._user(actor, user_id)
             _not_self(actor, user)
             await self._check_not_above_actor(actor, user)
@@ -545,13 +538,33 @@ class AccessAdmin:
     # ---- helpers ------------------------------------------------------------
 
     @asynccontextmanager
-    async def _write(self) -> AsyncGenerator[None]:
-        """Keep the session usable after any failed write (CLI runs several
+    async def _write(self, actor: Actor) -> AsyncGenerator[None]:
+        """One admin write: take the write lock, re-check the actor's
+        authority under it, then run the body.
+
+        Authority checks run against the policy resolved at request start. If
+        any access change committed since (the actor may have been disabled or
+        demoted meanwhile), the write is refused with a 409 rather than judged
+        on stale authority. The trusted CLI actor (D5) has no policy to go
+        stale. No-op writes take the same path, so they are refused too: a
+        harmless retry, and one rule with no exceptions.
+
+        Keeps the session usable after any failed write (CLI runs several
         commands per session). A constraint violation caught only at commit
         time (two writers racing past an application-level check) becomes a
         409; anything else rolls back and re-raises as-is.
         """
         try:
+            version = await self._repo.lock_for_write()
+            if actor.policy is not None and version != actor.policy.policy_version:
+                logger.info(
+                    "access.stale_actor",
+                    actor_user_id=str(actor.user_id),
+                    resolved_version=actor.policy.policy_version,
+                    current_version=version,
+                )
+                msg = "Access changed while this request was running; retry."
+                raise ConflictError(msg)
             yield
         except IntegrityError:
             await self._repo.rollback()

@@ -214,6 +214,13 @@ trusted operator on the box and skips them):
   Managers (D8) only add and remove plain members of their subtree, never themselves, never a
   service user, and never out from under a deny.
 
+**Write discipline.** Every admin write (API and CLI) takes a row lock on `policy_state` first, so
+writes serialize. The actor's authority is judged against the Policy resolved at request start; under
+the lock, that Policy's `policy_version` must still be the current one. If any access change
+committed in between (the actor may have been disabled or demoted meanwhile), the write is refused
+with a 409 ("Access changed while this request was running; retry.") and nothing is written. The
+trusted CLI actor has no Policy to go stale and skips this check. No-op writes take the same path.
+
 ### 5.4 Evaluation (the single function `access.policy_for(principal)`)
 
 1. **Capabilities** = the role's bundle ∪ user capability allows − user capability denies.
@@ -376,7 +383,8 @@ never happen in the browser.
 - Rate limits per principal and per token.
 - Token hashes only; raw tokens shown once. Refresh reuse detection.
 - OAuth redirect URIs allowlisted; codes single-use, 60 s.
-- Every RBAC write audited and increments `policy_version`.
+- Every RBAC write audited and increments `policy_version`; an API write whose actor's Policy
+  predates the current `policy_version` is refused (§5.3, write discipline).
 - **Ops: a corrupt grant fails closed.** The evaluator warnings name the grant (`grant_id`):
   - `access.malformed_grant` (unknown effect or target kind): everyone the grant applies to loses
     all data, all capabilities and all manager rights.

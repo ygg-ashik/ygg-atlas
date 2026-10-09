@@ -22,6 +22,7 @@ from tests.access_helpers import (
     add_grant,
     add_member,
     admin_for,
+    fresh,
     make_group,
     make_user,
     policy_version,
@@ -77,7 +78,7 @@ async def test_a_group_grant_reaches_members_on_their_next_request(db) -> None:
     service = AccessService(AccessRepository(db), PolicyCache())
     assert not (await service.policy_for_user(sara.id)).allows(REVENUE)
 
-    await admin_for(db).create_grant(actor, group_grant(group.id))
+    await admin_for(db).create_grant(await fresh(db, actor), group_grant(group.id))
 
     assert (await service.policy_for_user(sara.id)).allows(REVENUE)
 
@@ -134,8 +135,8 @@ async def test_duplicate_grants_conflict(db) -> None:
     group = await make_group(db, "growth")
     admin = admin_for(db)
     await admin.create_grant(actor, group_grant(group.id))
-    with pytest.raises(ConflictError):
-        await admin.create_grant(actor, group_grant(group.id))
+    with pytest.raises(ConflictError, match="already exists"):
+        await admin.create_grant(await fresh(db, actor), group_grant(group.id))
 
 
 async def test_an_unknown_subject_is_not_found(db) -> None:
@@ -157,6 +158,7 @@ async def test_revoking_records_the_old_grant(db) -> None:
     admin = admin_for(db)
     grant = await admin.create_grant(actor, group_grant(group.id))
     grant_id, group_id = grant.id, group.id
+    actor = await fresh(db, actor)
 
     await admin.revoke_grant(actor, grant_id)
 
@@ -230,7 +232,7 @@ async def test_lifting_a_deny_on_yourself_is_denied(db) -> None:
     grant_id = grant.id
 
     with pytest.raises(AccessDeniedError, match="yourself"):
-        await admin_for(db).revoke_grant(actor, grant_id)
+        await admin_for(db).revoke_grant(await fresh(db, actor), grant_id)
 
 
 async def test_lifting_a_capability_deny_needs_that_capability(db) -> None:
@@ -252,7 +254,7 @@ async def test_an_expired_duplicate_names_the_old_grant(db) -> None:
     expired = await add_grant(db, group, "demo/*", expires_at=PAST)
 
     with pytest.raises(ConflictError, match=str(expired.id)):
-        await admin_for(db).create_grant(actor, group_grant(group.id))
+        await admin_for(db).create_grant(await fresh(db, actor), group_grant(group.id))
 
 
 async def test_a_live_duplicate_keeps_the_generic_message(db) -> None:
@@ -261,7 +263,7 @@ async def test_a_live_duplicate_keeps_the_generic_message(db) -> None:
     await add_grant(db, group, "demo/*", expires_at=FUTURE)
 
     with pytest.raises(ConflictError, match="already exists"):
-        await admin_for(db).create_grant(actor, group_grant(group.id))
+        await admin_for(db).create_grant(await fresh(db, actor), group_grant(group.id))
 
 
 # ---- fix: revoke_grant hides existence and gates by subject type -----------

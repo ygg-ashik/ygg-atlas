@@ -20,6 +20,7 @@ from tests.access_helpers import (
     actor_with,
     add_grant,
     admin_for,
+    fresh,
     make_group,
     make_user,
     policy_version,
@@ -57,8 +58,8 @@ async def test_group_names_are_unique(db) -> None:
     actor = await actor_with(db)
     admin = admin_for(db)
     await admin.create_group(actor, GroupCreate(name="growth"))
-    with pytest.raises(ConflictError):
-        await admin.create_group(actor, GroupCreate(name="growth"))
+    with pytest.raises(ConflictError, match="already exists"):
+        await admin.create_group(await fresh(db, actor), GroupCreate(name="growth"))
 
 
 async def test_only_admin_groups_creates_groups(db) -> None:
@@ -79,13 +80,14 @@ async def test_a_group_cannot_move_under_itself_or_a_subgroup(db) -> None:
     admin = admin_for(db)
     parent = await admin.create_group(actor, GroupCreate(name="marketing"))
     child = await admin.create_group(
-        actor, GroupCreate(name="growth", parent_id=parent.id)
+        await fresh(db, actor), GroupCreate(name="growth", parent_id=parent.id)
     )
     # Captured as plain UUIDs: a failed write below rolls back and (correctly,
     # per the new lock_for_write/_write robustness) expires every ORM object
     # in the session, so `parent`/`child` themselves are no longer safe to
     # read attributes from afterward.
     parent_id, child_id = parent.id, child.id
+    actor = await fresh(db, actor)
 
     with pytest.raises(InvalidChangeError):
         await admin.update_group(actor, parent_id, GroupUpdate(parent_id=child_id))
@@ -94,7 +96,9 @@ async def test_a_group_cannot_move_under_itself_or_a_subgroup(db) -> None:
 
     moved = await admin.update_group(actor, child_id, GroupUpdate(parent_id=None))
     assert moved.parent_id is None
-    renamed = await admin.update_group(actor, child_id, GroupUpdate(name="growth-mena"))
+    renamed = await admin.update_group(
+        await fresh(db, actor), child_id, GroupUpdate(name="growth-mena")
+    )
     assert renamed.name == "growth-mena"
 
 
@@ -103,10 +107,11 @@ async def test_only_empty_groups_can_be_deleted(db) -> None:
     admin = admin_for(db)
     used = await admin.create_group(actor, GroupCreate(name="used"))
     await add_grant(db, used, "demo/*")
-    with pytest.raises(ConflictError):
-        await admin.delete_group(actor, used.id)
+    with pytest.raises(ConflictError, match="subgroups, members and grants"):
+        await admin.delete_group(await fresh(db, actor), used.id)
 
-    empty = await admin.create_group(actor, GroupCreate(name="empty"))
+    empty = await admin.create_group(await fresh(db, actor), GroupCreate(name="empty"))
+    actor = await fresh(db, actor)
     await admin.delete_group(actor, empty.id)
     assert "empty" not in {g.name for g in await admin.list_groups(actor)}
     assert (await _changes(db))[-1].action == "group.delete"
@@ -139,6 +144,7 @@ async def test_managers_manage_members_of_their_subtree(db) -> None:
     child_id, sara_id = child.id, sara.id
 
     await admin.put_member(manager, child_id, sara_id, "member")
+    manager = await fresh(db, manager)
     with pytest.raises(AccessDeniedError):  # decision D8: only admins appoint managers
         await admin.put_member(manager, child_id, sara_id, "manager")
     await admin.remove_member(manager, child_id, sara_id)
@@ -175,10 +181,10 @@ async def test_a_manager_cannot_demote_a_co_manager(db) -> None:
     admin = admin_for(db)
     parent = await admin.create_group(admin_actor, GroupCreate(name="marketing"))
     child = await admin.create_group(
-        admin_actor, GroupCreate(name="growth", parent_id=parent.id)
+        await fresh(db, admin_actor), GroupCreate(name="growth", parent_id=parent.id)
     )
     bob = await make_user(db, "bob@yougotagift.com")
-    await admin.put_member(admin_actor, child.id, bob.id, "manager")
+    await admin.put_member(await fresh(db, admin_actor), child.id, bob.id, "manager")
     parent_manager = await actor_with(
         db, "viewer", member_of=parent, standing="manager"
     )
@@ -192,7 +198,7 @@ async def test_a_manager_cannot_remove_a_co_manager(db) -> None:
     admin = admin_for(db)
     group = await admin.create_group(admin_actor, GroupCreate(name="growth"))
     bob = await make_user(db, "bob@yougotagift.com")
-    await admin.put_member(admin_actor, group.id, bob.id, "manager")
+    await admin.put_member(await fresh(db, admin_actor), group.id, bob.id, "manager")
     manager = await actor_with(db, "viewer", member_of=group, standing="manager")
 
     with pytest.raises(AccessDeniedError):
@@ -216,7 +222,7 @@ async def test_a_commit_conflict_maps_to_conflict_and_the_session_stays_usable(
 
     monkeypatch.setattr(repo, "commit", flaky_commit)
 
-    with pytest.raises(ConflictError):
+    with pytest.raises(ConflictError, match="conflicts with another change"):
         await admin.create_group(actor, GroupCreate(name="first"))
 
     group = await admin.create_group(actor, GroupCreate(name="second"))
@@ -229,7 +235,9 @@ async def test_an_unchanged_update_does_not_bump_the_version(db) -> None:
     group = await admin.create_group(actor, GroupCreate(name="growth"))
     before = await policy_version(db)
 
-    unchanged = await admin.update_group(actor, group.id, GroupUpdate(name="growth"))
+    unchanged = await admin.update_group(
+        await fresh(db, actor), group.id, GroupUpdate(name="growth")
+    )
 
     assert unchanged.name == "growth"
     assert await policy_version(db) == before
@@ -246,7 +254,9 @@ async def test_putting_a_member_at_their_current_standing_does_not_bump_the_vers
     await admin.put_member(actor, group.id, sara.id, "member")
     before = await policy_version(db)
 
-    unchanged = await admin.put_member(actor, group.id, sara.id, "member")
+    unchanged = await admin.put_member(
+        await fresh(db, actor), group.id, sara.id, "member"
+    )
 
     assert unchanged.standing == "member"
     assert await policy_version(db) == before
@@ -277,7 +287,9 @@ async def test_a_manager_cannot_touch_a_sibling_groups_members(db) -> None:
     admin_actor = await actor_with(db)
     admin = admin_for(db)
     sales = await admin.create_group(admin_actor, GroupCreate(name="sales"))
-    growth = await admin.create_group(admin_actor, GroupCreate(name="growth"))
+    growth = await admin.create_group(
+        await fresh(db, admin_actor), GroupCreate(name="growth")
+    )
     manager = await actor_with(db, "viewer", member_of=sales, standing="manager")
     sara = await make_user(db, "sara@yougotagift.com")
 

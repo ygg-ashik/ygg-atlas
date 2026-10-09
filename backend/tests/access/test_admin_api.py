@@ -6,6 +6,7 @@ from httpx import ASGITransport, AsyncClient
 from app.access.cache import PolicyCache
 from app.access.dependencies import get_policy
 from app.access.models import Group
+from app.access.policy import Policy
 from app.access.repository import AccessRepository
 from app.access.service import AccessService
 from app.identity.models import User
@@ -153,11 +154,15 @@ async def test_a_manager_adds_members_but_cannot_appoint_one_or_see_other_groups
     manager_user = await make_user(db, "manager@yougotagift.com")
     await add_member(db, managed, manager_user, "manager")
     sara = await make_user(db, "sara@yougotagift.com")
-    policy = await AccessService(AccessRepository(db), PolicyCache()).policy_for_user(
-        manager_user.id
-    )
+    manager_id = manager_user.id
 
-    asgi_app.dependency_overrides[get_policy] = lambda: policy
+    async def manager_policy() -> Policy:
+        # Resolved per request, as get_policy does: each write bumps the version.
+        return await AccessService(AccessRepository(db), PolicyCache()).policy_for_user(
+            manager_id
+        )
+
+    asgi_app.dependency_overrides[get_policy] = manager_policy
     try:
         added = await api.put(
             f"/api/v1/admin/groups/{managed.id}/members/{sara.id}", json={}

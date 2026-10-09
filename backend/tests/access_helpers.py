@@ -143,6 +143,20 @@ async def actor_with(
     return Actor.from_policy(policy)
 
 
+async def fresh(db: AsyncSession, actor: Actor) -> Actor:
+    """The same API actor, re-resolved at the current policy_version.
+
+    Each API request resolves its actor's policy at request start, and every
+    admin write bumps the version, so a test that reuses one actor across
+    several writes must re-resolve it between them, like a new request would.
+    """
+    assert actor.user_id is not None, "the CLI actor has no policy to refresh"
+    policy = await AccessService(AccessRepository(db), PolicyCache()).policy_for_user(
+        actor.user_id
+    )
+    return Actor.from_policy(policy)
+
+
 async def policy_version(db: AsyncSession) -> int:
     state = await db.get(PolicyState, 1, populate_existing=True)
     assert state is not None

@@ -19,6 +19,7 @@ from tests.access_helpers import (
     actor_with,
     add_grant,
     admin_for,
+    fresh,
     make_user,
     policy_version,
 )
@@ -87,7 +88,7 @@ async def test_nobody_changes_their_own_role_or_status(db) -> None:
     actor = await actor_with(db)
     assert actor.user_id is not None
     for update in (UserUpdate(role="viewer"), UserUpdate(status="disabled")):
-        with pytest.raises(ConflictError):
+        with pytest.raises(ConflictError, match="your own"):
             await admin_for(db).update_user(actor, actor.user_id, update)
 
 
@@ -224,7 +225,7 @@ async def test_the_change_log_needs_admin_audit_and_is_newest_first(db) -> None:
     actor = await actor_with(db)
     admin = admin_for(db)
     await admin.create_group(actor, GroupCreate(name="first"))
-    await admin.create_group(actor, GroupCreate(name="second"))
+    await admin.create_group(await fresh(db, actor), GroupCreate(name="second"))
 
     changes = await admin.list_changes(actor)
 
@@ -294,6 +295,7 @@ async def test_a_builder_with_admin_users_can_promote_a_viewer(db) -> None:
     actor = await _actor_with_capabilities(db, "admin:users")
     for role in ("analyst", "builder"):
         sara = await make_user(db, "sara@yougotagift.com")
+        actor = await fresh(db, actor)
         user = await admin_for(db).update_user(actor, sara.id, UserUpdate(role=role))
         assert user.role == role
 
