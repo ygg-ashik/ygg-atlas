@@ -1,9 +1,16 @@
 import type * as React from 'react';
-import { useLocation } from 'react-router-dom';
-import { Toolbar } from '@/ui';
+import { Link, useLocation } from 'react-router-dom';
+import { Toolbar, ToolbarCrumb } from '@/ui';
+
+/** A back link shown before the toolbar title: `Users ›`. */
+interface AdminCrumb {
+  to: string;
+  label: string;
+}
 
 interface AdminPageProps {
   title: string;
+  crumb?: AdminCrumb;
   /** Serif page heading and its sub-line; omit for pages with their own header card. */
   heading?: React.ReactNode;
   sub?: React.ReactNode;
@@ -12,11 +19,21 @@ interface AdminPageProps {
 }
 
 /** Admin page frame: glass toolbar with the mono route, then a 1080px column. */
-export function AdminPage({ title, heading, sub, actions, children }: AdminPageProps) {
+export function AdminPage({ title, crumb, heading, sub, actions, children }: AdminPageProps) {
   const { pathname, search } = useLocation();
   return (
     <div className="relative h-full">
-      <Toolbar title={title} route={pathname + search} />
+      <Toolbar
+        title={title}
+        route={pathname + search}
+        crumb={
+          crumb && (
+            <ToolbarCrumb>
+              <Link to={crumb.to}>{crumb.label}</Link>
+            </ToolbarCrumb>
+          )
+        }
+      />
       <div className="absolute inset-0 overflow-y-auto">
         <div className="mx-auto max-w-[1080px] px-6 pb-16 pt-[84px]">
           {heading && (

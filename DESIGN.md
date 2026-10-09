@@ -654,6 +654,7 @@ Every admin and account screen is a **view of backend responses**: the UI never 
 - **`action-toast`**: the glass `toast` in a **warning tone** with an amber "!" disc and a **Retry** pill. It stays until acted on or dismissed. Used for a stale-actor conflict (HTTP 409: "Access changed while this request was running; retry.").
 - **`series-hatch`**: the second series in a two-series bar chart (e.g. denied vs allowed decisions) keeps the accent hue at 45% opacity with a diagonal hatch, so it reads without colour. Its legend swatch uses the same pattern.
 - **`route-label`**: a muted mono route on the right of the `glass-toolbar` (e.g. `/admin/users`), truncated, hidden below 1000px.
+- **`toolbar-crumb`**: an optional back link before the `glass-toolbar` title on detail and sub-pages ("Users ›" on a user, "My access ›" on a new request): the parent's name as a muted serif link (ink on hover), then a muted "›". One level only; the title stays the page's own name.
 
 ### Dashboard
 - **Greeting**: `{typography.display}` with a muted subline.

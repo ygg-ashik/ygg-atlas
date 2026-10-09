@@ -92,6 +92,15 @@ describe('NewRequestPage / RequestForm', () => {
     requests.listMyRequests.mockReset().mockResolvedValue([]);
   });
 
+  it('the toolbar links back to My access', () => {
+    renderAt('/account/requests/new');
+    const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(crumbs).getByRole('link', { name: 'My access' })).toHaveAttribute(
+      'href',
+      '/account',
+    );
+  });
+
   it('a chat denial prefills the resource kind and lists the groups that hold it', async () => {
     renderAt(fromChat);
     expect(screen.getByRole('radio', { name: 'Resource' })).toHaveAttribute('aria-checked', 'true');

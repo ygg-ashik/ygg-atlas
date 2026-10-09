@@ -1,10 +1,12 @@
 import type * as React from 'react';
-import { useLocation } from 'react-router-dom';
-import { Toolbar } from '@/ui';
+import { Link, useLocation } from 'react-router-dom';
+import { Toolbar, ToolbarCrumb } from '@/ui';
 
 interface AccountPageProps {
   /** Toolbar title, e.g. "My access". */
   title: string;
+  /** A back link before the toolbar title: `My access ›`. */
+  crumb?: { to: string; label: string };
   /** Serif page heading; defaults to the title. */
   heading?: React.ReactNode;
   sub: React.ReactNode;
@@ -15,11 +17,28 @@ interface AccountPageProps {
 
 /** The 760px account page: glass toolbar with the route label, serif heading row,
  * then solid cards (DESIGN.md › Admin and self-service). */
-export function AccountPage({ title, heading = title, sub, action, children }: AccountPageProps) {
+export function AccountPage({
+  title,
+  crumb,
+  heading = title,
+  sub,
+  action,
+  children,
+}: AccountPageProps) {
   const { pathname } = useLocation();
   return (
     <div className="relative h-full">
-      <Toolbar title={title} route={pathname} />
+      <Toolbar
+        title={title}
+        route={pathname}
+        crumb={
+          crumb && (
+            <ToolbarCrumb>
+              <Link to={crumb.to}>{crumb.label}</Link>
+            </ToolbarCrumb>
+          )
+        }
+      />
       <div className="absolute inset-0 overflow-y-auto">
         <div className="mx-auto max-w-[760px] px-6 pb-16 pt-[84px]">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">

@@ -1,8 +1,12 @@
 import { History } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { type Change, type ChangeFilters } from '@/api/audit';
+import { useGroups } from '@/api/hooks/use-admin-groups';
+import { useAdminUsers } from '@/api/hooks/use-admin-users';
 import { useChanges } from '@/api/hooks/use-audit';
+import { useMyAccess } from '@/api/hooks/use-my-access';
 import { Button, DataTable, type DataColumn, EmptyState, FilterBar } from '@/ui';
+import { changeLabel, type NameBook, nameBook } from '../change-label';
 import { seenAt } from '../format';
 import { useDebouncedValue } from '../hooks/use-debounced-value';
 import {
@@ -63,28 +67,51 @@ function toQuery(f: FilterState): ChangeFilters {
 const actorName = (c: Change) =>
   c.actor ? c.actor.display_name || c.actor.email : 'CLI · operator';
 
-const COLUMNS: readonly DataColumn<Change>[] = [
-  {
-    key: 'time',
-    header: 'Time (UTC)',
-    cell: (c) => <span className="whitespace-nowrap text-muted-foreground">{seenAt(c.at)}</span>,
-  },
-  { key: 'actor', header: 'Actor', cell: actorName },
-  {
-    key: 'action',
-    header: 'Action',
-    cell: (c) => <span className="font-mono text-xs text-ink">{c.action}</span>,
-  },
-  {
-    key: 'object',
-    header: 'Object',
-    cell: (c) => (
-      <span>
-        {c.object_type} <span className="font-mono text-xs">{c.object_id}</span>
-      </span>
-    ),
-  },
-];
+function columns(names: NameBook): readonly DataColumn<Change>[] {
+  return [
+    {
+      key: 'time',
+      header: 'Time (UTC)',
+      cell: (c) => <span className="whitespace-nowrap text-muted-foreground">{seenAt(c.at)}</span>,
+    },
+    { key: 'actor', header: 'Actor', cell: actorName },
+    {
+      key: 'action',
+      header: 'Action',
+      cell: (c) => <span className="font-mono text-xs text-ink">{c.action}</span>,
+    },
+    {
+      key: 'object',
+      header: 'Object',
+      cell: (c) => (
+        <span
+          className="block max-w-[22rem] truncate whitespace-nowrap"
+          title={`${c.object_type} ${c.object_id}`}
+        >
+          {changeLabel(c, names)}
+        </span>
+      ),
+    },
+  ];
+}
+
+/** Names for the Object column from lists the viewer may already read: groups
+ * (admin:groups) and the first page of users (admin:users), plus every actor
+ * on screen. Misses fall back to short ids. */
+function useChangeNames(changes: readonly Change[]): NameBook {
+  const me = useMyAccess();
+  const groups = useGroups({ enabled: me.can('admin:groups') });
+  const users = useAdminUsers({}, { enabled: me.can('admin:users') });
+  return useMemo(() => {
+    const actors = changes.flatMap((c) =>
+      c.actor_user_id && c.actor ? [{ user_id: c.actor_user_id, email: c.actor.email }] : [],
+    );
+    return nameBook({
+      groups: groups.data ?? [],
+      users: [...actors, ...users.items.map((u) => ({ user_id: u.id, email: u.email }))],
+    });
+  }, [changes, groups.data, users.items]);
+}
 
 /** Changes tab: the paged `rbac_changes` log, newest first; a row expands into
  * its before → after diff. */
@@ -93,6 +120,8 @@ export function ChangesTable() {
   const [open, setOpen] = useState<string | null>(null);
   const objectId = useDebouncedValue(filters.objectId);
   const changes = useChanges(toQuery({ ...filters, objectId }));
+  const names = useChangeNames(changes.items);
+  const cols = useMemo(() => columns(names), [names]);
   const set = (patch: Partial<FilterState>) => setFilters((f) => ({ ...f, ...patch }));
   const actors = seenOptions(
     changes.items,
@@ -137,7 +166,7 @@ export function ChangesTable() {
         {changes.items.length > 0 ? (
           <DataTable
             caption="Access changes"
-            columns={COLUMNS}
+            columns={cols}
             rows={changes.items}
             rowKey={(c) => c.id}
             expandedKey={open}

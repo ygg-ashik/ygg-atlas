@@ -9,14 +9,16 @@ import {
 } from '../admin-users';
 import { queryKeys } from '../query-keys';
 import { ADMIN_WRITE, useAccessMutation } from './use-access-mutation';
-import { useCursorList } from './use-cursor-list';
+import { type CursorListOptions, useCursorList } from './use-cursor-list';
 
 export const USER_PAGE_SIZE = 50;
 
 /** `GET /admin/users`, keyset-paged by email; "Load more" calls `fetchNextPage`. */
-export function useAdminUsers(filters: UserFilters = {}) {
-  return useCursorList(queryKeys.userList(filters), (cursor) =>
-    listUsers({ filters, cursor, limit: USER_PAGE_SIZE }),
+export function useAdminUsers(filters: UserFilters = {}, options: CursorListOptions = {}) {
+  return useCursorList(
+    queryKeys.userList(filters),
+    (cursor) => listUsers({ filters, cursor, limit: USER_PAGE_SIZE }),
+    options,
   );
 }
 

@@ -31,7 +31,7 @@ export {
 export { ScrollArea, ScrollBar } from './scroll-area';
 export { BrandMark, type BrandMarkProps } from './brand-mark';
 export { Glass, type GlassProps } from './glass';
-export { Toolbar } from './toolbar';
+export { Toolbar, ToolbarCrumb } from './toolbar';
 export { Popover, PopoverTrigger, PopoverAnchor, PopoverContent } from './popover';
 export { Toaster, toast } from './toaster';
 export {

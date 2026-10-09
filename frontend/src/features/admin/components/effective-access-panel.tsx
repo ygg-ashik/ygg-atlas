@@ -5,7 +5,9 @@ import { CatalogDecisions } from './catalog-decisions';
 import { ResourceProbe } from './resource-probe';
 import { CARD } from './surfaces';
 
-const firstNameOf = (u: User) => (u.display_name || u.email).split(/\s+/)[0] ?? '';
+/** "Omar Khalil" → "Omar"; no display name → the email's local part. */
+const firstNameOf = (u: User) =>
+  u.display_name.trim().split(/\s+/)[0] || (u.email.split('@')[0] ?? u.email);
 
 /** Where a held capability comes from: the role's bundle (per `/meta/capabilities`),
  * else a direct user grant; unknown while the catalog is loading. */

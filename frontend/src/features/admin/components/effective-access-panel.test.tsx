@@ -74,11 +74,11 @@ function decide(resource: string | undefined): EffectiveAccess {
   return BASE;
 }
 
-function renderPanel() {
+function renderPanel(target = user('omar', { display_name: 'Omar Khalil' })) {
   const { wrapper: Wrapper } = createQueryWrapper();
   render(
     <Wrapper>
-      <EffectiveAccessPanel user={user('omar', { display_name: 'Omar Khalil' })} />
+      <EffectiveAccessPanel user={target} />
     </Wrapper>,
   );
 }
@@ -134,6 +134,11 @@ describe('EffectiveAccessPanel', () => {
     const refund = within(tree).getByRole('treeitem', { name: /refund_amount/ });
     expect(within(refund).getByText('deny')).toBeInTheDocument();
     expect(fetchCatalogResources).toHaveBeenCalledWith('omar');
+  });
+
+  it('headings fall back to the email local part when there is no display name', async () => {
+    renderPanel(user('omar', { display_name: '  ', email: 'omar.khalil@yougotagift.com' }));
+    expect(await screen.findByRole('tree', { name: 'What omar.khalil can see' })).toBeVisible();
   });
 
   it('names the source of each capability: the role bundle, else a direct grant', async () => {

@@ -74,6 +74,13 @@ describe('Groups', () => {
     expect(screen.getByRole('button', { name: '＋ New group' })).toBeInTheDocument();
   });
 
+  it("a group's own route is titled with the group's name", async () => {
+    renderAt('/admin/groups/g-mp');
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'marketing-paid' }),
+    ).toBeInTheDocument();
+  });
+
   it('deleting a group in use is refused with the backend sentence, without a request', async () => {
     renderAt('/admin/groups/g-m');
     await fast().click(await screen.findByRole('button', { name: 'Delete group' }));

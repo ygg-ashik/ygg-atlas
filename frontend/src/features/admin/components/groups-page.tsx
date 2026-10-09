@@ -61,15 +61,21 @@ function GroupsBody({ groups, selected, creating }: BodyProps) {
   );
 }
 
+/** A group's own route is titled with its name; the list route stays "Groups". */
+function pageTitle(groups: readonly Group[], id: string | undefined): string {
+  return groups.find((g) => g.id === id)?.name ?? 'Groups';
+}
+
 /** Screen 9: the group tree on the left, the selected group on the right. */
 function GroupsWorkspace() {
   const { id } = useParams();
   const { admin, list, groups, ready } = useVisibleGroups();
   const [creating, setCreating] = useState(false);
   const selected = id ?? buildGroupTree(groups)[0]?.group.id ?? null;
+  const title = pageTitle(groups, id);
   return (
     <AdminPage
-      title="Groups"
+      title={title}
       heading="Groups"
       sub={
         admin

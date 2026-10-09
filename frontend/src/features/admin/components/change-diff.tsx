@@ -47,9 +47,12 @@ export function ChangeDiff({ change }: { change: Change }) {
       ) : (
         <p className="text-caption text-muted-foreground">No field values were recorded.</p>
       )}
-      <p className="text-caption text-muted-foreground">
-        rbac_changes · {change.object_type} <span className="font-mono">{change.object_id}</span> ·
-        via {change.via}
+      <p className="flex min-w-0 items-baseline gap-1 whitespace-nowrap text-caption text-muted-foreground">
+        <span>rbac_changes · {change.object_type}</span>
+        <span className="min-w-0 truncate font-mono" title={change.object_id}>
+          {change.object_id}
+        </span>
+        <span>· via {change.via}</span>
       </p>
     </div>
   );

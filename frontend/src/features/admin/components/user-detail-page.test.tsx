@@ -70,6 +70,16 @@ describe('UserDetailPage', () => {
     listDecidableRequests.mockReset();
   });
 
+  it('titles the page with the user and a Users breadcrumb back to the list', async () => {
+    renderAt('/admin/users/karim');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Karim Nasser' })).toBeVisible();
+    const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(crumbs).getByRole('link', { name: 'Users' })).toHaveAttribute(
+      'href',
+      '/admin/users',
+    );
+  });
+
   it('shows the user with their groups', async () => {
     renderAt('/admin/users/karim');
     expect(

@@ -93,7 +93,10 @@ export function UserDetailPage() {
   const { tab, setTab, detail, isSelf } = useUserDetailView();
   const user = detail.data;
   return (
-    <AdminPage title={user ? user.display_name || user.email : 'User'}>
+    <AdminPage
+      title={user ? user.display_name || user.email : 'User'}
+      crumb={{ to: '/admin/users', label: 'Users' }}
+    >
       {detail.isPending && <DetailSkeleton />}
       {detail.isError && (
         <ErrorNotice

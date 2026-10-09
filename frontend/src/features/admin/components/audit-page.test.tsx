@@ -15,6 +15,28 @@ const listCredentialEvents = vi.hoisted(() => vi.fn());
 vi.mock('../hooks/use-debounced-value', () => ({ useDebouncedValue: <T,>(value: T) => value }));
 vi.mock('@/api/audit', () => ({ listChanges, listDecisions, fetchAuditSummary }));
 vi.mock('@/api/tokens', () => ({ listCredentialEvents }));
+const fetchMyAccess = vi.hoisted(() => vi.fn());
+const listGroups = vi.hoisted(() => vi.fn());
+const listUsers = vi.hoisted(() => vi.fn());
+vi.mock('@/api/access', () => ({ fetchMyAccess }));
+vi.mock('@/api/admin-groups', () => ({ listGroups }));
+vi.mock('@/api/admin-users', () => ({ listUsers }));
+
+const ADMIN_ACCESS = {
+  role: 'admin',
+  capabilities: ['admin:users', 'admin:groups', 'admin:audit'],
+  groups: [],
+  has_data_access: true,
+  user_id: 'u-ashik',
+  email: 'ashik@yougotagift.com',
+  display_name: 'Ashik Babu',
+  pending_requests: 0,
+  pending_approvals: 0,
+  is_manager: false,
+};
+
+const GROUP_ID = '6f1c2a90-1111-4222-8333-944455556666';
+const NOUR_ID = '3b7e0d12-aaaa-4bbb-8ccc-dddeeefff000';
 
 function change(id: string, overrides: Partial<Change> = {}): Change {
   return {
@@ -76,6 +98,12 @@ const openTab = async (name: string) => fast().click(screen.getByRole('tab', { n
 
 describe('AuditPage', () => {
   beforeEach(() => {
+    fetchMyAccess.mockReset().mockResolvedValue(ADMIN_ACCESS);
+    listGroups.mockReset().mockResolvedValue([{ id: GROUP_ID, name: 'marketing' }]);
+    listUsers.mockReset().mockResolvedValue({
+      items: [{ id: NOUR_ID, email: 'nour.alamin@yougotagift.com' }],
+      next_cursor: null,
+    });
     listChanges.mockReset().mockImplementation(({ cursor }: { cursor?: string }) =>
       Promise.resolve(
         cursor
@@ -86,8 +114,9 @@ describe('AuditPage', () => {
                 change('c2', {
                   action: 'member.put',
                   object_type: 'group_member',
+                  object_id: `${GROUP_ID}:${NOUR_ID}`,
                   before: null,
-                  after: { standing: 'member' },
+                  after: { group_id: GROUP_ID, user_id: NOUR_ID, standing: 'member' },
                 }),
               ],
               next_cursor: 'k1',
@@ -120,8 +149,22 @@ describe('AuditPage', () => {
     expect(within(table).getAllByText('Ashik Babu')).toHaveLength(2);
     expect(within(table).getAllByText('09 Oct 09:41')).toHaveLength(2);
     expect(within(table).getAllByText('u-yousef', { exact: false }).length).toBeGreaterThan(0);
+    const member = await within(table).findByText('nour.alamin@ → marketing');
+    expect(member).toHaveAttribute('title', `group_member ${GROUP_ID}:${NOUR_ID}`);
+    expect(member).toHaveClass('truncate');
+    expect(within(table).queryByText(GROUP_ID, { exact: false })).not.toBeInTheDocument();
     expect(fetchAuditSummary).not.toHaveBeenCalled();
     expect(listDecisions).not.toHaveBeenCalled();
+  });
+
+  it('an audit-only viewer never lists groups or users; objects fall back to short ids', async () => {
+    fetchMyAccess.mockResolvedValue({ ...ADMIN_ACCESS, capabilities: ['admin:audit'] });
+    renderPage();
+    const table = await screen.findByRole('table', { name: 'Access changes' });
+    expect(await within(table).findByText('user 3b7e0d12… → group 6f1c2a90…')).toBeVisible();
+    await waitFor(() => expect(fetchMyAccess).toHaveBeenCalled());
+    expect(listGroups).not.toHaveBeenCalled();
+    expect(listUsers).not.toHaveBeenCalled();
   });
 
   it('expands a change into a before → after diff', async () => {
