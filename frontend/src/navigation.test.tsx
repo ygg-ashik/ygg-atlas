@@ -72,8 +72,18 @@ describe('Shell navigation per persona', () => {
     );
   });
 
-  it('an admin capability outside the admin pages opens no section', () => {
+  it('admin:tokens only: the Admin section holds just Tokens', () => {
     const side = renderNav(accessView({ capabilities: ['chat:use', 'admin:tokens'] }));
+    expect(adminLinks(side)).toEqual(['/admin/tokens']);
+  });
+
+  it('admin:clients only: the Admin section holds just OAuth clients', () => {
+    const side = renderNav(accessView({ capabilities: ['chat:use', 'admin:clients'] }));
+    expect(adminLinks(side)).toEqual(['/admin/clients']);
+  });
+
+  it('an admin capability outside the admin pages opens no section', () => {
+    const side = renderNav(accessView({ capabilities: ['chat:use', 'mcp:use', 'tokens:create'] }));
     expect(within(side).queryByRole('group', { name: 'Admin' })).not.toBeInTheDocument();
   });
 

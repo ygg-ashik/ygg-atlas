@@ -7,10 +7,12 @@ import {
   History,
   Inbox,
   KeyRound,
+  KeySquare,
   LayoutDashboard,
   Library,
   MessageCircle,
   Network,
+  Plug,
   ShieldCheck,
   Users,
 } from 'lucide-react';
@@ -27,6 +29,8 @@ export const ACCESS = {
   /** Backend `decidable_scope`: admin:users, admin:groups, or manager standing. */
   requests: { anyOf: ['admin:users', 'admin:groups'], managers: true, need: 'admin:users' },
   audit: { anyOf: ['admin:audit'], need: 'admin:audit' },
+  tokens: { anyOf: ['admin:tokens'], need: 'admin:tokens' },
+  clients: { anyOf: ['admin:clients'], need: 'admin:clients' },
 } as const satisfies Record<string, AccessRule>;
 
 const PRIMARY: NavItem[] = [
@@ -77,6 +81,14 @@ function adminItems(view: MyAccessView): NavItem[] {
       },
     },
     { rule: ACCESS.audit, item: { to: '/admin/audit', label: 'Audit', icon: History, section } },
+    {
+      rule: ACCESS.tokens,
+      item: { to: '/admin/tokens', label: 'Tokens', icon: KeySquare, section },
+    },
+    {
+      rule: ACCESS.clients,
+      item: { to: '/admin/clients', label: 'OAuth clients', icon: Plug, section },
+    },
   ];
   return candidates.filter(({ rule }) => allows(view, rule)).map(({ item }) => item);
 }

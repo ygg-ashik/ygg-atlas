@@ -150,3 +150,25 @@ export function attributeLines(
     ...(after !== null ? [add(kv(key, after))] : []),
   ];
 }
+
+/** Phase-4 single token revoke (a credential event). */
+export function tokenRevokeLines(token: TokenLine): DiffLine[] {
+  return [
+    ctx('token.revoke'),
+    rm(kv('token', `${token.prefix}…  ${token.name}`)),
+    ctx('anything using it gets 401 on the next call'),
+  ];
+}
+
+/** Phase-4 OAuth client revoke: every connected sign-in through it ends. */
+export function clientRevokeLines(
+  client: { client_id: string; client_name: string },
+  activeFamilies: number,
+): DiffLine[] {
+  const signIns = `${activeFamilies} connected sign-in${activeFamilies === 1 ? '' : 's'}`;
+  return [
+    ctx(`client.revoke  ${client.client_id}`),
+    rm(kv('client', client.client_name)),
+    ctx(`${signIns} stop working immediately`),
+  ];
+}

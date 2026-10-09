@@ -56,6 +56,14 @@ vi.mock('@/api/audit', () => ({
   listDecisions: () => Promise.resolve({ items: [], next_cursor: null }),
   fetchAuditSummary: () => new Promise(() => {}),
 }));
+vi.mock('@/api/tokens', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchAuthMethods: () => Promise.reject(new Error('offline')),
+  listMyTokens: () => Promise.resolve({ available: true, data: [] }),
+  listConnectedApps: () => Promise.resolve({ available: true, data: [] }),
+  listAdminTokens: () => Promise.resolve({ available: true, data: [] }),
+  listClients: () => Promise.resolve({ available: true, data: [] }),
+}));
 vi.mock('@/api/catalog-admin', () => ({
   fetchCatalogResources: () => Promise.resolve({ sources: [] }),
 }));
@@ -75,7 +83,15 @@ const VIEWER: MeAccess = {
 const ADMIN: MeAccess = {
   ...VIEWER,
   role: 'admin',
-  capabilities: ['chat:use', 'admin:users', 'admin:groups', 'admin:audit'],
+  capabilities: [
+    'chat:use',
+    'tokens:create',
+    'admin:users',
+    'admin:groups',
+    'admin:audit',
+    'admin:tokens',
+    'admin:clients',
+  ],
   pending_approvals: 4,
 };
 
@@ -109,6 +125,8 @@ describe('App routes', () => {
     ['/admin/groups/g-1', 'Groups'],
     ['/admin/requests', 'Access requests'],
     ['/admin/audit', 'Audit'],
+    ['/admin/tokens', 'Tokens'],
+    ['/admin/clients', 'OAuth clients'],
   ])('%s renders its page for an admin', async (path, title) => {
     renderAt(path);
     expect(await pageTitle(title)).toBeInTheDocument();
@@ -167,6 +185,21 @@ describe('App routes', () => {
     expect(within(side).getByRole('link', { name: /My requests/ })).toHaveTextContent(
       '1 pending request',
     );
+  });
+
+  it('an admin:tokens-only persona opens /admin/tokens but not /admin/clients', async () => {
+    fetchMyAccess.mockResolvedValue({ ...VIEWER, capabilities: ['chat:use', 'admin:tokens'] });
+    renderAt('/admin/clients');
+    expect(
+      await screen.findByRole('region', { name: 'This area needs admin:clients' }),
+    ).toBeInTheDocument();
+    const side = screen.getByRole('complementary');
+    const admin = within(side).getByRole('group', { name: 'Admin' });
+    expect(
+      within(admin)
+        .getAllByRole('link')
+        .map((l) => l.getAttribute('href')),
+    ).toEqual(['/admin/tokens']);
   });
 
   it('a failed access answer renders the denied page, never the admin page', async () => {

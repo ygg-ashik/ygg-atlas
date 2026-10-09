@@ -11,6 +11,8 @@ import { PERSONAS } from '@/test/access-view';
 import { toast, Toaster } from '@/ui';
 import { MyRequestsPage, NewRequestPage } from '../index';
 
+// The account barrel reaches the token client, whose axios instance pulls in the Firebase SDK.
+vi.mock('@/lib/firebase', () => ({ auth: {}, googleProvider: {} }));
 const state = vi.hoisted(() => ({ view: null as unknown as MyAccessView }));
 vi.mock('@/api/hooks/use-my-access', () => ({ useMyAccess: () => state.view }));
 const fetchCapabilityCatalog = vi.hoisted(() => vi.fn<() => Promise<CapabilityCatalog>>());

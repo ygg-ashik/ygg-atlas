@@ -20,7 +20,9 @@ import { CommandPalette, CommandTrigger } from '@/features/command';
 import { OverviewPage } from '@/features/dashboard';
 import { MyAccessPage, MyRequestsPage, NewRequestPage, TokensPage } from '@/features/account';
 import {
+  AdminClientsPage,
   AdminRequestsPage,
+  AdminTokensPage,
   AuditPage,
   GroupDetailPage,
   GroupsPage,
@@ -138,6 +140,11 @@ export function AppRoutes() {
             element={guarded(ACCESS.requests, 'Access requests', <AdminRequestsPage />)}
           />
           <Route path="audit" element={guarded(ACCESS.audit, 'Audit', <AuditPage />)} />
+          <Route path="tokens" element={guarded(ACCESS.tokens, 'Tokens', <AdminTokensPage />)} />
+          <Route
+            path="clients"
+            element={guarded(ACCESS.clients, 'OAuth clients', <AdminClientsPage />)}
+          />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
