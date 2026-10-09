@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import os
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from alembic import command
@@ -27,12 +28,27 @@ from sqlmodel import col, func, select
 
 from app.access.admin import Actor
 from app.access.catalog import CAPABILITIES
-from app.access.errors import AccessError, ConflictError
-from app.access.models import Capability, Group, PolicyState, RbacChange
+from app.access.errors import AccessError, ConflictError, InvalidChangeError
+from app.access.models import (
+    AccessRequest,
+    Capability,
+    Grant,
+    Group,
+    GroupMember,
+    PolicyState,
+    RbacChange,
+)
 from app.access.repository import AccessRepository
-from app.access.schemas import GroupCreate, GroupUpdate
+from app.access.schemas import (
+    AccessRequestCreate,
+    AccessRequestOut,
+    GroupCreate,
+    GroupUpdate,
+    RequestDecision,
+)
 from app.access.startup import prepare_access
-from tests.access_helpers import admin_for, policy_version
+from app.identity.models import User
+from tests.access_helpers import admin_for, policy_of, policy_version, requests_for
 from tests.pg_guard import PG_XDIST_GROUP, is_disposable
 
 PG_URL = os.environ.get("TEST_PG_URL", "")
@@ -221,3 +237,122 @@ async def test_concurrent_admin_writes_lose_no_version_bump(
         start_version + succeeded,
         start_changes + succeeded,
     )
+
+
+# ---- access requests (phase 5) ------------------------------------------------
+
+
+async def _requester(factory: async_sessionmaker[AsyncSession]) -> UUID:
+    async with factory() as db:
+        user = User(email="sara@yougotagift.com")
+        db.add(user)
+        await db.commit()
+        return user.id
+
+
+async def _ask(
+    factory: async_sessionmaker[AsyncSession], user_id: UUID, kind: str, target: str
+) -> AccessRequestOut:
+    async with factory() as db:
+        user = await db.get(User, user_id)
+        assert user is not None
+        payload = AccessRequestCreate.model_validate(
+            {"kind": kind, "target": target, "note": "please"}
+        )
+        return await requests_for(db).create(await policy_of(db, user), payload)
+
+
+async def _approve(
+    factory: async_sessionmaker[AsyncSession], request_id: UUID
+) -> AccessRequestOut:
+    async with factory() as db:
+        return await requests_for(db).approve(
+            Actor.cli(), request_id, RequestDecision()
+        )
+
+
+async def test_concurrent_approvals_exactly_one_wins(
+    factory: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two CLI actors (no stale-actor check): the locked re-read is what holds."""
+    group = await _create_group(factory, "growth")
+    sara = await _requester(factory)
+    request = await _ask(factory, sara, "group", str(group.id))
+    start_version, start_changes = await _counts(factory)
+    _widen_race(monkeypatch, "request")  # both pass the pre-lock read
+
+    results = await asyncio.gather(
+        _approve(factory, request.id),
+        _approve(factory, request.id),
+        return_exceptions=True,
+    )
+
+    approved = [r for r in results if isinstance(r, AccessRequestOut)]
+    errors = [r for r in results if isinstance(r, BaseException)]
+    assert len(approved) == 1, results
+    assert len(errors) == 1
+    assert isinstance(errors[0], ConflictError)
+    assert await _counts(factory) == (start_version + 1, start_changes + 2)
+    async with factory() as db:
+        members = (await db.execute(select(GroupMember))).scalars().all()
+    assert [(m.group_id, m.user_id) for m in members] == [(group.id, sara)]
+
+
+async def test_cancel_racing_an_approval_one_wins(
+    factory: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sara = await _requester(factory)
+    request = await _ask(factory, sara, "resource", "demo/order/revenue")
+    _widen_race(monkeypatch, "request")  # approve and cancel both read first
+
+    async def _cancel() -> AccessRequestOut:
+        async with factory() as db:
+            user = await db.get(User, sara)
+            assert user is not None
+            return await requests_for(db).cancel(await policy_of(db, user), request.id)
+
+    results = await asyncio.gather(
+        _approve(factory, request.id), _cancel(), return_exceptions=True
+    )
+
+    wins = [r for r in results if isinstance(r, AccessRequestOut)]
+    errors = [r for r in results if isinstance(r, BaseException)]
+    assert len(wins) == 1, results
+    assert len(errors) == 1
+    assert isinstance(errors[0], ConflictError)
+    async with factory() as db:
+        row = await db.get(AccessRequest, request.id, populate_existing=True)
+        grants = (await db.execute(select(Grant))).scalars().all()
+    assert row is not None
+    assert row.status == wins[0].status
+    assert len(grants) == (1 if row.status == "approved" else 0)
+
+
+async def test_concurrent_creates_respect_the_cap(
+    factory: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sara = await _requester(factory)
+    for i in range(19):
+        await _ask(factory, sara, "resource", f"demo/order/m{i}")
+    _widen_race(monkeypatch, "count_pending")
+
+    results = await asyncio.gather(
+        _ask(factory, sara, "resource", "demo/order/a"),
+        _ask(factory, sara, "resource", "demo/order/b"),
+        return_exceptions=True,
+    )
+
+    created = [r for r in results if isinstance(r, AccessRequestOut)]
+    errors = [r for r in results if isinstance(r, BaseException)]
+    assert len(created) == 1, results
+    assert len(errors) == 1
+    assert isinstance(errors[0], InvalidChangeError)
+    async with factory() as db:
+        pending = (
+            await db.execute(
+                select(func.count())
+                .select_from(AccessRequest)
+                .where(col(AccessRequest.status) == "pending")
+            )
+        ).one()[0]
+    assert pending == 20

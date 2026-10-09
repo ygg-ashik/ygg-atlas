@@ -11,13 +11,14 @@ from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, CursorResult, and_, func, or_, update
+from sqlalchemy import ColumnElement, CursorResult, and_, false, func, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, col, select
 
 from app.access.errors import PolicyUnavailableError
 from app.access.facts import (
+    STANDING_MANAGER,
     SUBJECT_GROUP,
     SUBJECT_USER,
     GrantFacts,
@@ -26,6 +27,7 @@ from app.access.facts import (
     as_utc,
 )
 from app.access.models import (
+    AccessRequest,
     Capability,
     Grant,
     Group,
@@ -33,7 +35,8 @@ from app.access.models import (
     PolicyState,
     RbacChange,
 )
-from app.identity import User
+from app.access.policy import DecidableScope
+from app.identity import User, UserStatus
 
 
 def _grant_facts(g: Grant) -> GrantFacts:
@@ -377,3 +380,231 @@ class AccessRepository:
             .execution_options(populate_existing=True)
         )
         return (await self._db.execute(stmt)).scalars().first()
+
+    # ---- access requests (phase 5) ---------------------------------------
+
+    async def lock_user(self, user_id: UUID) -> User | None:
+        """Read the user row `FOR UPDATE` (Postgres), serializing one user's
+        request creates so the pending cap holds; a no-op on SQLite, which
+        serializes writers anyway."""
+        stmt = (
+            select(User)
+            .where(col(User.id) == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return (await self._db.execute(stmt)).scalar_one_or_none()
+
+    async def count_pending(self, user_id: UUID) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(AccessRequest)
+            .where(
+                col(AccessRequest.user_id) == user_id,
+                col(AccessRequest.status) == "pending",
+            )
+        )
+        return (await self._db.execute(stmt)).scalar_one()
+
+    async def pending_request(
+        self, user_id: UUID, kind: str, target: str
+    ) -> AccessRequest | None:
+        stmt = (
+            select(AccessRequest)
+            .where(
+                col(AccessRequest.user_id) == user_id,
+                col(AccessRequest.kind) == kind,
+                col(AccessRequest.target) == target,
+                col(AccessRequest.status) == "pending",
+            )
+            .execution_options(populate_existing=True)
+        )
+        return (await self._db.execute(stmt)).scalars().first()
+
+    async def request(self, request_id: UUID) -> AccessRequest | None:
+        return await self._db.get(AccessRequest, request_id, populate_existing=True)
+
+    async def request_for_update(self, request_id: UUID) -> AccessRequest | None:
+        """Re-read a request under a row lock (Postgres) inside a decision."""
+        stmt = (
+            select(AccessRequest)
+            .where(col(AccessRequest.id) == request_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return (await self._db.execute(stmt)).scalar_one_or_none()
+
+    async def list_own_requests(
+        self, tenant: str, user_id: UUID, limit: int
+    ) -> list[AccessRequest]:
+        stmt = (
+            select(AccessRequest)
+            .where(
+                col(AccessRequest.tenant) == tenant,
+                col(AccessRequest.user_id) == user_id,
+            )
+            .order_by(
+                col(AccessRequest.created_at).desc(), col(AccessRequest.id).desc()
+            )
+            .limit(limit)
+            .execution_options(populate_existing=True)
+        )
+        return list((await self._db.execute(stmt)).scalars().all())
+
+    async def list_decidable(
+        self,
+        tenant: str,
+        scope: DecidableScope,
+        status: str | None,
+        after: tuple[datetime, UUID] | None,
+        limit: int,
+    ) -> list[tuple[AccessRequest, User]]:
+        """Requests in `scope`, newest first, with their requester; returns up
+        to `limit + 1` rows so the caller can tell whether a next page exists."""
+        stmt = (
+            select(AccessRequest, User)
+            .join(User, col(User.id) == col(AccessRequest.user_id))
+            .where(_decidable(tenant, scope))
+        )
+        if status is not None:
+            stmt = stmt.where(col(AccessRequest.status) == status)
+        if after is not None:
+            at, row_id = after
+            stmt = stmt.where(
+                or_(
+                    col(AccessRequest.created_at) < at,
+                    and_(
+                        col(AccessRequest.created_at) == at,
+                        col(AccessRequest.id) < row_id,
+                    ),
+                )
+            )
+        stmt = (
+            stmt.order_by(
+                col(AccessRequest.created_at).desc(), col(AccessRequest.id).desc()
+            )
+            .limit(limit + 1)
+            .execution_options(populate_existing=True)
+        )
+        # Same SQLModel tuple typing quirk as list_members.
+        rows = cast(
+            "Sequence[tuple[AccessRequest, User]]",
+            (await self._db.execute(stmt)).tuples().all(),
+        )
+        return list(rows)
+
+    async def count_decidable(self, tenant: str, scope: DecidableScope) -> int:
+        """Pending requests in `scope` (the approvals badge)."""
+        stmt = (
+            select(func.count())
+            .select_from(AccessRequest)
+            .where(_decidable(tenant, scope), col(AccessRequest.status) == "pending")
+        )
+        return (await self._db.execute(stmt)).scalar_one()
+
+    async def finish_request(
+        self,
+        request_id: UUID,
+        tenant: str,
+        status: str,
+        *,
+        decided_by: UUID | None,
+        note: str,
+        requester: UUID | None = None,
+    ) -> int:
+        """Move a still-pending request to `status`; returns the rows changed
+        (0 when it was no longer pending, or not the requester's). Staged:
+        the caller commits."""
+        conditions = [
+            col(AccessRequest.id) == request_id,
+            col(AccessRequest.tenant) == tenant,
+            col(AccessRequest.status) == "pending",
+        ]
+        if requester is not None:
+            conditions.append(col(AccessRequest.user_id) == requester)
+        result = cast(
+            "CursorResult[Any]",
+            await self._db.execute(
+                update(AccessRequest)
+                .where(*conditions)
+                .values(
+                    status=status,
+                    decided_by=decided_by,
+                    decided_at=datetime.now(UTC),
+                    decision_note=note,
+                )
+            ),
+        )
+        return result.rowcount
+
+    async def users_by_id(self, user_ids: Iterable[UUID]) -> dict[UUID, User]:
+        ids = list(set(user_ids))
+        if not ids:
+            return {}
+        stmt = (
+            select(User)
+            .where(col(User.id).in_(ids))
+            .execution_options(populate_existing=True)
+        )
+        return {u.id: u for u in (await self._db.execute(stmt)).scalars().all()}
+
+    async def group_managers(self, group_ids: Iterable[UUID]) -> dict[UUID, list[str]]:
+        """Active managers' display names per group (never emails), sorted;
+        blank names are left out."""
+        ids = list(group_ids)
+        if not ids:
+            return {}
+        stmt = (
+            select(col(GroupMember.group_id), col(User.display_name))
+            .join(User, col(User.id) == col(GroupMember.user_id))
+            .where(
+                col(GroupMember.group_id).in_(ids),
+                col(GroupMember.standing) == STANDING_MANAGER,
+                col(User.status) == UserStatus.ACTIVE,
+            )
+            .order_by(col(User.display_name))
+        )
+        # Same SQLModel tuple typing quirk as list_members.
+        rows = cast(
+            "Sequence[tuple[UUID, str]]", (await self._db.execute(stmt)).tuples().all()
+        )
+        managers: dict[UUID, list[str]] = {}
+        for group_id, name in rows:
+            if name.strip():
+                managers.setdefault(group_id, []).append(name)
+        return managers
+
+    async def all_group_grants(self, tenant: str) -> list[GrantFacts]:
+        """Every grant held by a group in `tenant`, expired ones included."""
+        stmt = (
+            select(Grant)
+            .join(Group, col(Group.id) == col(Grant.subject_id))
+            .where(
+                col(Grant.subject_type) == SUBJECT_GROUP,
+                col(Group.tenant) == tenant,
+            )
+            .execution_options(populate_existing=True)
+        )
+        return [_grant_facts(g) for g in (await self._db.execute(stmt)).scalars()]
+
+
+def _decidable(tenant: str, scope: DecidableScope) -> ColumnElement[bool]:
+    """The WHERE clause for `scope` (P5-D9), always tenant-filtered."""
+    kinds: list[ColumnElement[bool]] = []
+    if scope.role_and_resource:
+        kinds.append(col(AccessRequest.kind).in_(("role", "resource")))
+    if scope.all_groups:
+        kinds.append(col(AccessRequest.kind) == "group")
+    elif scope.group_ids:
+        kinds.append(
+            and_(
+                col(AccessRequest.kind) == "group",
+                col(AccessRequest.target).in_(sorted(str(g) for g in scope.group_ids)),
+            )
+        )
+    clause = and_(
+        col(AccessRequest.tenant) == tenant, or_(*kinds) if kinds else false()
+    )
+    if scope.user_id is not None:
+        clause = and_(clause, col(AccessRequest.user_id) != scope.user_id)
+    return clause

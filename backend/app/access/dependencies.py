@@ -13,6 +13,7 @@ from app.access.catalog import CAPABILITIES
 from app.access.errors import AccessError, PolicyUnavailableError
 from app.access.policy import Policy
 from app.access.repository import AccessRepository
+from app.access.requests import AccessRequests
 from app.access.service import AccessService
 from app.database import get_db
 from app.identity import Principal, TokenVerifier, get_principal, get_token_verifier
@@ -78,3 +79,11 @@ async def access_error_handler(_request: Request, exc: Exception) -> JSONRespons
         return JSONResponse({"detail": str(exc)}, status_code=exc.status_code)
     logger.exception("access.unhandled_error")
     return JSONResponse({"detail": "Something went wrong."}, status_code=500)
+
+
+def get_access_requests(
+    db: AsyncSession = Depends(get_db),
+    verifier: TokenVerifier = Depends(get_token_verifier),
+) -> AccessRequests:
+    repo = AccessRepository(db)
+    return AccessRequests(repo, AccessService(repo, shared_cache()), verifier)

@@ -210,6 +210,7 @@ exhaustive = true
 layers = [
     "router | cli",
     "dependencies",
+    "requests",
     "admin",
     "service | startup",
     "repository",
