@@ -11,8 +11,8 @@ import {
 } from '../row-field';
 import { ADMIN_WRITE, useAccessMutation } from './use-access-mutation';
 
-// Phase-3 controls. Each read's `data.available === false` (reason `missing`)
-// until phase 3 ships; the UI then shows "Arrives with row and field controls".
+// Row and field controls (phase 3). Every write runs through AccessAdmin's
+// write lock, so a 409 is usually the stale-actor case (Retry).
 
 export function useUserAttributes(userId: string | null) {
   return useQuery({
@@ -59,9 +59,8 @@ export function usePutLabelClass() {
   });
 }
 
-/** Declared row-scope dimensions. The route needs admin:groups or admin:users;
- * the admin row-scope builder and the self-service request form both read it,
- * so for a viewer it resolves to `{available: false, reason: 'forbidden'}`. */
+/** Declared row-scope dimensions of the enabled plugins (admin:groups or
+ * admin:users). They change only on deploy. */
 export function useScopeDimensions(enabled = true) {
   return useQuery({
     queryKey: queryKeys.scopeDimensions,

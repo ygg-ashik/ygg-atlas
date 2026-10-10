@@ -59,10 +59,10 @@ vi.mock('@/api/audit', () => ({
 vi.mock('@/api/tokens', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchAuthMethods: () => Promise.reject(new Error('offline')),
-  listMyTokens: () => Promise.resolve({ available: true, data: [] }),
-  listConnectedApps: () => Promise.resolve({ available: true, data: [] }),
-  listAdminTokens: () => Promise.resolve({ available: true, data: [] }),
-  listClients: () => Promise.resolve({ available: true, data: [] }),
+  listMyTokens: () => Promise.resolve([]),
+  listConnectedApps: () => Promise.resolve([]),
+  listAdminTokens: () => Promise.resolve([]),
+  listClients: () => Promise.resolve([]),
 }));
 vi.mock('@/api/catalog-admin', () => ({
   fetchCatalogResources: () => Promise.resolve({ sources: [] }),
@@ -79,6 +79,7 @@ const VIEWER: MeAccess = {
   pending_requests: 1,
   pending_approvals: 0,
   is_manager: false,
+  clearances: [],
 };
 const ADMIN: MeAccess = {
   ...VIEWER,

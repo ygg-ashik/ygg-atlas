@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createQueryWrapper } from '@/api/hooks/test-query-wrapper';
-import { apiMock } from '@/api/test-api-mock';
+import { apiMock, http } from '@/api/test-api-mock';
 import { httpError } from '@/api/test-support';
 import { PERSONAS } from '@/test/access-view';
 import { CATALOG, detail, diffLines, fast, grant } from './test-fixtures';
@@ -33,6 +33,13 @@ const TOKEN = {
   revoked_at: null,
   revoked_reason: null,
 };
+
+/** The attribute list for `/attributes`, an empty catalog for everything else. */
+function answerGets(attributes: unknown[]) {
+  http.get.mockImplementation((url: string) =>
+    Promise.resolve({ data: url.endsWith('/attributes') ? attributes : { sources: [] } }),
+  );
+}
 
 function renderAt(path: string) {
   const { wrapper: Wrapper } = createQueryWrapper();
@@ -67,6 +74,7 @@ describe('UserDetailPage', () => {
     );
     listAdminTokens.mockReset();
     revokeAllUserTokens.mockReset();
+    for (const fn of Object.values(http)) fn.mockReset();
     listDecidableRequests.mockReset();
   });
 
@@ -110,14 +118,15 @@ describe('UserDetailPage', () => {
     expect(diffLines(card)[0]).toEqual(['context', 'grant.revoke  user:karim@']);
   });
 
-  it('tokens tab: not available until phase 4', async () => {
-    listAdminTokens.mockResolvedValue({ available: false, reason: 'missing' });
+  it('tokens tab: no live tokens reads as an empty state', async () => {
+    listAdminTokens.mockResolvedValue([]);
     renderAt('/admin/users/karim?tab=tokens');
-    expect(await screen.findByText('Not available yet')).toBeInTheDocument();
+    expect(await screen.findByText('No live tokens')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Revoke all' })).toBeDisabled();
   });
 
   it('tokens tab: revoke all goes through a review card', async () => {
-    listAdminTokens.mockResolvedValue({ available: true, data: [TOKEN] });
+    listAdminTokens.mockResolvedValue([TOKEN]);
     revokeAllUserTokens.mockResolvedValue({ revoked: 1 });
     renderAt('/admin/users/karim?tab=tokens');
     await fast().click(await screen.findByRole('button', { name: 'Revoke all' }));
@@ -132,13 +141,70 @@ describe('UserDetailPage', () => {
     await waitFor(() => expect(card).toHaveAttribute('data-status', 'applied'));
   });
 
-  it('tokens tab: a missing revoke-all route reads not available', async () => {
-    listAdminTokens.mockResolvedValue({ available: true, data: [TOKEN] });
-    revokeAllUserTokens.mockRejectedValue(httpError(404, { detail: 'Not Found' }));
+  it('tokens tab: a failed revoke-all keeps the card open with the backend sentence', async () => {
+    listAdminTokens.mockResolvedValue([TOKEN]);
+    revokeAllUserTokens.mockRejectedValue(httpError(404, { detail: 'No such user.' }));
     renderAt('/admin/users/karim?tab=tokens');
     await fast().click(await screen.findByRole('button', { name: 'Revoke all' }));
-    await fast().click(screen.getByRole('button', { name: 'Revoke 1 tokens' }));
-    expect(await screen.findByText('Not available yet')).toBeInTheDocument();
+    const card = screen.getByRole('region', { name: 'Revoke all tokens · Karim Nasser' });
+    expect(diffLines(card)[0]).toEqual(['context', 'tokens.revoked_all  karim@yougotagift.com']);
+    await fast().click(within(card).getByRole('button', { name: 'Revoke 1 tokens' }));
+    expect(await within(card).findByText('No such user.')).toBeInTheDocument();
+  });
+
+  it('effective tab: an attribute set is reviewed as attribute.set, then PUT per key', async () => {
+    answerGets([{ key: 'country', value: 'AE', set_by: null, set_at: '2026-10-01T00:00:00Z' }]);
+    http.put.mockResolvedValue({
+      data: { key: 'country', value: 'SA', set_by: 'u1', set_at: '2026-10-10T00:00:00Z' },
+    });
+    renderAt('/admin/users/karim?tab=effective');
+    const section = await screen.findByRole('region', { name: 'Attributes' });
+    expect(await within(section).findByText('country = AE')).toBeInTheDocument();
+    expect(http.get).toHaveBeenCalledWith('/admin/users/karim/attributes');
+    const user = fast();
+    await user.type(within(section).getByRole('textbox', { name: 'Key' }), 'country');
+    await user.type(within(section).getByRole('textbox', { name: 'Value' }), 'SA');
+    await user.click(within(section).getByRole('button', { name: 'Set' }));
+    const card = screen.getByRole('region', { name: 'Set attribute country' });
+    expect(diffLines(card)).toEqual([
+      ['context', 'attribute.set  karim@yougotagift.com'],
+      ['remove', 'country   AE'],
+      ['add', 'country   SA'],
+    ]);
+    expect(http.put).not.toHaveBeenCalled();
+    await user.click(within(card).getByRole('button', { name: 'Set attribute' }));
+    await waitFor(() =>
+      expect(http.put).toHaveBeenCalledWith('/admin/users/karim/attributes/country', {
+        value: 'SA',
+      }),
+    );
+  });
+
+  it('effective tab: removing an attribute is reviewed as attribute.delete', async () => {
+    answerGets([{ key: 'csm', value: 'sara', set_by: null, set_at: '2026-10-01T00:00:00Z' }]);
+    http.delete.mockResolvedValue({ data: undefined });
+    renderAt('/admin/users/karim?tab=effective');
+    await fast().click(await screen.findByRole('button', { name: 'Remove csm' }));
+    const card = screen.getByRole('region', { name: 'Remove attribute csm' });
+    expect(diffLines(card)).toEqual([
+      ['context', 'attribute.delete  karim@yougotagift.com'],
+      ['remove', 'csm       sara'],
+    ]);
+    await fast().click(within(card).getByRole('button', { name: 'Remove attribute' }));
+    await waitFor(() =>
+      expect(http.delete).toHaveBeenCalledWith('/admin/users/karim/attributes/csm'),
+    );
+  });
+
+  it("effective tab: your own attributes are read-only with the backend's sentence", async () => {
+    answerGets([{ key: 'country', value: 'AE', set_by: null, set_at: '2026-10-01T00:00:00Z' }]);
+    renderAt('/admin/users/u1?tab=effective');
+    const section = await screen.findByRole('region', { name: 'Attributes' });
+    expect(await within(section).findByRole('button', { name: 'Remove country' })).toBeDisabled();
+    expect(
+      within(section).getByText("You can't change your own attributes. Ask another admin."),
+    ).toBeInTheDocument();
+    expect(within(section).queryByRole('textbox', { name: 'Key' })).not.toBeInTheDocument();
   });
 
   it('a missing user is stated with Retry', async () => {

@@ -136,7 +136,7 @@ describe('AuditPage', () => {
       next_cursor: null,
     });
     fetchAuditSummary.mockReset().mockResolvedValue(SUMMARY);
-    listCredentialEvents.mockReset().mockResolvedValue({ available: false, reason: 'missing' });
+    listCredentialEvents.mockReset().mockResolvedValue([]);
   });
 
   it('opens on Changes with actor, mono action, object and UTC time', async () => {
@@ -306,30 +306,30 @@ describe('AuditPage', () => {
     expect(within(users).getByText('u-nameless')).toBeInTheDocument();
   });
 
-  it('Credentials shows "Not available yet" until phase 4 ships', async () => {
+  it('Credentials with no events: an empty state, one page of the newest 100', async () => {
     renderPage();
     await openTab('Credentials');
-    expect(await screen.findByText('Not available yet')).toBeInTheDocument();
-    expect(listCredentialEvents).toHaveBeenCalled();
+    expect(await screen.findByText('No credential events yet')).toBeInTheDocument();
+    expect(listCredentialEvents).toHaveBeenCalledWith({ limit: 100 });
   });
 
-  it('Credentials lists token and client events once available', async () => {
+  it('Credentials lists token and client events, details collapsed', async () => {
     const event: CredentialEvent = {
       id: 'e1',
       at: '2026-10-09T08:00:00Z',
-      event: 'token.revoke',
+      event: 'token.revoked',
       user_id: 'u-omar',
       actor_user_id: 'u-ashik',
-      via: 'web',
+      via: 'api',
       token_id: 'tok-12345678',
       client_id: null,
       details: { reason: 'lost laptop' },
     };
-    listCredentialEvents.mockResolvedValue({ available: true, data: [event] });
+    listCredentialEvents.mockResolvedValue([event]);
     renderPage();
     await openTab('Credentials');
     const table = await screen.findByRole('table', { name: 'Credential events' });
-    expect(within(table).getByText('token.revoke')).toHaveClass('font-mono');
+    expect(within(table).getByText('token.revoked')).toHaveClass('font-mono');
     expect(within(table).queryByText(/lost laptop/)).not.toBeInTheDocument();
   });
 

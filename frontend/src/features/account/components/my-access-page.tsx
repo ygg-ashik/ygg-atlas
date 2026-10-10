@@ -3,16 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { type MeAccess } from '@/api/access';
 import { useCapabilityCatalog } from '@/api/hooks/use-capability-catalog';
 import { useMyAccess } from '@/api/hooks/use-my-access';
-import {
-  Button,
-  EmptyState,
-  ErrorNotice,
-  FutureControl,
-  Skeleton,
-  SkeletonRegion,
-  SkeletonRows,
-  Tag,
-} from '@/ui';
+import { Button, EmptyState, ErrorNotice, Skeleton, SkeletonRegion, SkeletonRows, Tag } from '@/ui';
 import { AccessSummary } from './access-summary';
 import { AccountPage, SectionHeading } from './account-page';
 
@@ -106,7 +97,7 @@ function PendingLink({ count }: { count: number }) {
 }
 
 /** Rules are not listed here: no self-service endpoint returns them, and the
- * UI never reconstructs access. Clearances arrive with phase 3. */
+ * UI never reconstructs access. Clearances come from `/me/access`. */
 function WhatICanSee({ access }: { access: MeAccess }) {
   return (
     <>
@@ -117,13 +108,7 @@ function WhatICanSee({ access }: { access: MeAccess }) {
           : 'Nothing yet. Once a request is approved, Atlas answers from that data straight away.'}
       </p>
       <div className="mt-3">
-        {access.clearances === undefined ? (
-          <FutureControl label="Clearances">
-            <Tag>No clearances</Tag>
-          </FutureControl>
-        ) : (
-          <ClearanceTags clearances={access.clearances} />
-        )}
+        <ClearanceTags clearances={access.clearances} />
       </div>
     </>
   );
@@ -140,7 +125,7 @@ function ClearanceTags({ clearances }: { clearances: string[] }) {
           </Tag>
         ))
       ) : (
-        <span className="text-muted-foreground">None</span>
+        <span className="text-muted-foreground">None · names in answers may show masked</span>
       )}
     </div>
   );

@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { AppWindow, Plug } from 'lucide-react';
+import { AppWindow } from 'lucide-react';
 import { useAuthMethods } from '@/api/hooks/use-auth-methods';
 import { useConnectedApps, useRevokeConnectedApp } from '@/api/hooks/use-tokens';
+import { CREDENTIAL_EVENT } from '@/api/credential-events';
 import { type ConnectedApp } from '@/api/tokens';
 import {
   Button,
@@ -21,7 +22,7 @@ const ROW = 'flex items-center gap-3 px-[18px] py-3 [&:not(:last-child)]:border-
 
 function appRevokeLines(app: ConnectedApp): DiffLine[] {
   return [
-    { kind: 'context', text: `client.revoke  ${app.client_id}` },
+    { kind: 'context', text: `${CREDENTIAL_EVENT.familyRevoked}  ${app.client_id}` },
     { kind: 'remove', text: `connected app ${app.client_name} · ${app.redirect_host}` },
     { kind: 'context', text: 'its refresh tokens stop working immediately' },
   ];
@@ -56,15 +57,8 @@ export function ConnectedApps() {
       />
     );
   }
-  if (!apps.data.available) {
-    return (
-      <Notice icon={<Plug className="h-4 w-4" />} title="Not available yet">
-        Connected apps arrive with MCP sign-in on this deployment.
-      </Notice>
-    );
-  }
-  if (apps.data.data.length === 0) return <NoApps hosted={methods.oauth.hosted_connectors} />;
-  return <AppList apps={apps.data.data} />;
+  if (apps.data.length === 0) return <NoApps hosted={methods.oauth.hosted_connectors} />;
+  return <AppList apps={apps.data} />;
 }
 
 function Loading() {
@@ -134,7 +128,7 @@ function AppList({ apps }: { apps: readonly ConnectedApp[] }) {
       {reviewing && (
         <RevokeReview
           title={`Revoke ${reviewing.client_name}`}
-          auditAction="client.revoke"
+          auditAction={CREDENTIAL_EVENT.familyRevoked}
           applyLabel="Revoke app"
           lines={appRevokeLines(reviewing)}
           mutation={revoke}

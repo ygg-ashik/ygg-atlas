@@ -6,7 +6,6 @@ import {
   DataTable,
   EmptyState,
   ErrorNotice,
-  Notice,
   SkeletonRegion,
   SkeletonRows,
   StatusPill,
@@ -14,7 +13,7 @@ import {
 } from '@/ui';
 import { isoDate } from '../format';
 import { useReviewedWrite } from '../hooks/use-reviewed-write';
-import { clientRevokeLines } from '../review-lines';
+import { CLIENT_REVOKE, clientRevokeLines } from '../review-lines';
 import { AdminPage } from './admin-page';
 import { ReviewSlot } from './review-slot';
 
@@ -40,7 +39,7 @@ export function AdminClientsPage() {
     write.open({
       slot: 'client',
       title: `Revoke ${c.client_name}`,
-      auditAction: 'client.revoke',
+      auditAction: CLIENT_REVOKE,
       lines: clientRevokeLines(c, c.active_families),
       applyLabel: 'Revoke client',
       appliedLabel: 'Revoked',
@@ -112,23 +111,18 @@ export function AdminClientsPage() {
           retrying={clients.isFetching}
         />
       )}
-      {clients.data && !clients.data.available && (
-        <Notice icon={<Plug className="h-4 w-4" />} title="Not available yet">
-          OAuth clients arrive with MCP sign-in on this deployment.
-        </Notice>
-      )}
-      {clients.data?.available && clients.data.data.length === 0 && (
+      {clients.data?.length === 0 && (
         <EmptyState icon={<Plug className="h-5 w-5" />} title="No clients registered">
           A client appears here the first time someone connects an MCP app with their sign-in.
         </EmptyState>
       )}
-      {clients.data?.available && clients.data.data.length > 0 && (
+      {clients.data && clients.data.length > 0 && (
         <>
           <ReviewSlot write={write} slot="client" />
           <DataTable
             caption="OAuth clients"
             columns={columns}
-            rows={clients.data.data}
+            rows={clients.data}
             rowKey={(c) => c.client_id}
           />
         </>

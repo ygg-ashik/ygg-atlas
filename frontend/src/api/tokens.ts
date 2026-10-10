@@ -1,8 +1,9 @@
-// Credentials owned by phase 4 (contracts.md; app/mcp/schemas.py there).
-// Until phase 4 ships, the routes are missing and reads resolve to
-// `{available: false, reason: 'missing'}` ("Not available yet");
-// a missing `/meta/auth-methods` ⇒ both methods disabled.
-import { isRouteMissing, whenAvailable, type Availability } from './availability';
+// MCP credentials (phase 4): personal tokens, connected apps, admin token and
+// client views, service accounts and credential events. Shapes: backend
+// app/mcp/schemas.py. A deployment turns methods off through
+// `/meta/auth-methods`, never by dropping routes; a missing or failed
+// `/meta/auth-methods` reads as both methods disabled.
+import { isAxiosError } from 'axios';
 import { api } from './axios-instance';
 import { compactParams, seg } from './params';
 
@@ -10,7 +11,7 @@ export type TokenKind = 'pat' | 'service' | 'oauth_access' | 'oauth_refresh';
 /** `GET /admin/tokens?kind=`: `oauth` covers both OAuth kinds. */
 export type TokenKindFilter = 'pat' | 'service' | 'oauth';
 
-/** `TokenOut`. The secret is never in a list response. */
+/** `TokenOut`. The secret is never in a list response; `prefix` is display only. */
 export interface Token {
   id: string;
   kind: TokenKind;
@@ -58,7 +59,8 @@ export interface OAuthClient {
   active_families: number;
 }
 
-/** `CredentialEventOut`: token and client lifecycle (not in `rbac_changes`). */
+/** `CredentialEventOut`: token and client lifecycle (not in `rbac_changes`).
+ * `user_id` is null for events about no user (client registration, GC). */
 export interface CredentialEvent {
   id: string;
   at: string;
@@ -71,6 +73,7 @@ export interface CredentialEvent {
   details: Record<string, unknown>;
 }
 
+/** `ServiceAccountCreate`; `name` 3..60 characters. */
 export interface ServiceAccountCreate {
   name: string;
   role: string;
@@ -92,7 +95,7 @@ export interface RevokedCount {
   revoked: number;
 }
 
-/** `AuthMethodsOut`, plus whether the route exists on this deployment. */
+/** `AuthMethodsOut`, plus whether the server answered it (false: read as disabled). */
 export interface AuthMethods {
   available: boolean;
   pat: { enabled: boolean; default_days: number; max_days: number };
@@ -111,15 +114,19 @@ export async function fetchAuthMethods(): Promise<AuthMethods> {
     const { data } = await api.get<Omit<AuthMethods, 'available'>>('/meta/auth-methods');
     return { available: true, pat: data.pat, oauth: data.oauth };
   } catch (error) {
-    if (isRouteMissing(error)) return AUTH_METHODS_DISABLED;
+    // An older backend without the route: offer neither method (fail closed).
+    if (isAxiosError(error) && error.response?.status === 404) return AUTH_METHODS_DISABLED;
     throw error;
   }
 }
 
-const getList = <T>(url: string, params?: Record<string, string | number | boolean>) =>
-  whenAvailable(async () => (await api.get<T[]>(url, { params })).data);
+async function getList<T>(url: string, params?: Record<string, string | number | boolean>) {
+  const { data } = await api.get<T[]>(url, { params });
+  return data;
+}
 
-export const listMyTokens = (): Promise<Availability<Token[]>> => getList<Token>('/me/tokens');
+/** The caller's unrevoked personal tokens, newest first (expired ones included). */
+export const listMyTokens = (): Promise<Token[]> => getList<Token>('/me/tokens');
 
 export async function createMyToken(body: TokenCreate): Promise<TokenCreated> {
   const { data } = await api.post<TokenCreated>('/me/tokens', body);
@@ -130,7 +137,7 @@ export async function revokeMyToken(tokenId: string): Promise<void> {
   await api.delete(`/me/tokens/${seg(tokenId)}`);
 }
 
-export const listConnectedApps = (): Promise<Availability<ConnectedApp[]>> =>
+export const listConnectedApps = (): Promise<ConnectedApp[]> =>
   getList<ConnectedApp>('/me/connected-apps');
 
 export async function revokeConnectedApp(familyId: string): Promise<void> {
@@ -142,7 +149,8 @@ export interface AdminTokenFilters {
   kind?: TokenKindFilter;
 }
 
-export const listAdminTokens = (filters: AdminTokenFilters = {}) =>
+/** Unrevoked tokens in the caller's tenant, newest first, at most 200. */
+export const listAdminTokens = (filters: AdminTokenFilters = {}): Promise<Token[]> =>
   getList<Token>('/admin/tokens', compactParams({ ...filters }));
 
 export async function revokeAdminToken(tokenId: string): Promise<void> {
@@ -165,18 +173,21 @@ export async function createServiceToken(userId: string, body: TokenCreate) {
   return data;
 }
 
-export const listClients = (): Promise<Availability<OAuthClient[]>> =>
-  getList<OAuthClient>('/admin/clients');
+/** OAuth clients are global (dynamic registration knows no tenant). */
+export const listClients = (): Promise<OAuthClient[]> => getList<OAuthClient>('/admin/clients');
 
 export async function revokeClient(clientId: string): Promise<void> {
   await api.delete(`/admin/clients/${seg(clientId)}`);
 }
 
+/** `GET /admin/credential-events`: newest first, no cursor, only a size. */
 export interface CredentialEventFilters {
   user_id?: string;
   /** 1..500; the backend defaults to 100. */
   limit?: number;
 }
 
-export const listCredentialEvents = (filters: CredentialEventFilters = {}) =>
+export const listCredentialEvents = (
+  filters: CredentialEventFilters = {},
+): Promise<CredentialEvent[]> =>
   getList<CredentialEvent>('/admin/credential-events', compactParams({ ...filters }));

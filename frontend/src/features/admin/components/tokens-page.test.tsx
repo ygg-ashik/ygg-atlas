@@ -1,15 +1,15 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { type Availability } from '@/api/availability';
 import { createQueryWrapper } from '@/api/hooks/test-query-wrapper';
+import { httpError } from '@/api/test-support';
 import { type AdminTokenFilters, type RevokedCount, type Token } from '@/api/tokens';
 import { accessView } from '@/test/access-view';
 import { fast } from './test-fixtures';
 import { AdminTokensPage } from './tokens-page';
 
 const tokens = vi.hoisted(() => ({
-  listAdminTokens: vi.fn<(f?: AdminTokenFilters) => Promise<Availability<Token[]>>>(),
+  listAdminTokens: vi.fn<(f?: AdminTokenFilters) => Promise<Token[]>>(),
   revokeAdminToken: vi.fn<(id: string) => Promise<void>>(),
   revokeAllUserTokens: vi.fn<(userId: string) => Promise<RevokedCount>>(),
 }));
@@ -57,15 +57,14 @@ function renderPage() {
 
 describe('AdminTokensPage', () => {
   beforeEach(() => {
-    tokens.listAdminTokens.mockReset().mockResolvedValue({
-      available: true,
-      data: [
+    tokens.listAdminTokens
+      .mockReset()
+      .mockResolvedValue([
         token('77c1', KARIM),
         token('e0b3', KARIM),
         token('3f9a', RANIA),
         token('dead', RANIA, { revoked_at: '2026-10-02T00:00:00Z' }),
-      ],
-    });
+      ]);
     tokens.revokeAdminToken.mockReset().mockResolvedValue(undefined);
     tokens.revokeAllUserTokens.mockReset().mockResolvedValue({ revoked: 2 });
   });
@@ -83,7 +82,7 @@ describe('AdminTokensPage', () => {
     const user = renderPage();
     await user.click(await screen.findByRole('button', { name: `Revoke all tokens of ${KARIM}` }));
     const card = screen.getByRole('region', { name: `Revoke all tokens · ${KARIM}` });
-    expect(card).toHaveTextContent('token.revoke_all');
+    expect(card).toHaveTextContent('tokens.revoked_all');
     expect(card).toHaveTextContent('atl_pat_77c1…');
     expect(card).toHaveTextContent('atl_pat_e0b3…');
     expect(card).not.toHaveTextContent('atl_pat_3f9a');
@@ -96,7 +95,7 @@ describe('AdminTokensPage', () => {
     const user = renderPage();
     await user.click(await screen.findByRole('button', { name: 'Revoke Token 3f9a' }));
     const card = screen.getByRole('region', { name: 'Revoke token' });
-    expect(card).toHaveTextContent('token.revoke');
+    expect(card).toHaveTextContent('token.revoked');
     await user.click(within(card).getByRole('button', { name: 'Revoke token' }));
     await waitFor(() => expect(tokens.revokeAdminToken).toHaveBeenCalledWith('3f9a'));
   });
@@ -111,10 +110,10 @@ describe('AdminTokensPage', () => {
   });
 
   it('revoke all lists OAuth tokens and says connected apps lose access', async () => {
-    tokens.listAdminTokens.mockResolvedValue({
-      available: true,
-      data: [token('77c1', KARIM), token('0a11', KARIM, { kind: 'oauth_access', name: 'Claude' })],
-    });
+    tokens.listAdminTokens.mockResolvedValue([
+      token('77c1', KARIM),
+      token('0a11', KARIM, { kind: 'oauth_access', name: 'Claude' }),
+    ]);
     const user = renderPage();
     await user.click(await screen.findByRole('button', { name: `Revoke all tokens of ${KARIM}` }));
     const card = screen.getByRole('region', { name: `Revoke all tokens · ${KARIM}` });
@@ -135,14 +134,15 @@ describe('AdminTokensPage', () => {
     expect(screen.getByRole('button', { name: 'Revoke Token 77c1' })).toBeInTheDocument();
   });
 
-  it('before phase 4 ships: "Not available yet"', async () => {
-    tokens.listAdminTokens.mockResolvedValue({ available: false, reason: 'missing' });
+  it('a failed load is an error with Retry, never an empty list', async () => {
+    tokens.listAdminTokens.mockRejectedValue(httpError(404, { detail: 'Not Found' }));
     renderPage();
-    expect(await screen.findByText('Not available yet')).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load tokens")).toBeInTheDocument();
+    expect(screen.queryByText('No live tokens')).not.toBeInTheDocument();
   });
 
   it('no live tokens: an empty state', async () => {
-    tokens.listAdminTokens.mockResolvedValue({ available: true, data: [] });
+    tokens.listAdminTokens.mockResolvedValue([]);
     renderPage();
     expect(await screen.findByText('No live tokens')).toBeInTheDocument();
   });

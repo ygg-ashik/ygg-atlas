@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { type GrantCreate, type RowScope, type SubjectType } from '@/api/admin-groups';
 import { useCreateGrant } from '@/api/hooks/use-admin-grants';
+import { useScopeDimensions } from '@/api/hooks/use-row-field';
 import { Button, Field, Input, Tag } from '@/ui';
 import {
   expiryToIso,
@@ -44,7 +45,7 @@ function toCreate(
     reason: d.reason.trim(),
     expires_at: expiryToIso(d.expiry),
   };
-  // Row scope only exists once phase 3 is live, and only on resource allows.
+  // The backend refuses a row scope anywhere but on a resource allow.
   if (scope && d.targetKind === 'resource' && d.effect === 'allow') body.row_scope = scope;
   return body;
 }
@@ -77,6 +78,9 @@ export function GrantEditor({
     write.dismiss();
   };
   const user = subject.type === 'user';
+  const scoped = draft.targetKind === 'resource' && draft.effect === 'allow';
+  // Fail closed: until the dimensions load, a resource allow could only be all rows.
+  const scopeReady = useScopeDimensions().isSuccess || !scoped;
 
   const stage = () => {
     const found = validateGrantDraft(draft, today);
@@ -168,7 +172,7 @@ export function GrantEditor({
         />
       </Field>
       <div className="mt-4 grid gap-3 min-[700px]:grid-cols-2">
-        <RowScopeBuilder value={scope} onChange={setScope} />
+        <RowScopeBuilder value={scope} onChange={setScope} applies={scoped} />
         <ClearancePicker
           value={draft.targetKind === 'clearance' ? draft.target : null}
           onChange={(code) =>
@@ -189,7 +193,9 @@ export function GrantEditor({
         </Button>
         <Button
           onClick={stage}
-          disabled={!draft.target || (draft.effect === 'deny' && !draft.denyConfirmed)}
+          disabled={
+            !draft.target || !scopeReady || (draft.effect === 'deny' && !draft.denyConfirmed)
+          }
         >
           Review change
         </Button>

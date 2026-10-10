@@ -18,7 +18,7 @@ export function TokensPage() {
   const { methods, isLoading: methodsLoading } = useAuthMethods();
   const tokens = useMyTokens();
   const [creating, setCreating] = useState(false);
-  const canCreate = view.can(CREATE) && methods.pat.enabled && tokens.data?.available === true;
+  const canCreate = view.can(CREATE) && methods.pat.enabled && tokens.isSuccess;
   const newToken = () => setCreating(true);
   return (
     <AccountPage
@@ -71,14 +71,7 @@ function PersonalTokens(props: PersonalTokensProps) {
       />
     );
   }
-  if (!tokens.data.available) {
-    return (
-      <Notice icon={<KeyRound className="h-4 w-4" />} title="Not available yet">
-        Personal access tokens arrive with MCP sign-in on this deployment.
-      </Notice>
-    );
-  }
-  const live = tokens.data.data.filter((t) => !t.revoked_at);
+  const live = tokens.data.filter((t) => !t.revoked_at);
   // Tokens made before a role change can still be revoked without tokens:create.
   if (live.length) return <TokenList tokens={live} />;
   if (!holdsCapability) {

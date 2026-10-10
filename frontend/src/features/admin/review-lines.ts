@@ -3,6 +3,8 @@
 // is what the audit log shows afterwards.
 import { type RoleInfo } from '@/api/access';
 import { type GrantOut, type RowScope } from '@/api/admin-groups';
+import { type LabelClass, type LabelClassPut } from '@/api/row-field';
+import { CREDENTIAL_EVENT } from '@/api/credential-events';
 import { type DiffLine } from '@/ui';
 
 const KEY_WIDTH = 10;
@@ -57,7 +59,8 @@ export interface GrantShape {
   row_scope?: RowScope | null;
 }
 
-const scopeText = (scope: RowScope) =>
+/** `country=AE,SA; channel=paid`. */
+export const scopeText = (scope: RowScope) =>
   Object.entries(scope)
     .map(([dim, values]) => `${dim}=${values.join(',')}`)
     .join('; ');
@@ -68,8 +71,17 @@ function grantFields(grant: GrantShape, mark: (text: string) => DiffLine): DiffL
     mark(kv(grant.target_kind === 'resource' ? 'target' : grant.target_kind, grant.target)),
     mark(kv('expires', grant.expires_at ? expiryLabel(grant.expires_at) : NONE)),
     ...(grant.reason ? [mark(kv('reason', grant.reason))] : []),
-    ...(grant.row_scope ? [mark(kv('scope', scopeText(grant.row_scope)))] : []),
+    ...scopeLines(grant, mark),
   ];
+}
+
+/** A resource allow always states its rows: the scope, or "all rows" when unscoped. */
+function scopeLines(grant: GrantShape, mark: (text: string) => DiffLine): DiffLine[] {
+  if (grant.row_scope) return [mark(kv('scope', scopeText(grant.row_scope)))];
+  if (grant.target_kind === 'resource' && grant.effect === 'allow') {
+    return [ctx(kv('scope', 'all rows'))];
+  }
+  return [];
 }
 
 /** `grant.create` on `subject` (e.g. `group:marketing`), with how far it reaches. */
@@ -129,10 +141,14 @@ export interface TokenLine {
 
 const isOAuth = (t: TokenLine) => t.kind?.startsWith('oauth') ?? false;
 
-/** The phase-4 credential event a revoke-all records (`credential_events`, not `rbac_changes`). */
-export const TOKEN_REVOKE_ALL = 'token.revoke_all';
+/** The credential event a revoke-all records (`credential_events`, not `rbac_changes`). */
+export const TOKEN_REVOKE_ALL = CREDENTIAL_EVENT.tokensRevokedAll;
+/** The credential event a single revoke records. */
+export const TOKEN_REVOKE = CREDENTIAL_EVENT.tokenRevoked;
+/** The credential event an OAuth client revoke records. */
+export const CLIENT_REVOKE = CREDENTIAL_EVENT.clientRevoked;
 
-/** Phase-4 revoke-all (a credential event, not an rbac change). The endpoint
+/** Revoke-all (a credential event, not an rbac change). The endpoint
  * revokes every live token of the user, whatever its kind, so `tokens` must be
  * the unfiltered list; OAuth tokens mean connected apps lose access too. */
 export function revokeAllLines(email: string, tokens: readonly TokenLine[]): DiffLine[] {
@@ -148,7 +164,12 @@ export function revokeAllLines(email: string, tokens: readonly TokenLine[]): Dif
   ];
 }
 
-/** Phase-3 per-key attribute write. */
+/** The `rbac_changes` actions of attribute writes (backend `AccessAdmin`). */
+export const ATTRIBUTE_SET = 'attribute.set';
+export const ATTRIBUTE_DELETE = 'attribute.delete';
+export const LABEL_CLASS_UPDATE = 'label_class.update';
+
+/** Per-key attribute write: `attribute.set` or `attribute.delete`. */
 export function attributeLines(
   email: string,
   key: string,
@@ -156,30 +177,45 @@ export function attributeLines(
   after: string | null,
 ): DiffLine[] {
   return [
-    ctx(`${after === null ? 'attribute.delete' : 'attribute.put'}  ${email}`),
+    ctx(`${after === null ? ATTRIBUTE_DELETE : ATTRIBUTE_SET}  ${email}`),
     ...(before !== null ? [rm(kv(key, before))] : []),
     ...(after !== null ? [add(kv(key, after))] : []),
   ];
 }
 
-/** Phase-4 single token revoke (a credential event). */
+/** Single token revoke (a credential event). */
 export function tokenRevokeLines(token: TokenLine): DiffLine[] {
   return [
-    ctx('token.revoke'),
+    ctx(TOKEN_REVOKE),
     rm(kv('token', `${token.prefix}…  ${token.name}`)),
     ctx('anything using it gets 401 on the next call'),
   ];
 }
 
-/** Phase-4 OAuth client revoke: every connected sign-in through it ends. */
+/** OAuth client revoke: every connected sign-in through it ends. */
 export function clientRevokeLines(
   client: { client_id: string; client_name: string },
   activeFamilies: number,
 ): DiffLine[] {
   const signIns = `${activeFamilies} connected sign-in${activeFamilies === 1 ? '' : 's'}`;
   return [
-    ctx(`client.revoke  ${client.client_id}`),
+    ctx(`${CLIENT_REVOKE}  ${client.client_id}`),
     rm(kv('client', client.client_name)),
     ctx(`${signIns} stop working immediately`),
   ];
+}
+
+/** `label_class.update`: the row's `mode` and `bucket_size` before → after.
+ * An omitted `bucket_size` keeps the stored one, as the backend does. */
+export function labelClassLines(current: LabelClass, next: LabelClassPut): DiffLine[] {
+  const size = next.bucket_size ?? current.bucket_size;
+  const lines = [ctx(`${LABEL_CLASS_UPDATE}  ${current.label_class}`)];
+  if (next.mode !== current.mode) {
+    lines.push(rm(kv('mode', current.mode)), add(kv('mode', next.mode)));
+  }
+  if (size !== current.bucket_size) {
+    lines.push(rm(kv('bucket', String(current.bucket_size))), add(kv('bucket', String(size))));
+  }
+  lines.push(ctx('applies to every caller without the matching clearance'));
+  return lines;
 }

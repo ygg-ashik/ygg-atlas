@@ -7,13 +7,15 @@ import {
   type DataColumn,
   EmptyState,
   ErrorNotice,
-  Notice,
   SkeletonRegion,
   SkeletonRows,
   Tag,
 } from '@/ui';
 import { seenAt } from '../format';
 import { JsonDetails } from './audit-filters';
+
+/** One page: the route has no cursor, so the tab shows the newest events only. */
+const PAGE = { limit: 100 } as const;
 
 const mono = (value: string | null) =>
   value ? (
@@ -39,10 +41,10 @@ const COLUMNS: readonly DataColumn<CredentialEvent>[] = [
   { key: 'client', header: 'Client id', cell: (e) => mono(e.client_id), hideBelowWide: true },
 ];
 
-/** Credentials tab: token and client lifecycle events (phase 4). Until that
- * route ships the tab says so instead of failing. */
+/** Credentials tab: token and client lifecycle events (`credential_events`),
+ * newest first. The route has no cursor, so this is the latest page only. */
 export function CredentialsTable() {
-  const events = useCredentialEvents();
+  const events = useCredentialEvents(PAGE);
   const [open, setOpen] = useState<string | null>(null);
   if (events.isPending) {
     return (
@@ -62,15 +64,7 @@ export function CredentialsTable() {
       </ErrorNotice>
     );
   }
-  if (!events.data.available) {
-    return (
-      <Notice icon="·" title="Not available yet">
-        Token and connected-app events arrive with MCP sign-in. Access changes and tool decisions
-        are on the other tabs.
-      </Notice>
-    );
-  }
-  const rows = events.data.data;
+  const rows = events.data;
   if (!rows.length) {
     return (
       <EmptyState icon={<KeyRound className="h-5 w-5" />} title="No credential events yet">
@@ -79,14 +73,21 @@ export function CredentialsTable() {
     );
   }
   return (
-    <DataTable
-      caption="Credential events"
-      columns={COLUMNS}
-      rows={rows}
-      rowKey={(e) => e.id}
-      expandedKey={open}
-      onToggleExpand={(key) => setOpen((k) => (k === key ? null : key))}
-      renderExpanded={(e) => <JsonDetails label="Details (JSON)" value={e.details} />}
-    />
+    <>
+      {rows.length >= PAGE.limit && (
+        <p className="mb-2 text-caption text-muted-foreground">
+          The newest {PAGE.limit} events. Older events stay in the log.
+        </p>
+      )}
+      <DataTable
+        caption="Credential events"
+        columns={COLUMNS}
+        rows={rows}
+        rowKey={(e) => e.id}
+        expandedKey={open}
+        onToggleExpand={(key) => setOpen((k) => (k === key ? null : key))}
+        renderExpanded={(e) => <JsonDetails label="Details (JSON)" value={e.details} />}
+      />
+    </>
   );
 }

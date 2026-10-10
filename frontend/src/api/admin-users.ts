@@ -47,15 +47,16 @@ export interface UserUpdate {
   status?: UserStatus;
 }
 
-/** `RuleOut`; `row_scope` arrives with phase 3. */
+/** `RuleOut`. `row_scope` null = all rows; `$self` is already resolved. */
 export interface Rule {
   pattern: string;
   grant_id: string;
   origin: string;
-  row_scope?: RowScope | null;
+  row_scope: RowScope | null;
 }
 
-/** `SkippedOut` (phase 3). */
+/** `SkippedOut`: a grant the evaluator ignored (e.g. a malformed or
+ * unresolvable row scope), with why. */
 export interface SkippedRule {
   pattern: string;
   grant_id: string;
@@ -63,15 +64,16 @@ export interface SkippedRule {
   reason: string;
 }
 
-/** `DecisionOut`; `row_scope` arrives with phase 3. */
+/** `DecisionOut`. `row_scope`: null = all rows; otherwise the alternatives,
+ * ORed; `[]` = no rows. The atlas may narrow it further, never widen it. */
 export interface ResourceDecision {
   resource: string;
   allowed: boolean;
   reason: string;
-  row_scope?: RowScope[] | null;
+  row_scope: RowScope[] | null;
 }
 
-/** `EffectiveAccessOut`; `clearances` and `skipped` arrive with phase 3. */
+/** `EffectiveAccessOut`; `clearances` is empty for a disabled user. */
 export interface EffectiveAccess {
   user_id: string;
   role: string;
@@ -80,8 +82,8 @@ export interface EffectiveAccess {
   allow: Rule[];
   deny: Rule[];
   decision: ResourceDecision | null;
-  clearances?: string[];
-  skipped?: SkippedRule[];
+  clearances: string[];
+  skipped: SkippedRule[];
 }
 
 export interface UserPageRequest {

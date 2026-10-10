@@ -19,8 +19,7 @@ import {
 } from '../tokens';
 import { useAccessMutation } from './use-access-mutation';
 
-// Phase-4 credentials. Each read's `data.available === false` until phase 4
-// ships ("Not available yet"). Token and client writes are identity writes, not
+// MCP credentials (phase 4). Token and client writes are identity writes, not
 // AccessAdmin writes, so their 409s (e.g. the token limit) offer no Retry. Responses carrying a secret use gcTime 0 so the
 // token never lingers in the mutation cache after the reveal unmounts.
 

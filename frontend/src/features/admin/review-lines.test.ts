@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  attributeLines,
+  clientRevokeLines,
   grantCreateLines,
+  labelClassLines,
   memberPutLines,
   revokeAllLines,
   roleChangeLines,
   statusChangeLines,
+  tokenRevokeLines,
 } from './review-lines';
 
 const ROLES = [
@@ -47,6 +51,7 @@ describe('review lines mirror the rbac_changes row', () => {
       'effect    allow',
       'target    demo/checkout/*',
       'expires   —',
+      'scope     all rows',
     ]);
   });
 
@@ -67,5 +72,40 @@ describe('review lines mirror the rbac_changes row', () => {
     const withApps = revokeAllLines('a@x.com', [pat, oauth]).map((l) => l.text);
     expect(withApps).toContain('token     atl_oat_2…  Claude');
     expect(withApps.at(-1)).toBe('connected apps lose access too: their OAuth tokens are revoked');
+  });
+
+  it('attribute writes name the actions AccessAdmin records', () => {
+    expect(attributeLines('a@x.com', 'country', null, 'AE')[0]?.text).toBe(
+      'attribute.set  a@x.com',
+    );
+    expect(attributeLines('a@x.com', 'country', 'AE', null)[0]?.text).toBe(
+      'attribute.delete  a@x.com',
+    );
+  });
+
+  it('a label class change lists only the fields that move', () => {
+    const current = {
+      label_class: 'person_name',
+      mode: 'suppress' as const,
+      bucket_size: 5,
+      updated_at: '2026-10-01T00:00:00Z',
+    };
+    expect(labelClassLines(current, { mode: 'pseudonymise' }).map((l) => l.text)).toEqual([
+      'label_class.update  person_name',
+      'mode      suppress',
+      'mode      pseudonymise',
+      'applies to every caller without the matching clearance',
+    ]);
+  });
+});
+
+describe('credential review lines name the credential_events event', () => {
+  it('token, revoke-all and client revokes', () => {
+    const token = { prefix: 'atl_pat_1', name: 'laptop' };
+    expect(tokenRevokeLines(token)[0]?.text).toBe('token.revoked');
+    expect(revokeAllLines('a@x.com', [token])[0]?.text).toBe('tokens.revoked_all  a@x.com');
+    expect(clientRevokeLines({ client_id: 'oc_1', client_name: 'Claude' }, 2)[0]?.text).toBe(
+      'client.revoked  oc_1',
+    );
   });
 });

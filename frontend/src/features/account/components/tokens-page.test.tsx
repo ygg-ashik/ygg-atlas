@@ -2,7 +2,6 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { type Availability } from '@/api/availability';
 import { type MyAccessView } from '@/api/hooks/use-my-access';
 import { createQueryWrapper } from '@/api/hooks/test-query-wrapper';
 import { type AuthMethods, type Token } from '@/api/tokens';
@@ -11,9 +10,9 @@ import { TokensPage } from './tokens-page';
 
 const tokens = vi.hoisted(() => ({
   fetchAuthMethods: vi.fn<() => Promise<AuthMethods>>(),
-  listMyTokens: vi.fn<() => Promise<Availability<Token[]>>>(),
+  listMyTokens: vi.fn<() => Promise<Token[]>>(),
   revokeMyToken: vi.fn<(id: string) => Promise<void>>(),
-  listConnectedApps: vi.fn(() => Promise.resolve({ available: true, data: [] })),
+  listConnectedApps: vi.fn(() => Promise.resolve([])),
 }));
 // The real token client is spread in; its axios instance pulls in the Firebase SDK.
 vi.mock('@/lib/firebase', () => ({ auth: {}, googleProvider: {} }));
@@ -60,7 +59,7 @@ describe('TokensPage', () => {
   beforeEach(() => {
     access.view = PERSONAS.manager; // holds tokens:create
     tokens.fetchAuthMethods.mockReset().mockResolvedValue(METHODS);
-    tokens.listMyTokens.mockReset().mockResolvedValue({ available: true, data: [TOKEN] });
+    tokens.listMyTokens.mockReset().mockResolvedValue([TOKEN]);
     tokens.revokeMyToken.mockReset().mockResolvedValue(undefined);
   });
 
@@ -87,14 +86,14 @@ describe('TokensPage', () => {
   });
 
   it('can create: an empty list offers the first token', async () => {
-    tokens.listMyTokens.mockResolvedValue({ available: true, data: [] });
+    tokens.listMyTokens.mockResolvedValue([]);
     renderPage();
     expect(await screen.findByText('No tokens yet')).toBeInTheDocument();
   });
 
   it('without tokens:create and no tokens: the explanation, no New token', async () => {
     access.view = PERSONAS.viewer;
-    tokens.listMyTokens.mockResolvedValue({ available: true, data: [] });
+    tokens.listMyTokens.mockResolvedValue([]);
     renderPage();
     expect(await screen.findByText(/Personal tokens need/)).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
@@ -114,16 +113,23 @@ describe('TokensPage', () => {
     expect(screen.queryByRole('button', { name: /New token/ })).not.toBeInTheDocument();
   });
 
-  it('before phase 4 ships: "Not available yet" and no New token', async () => {
-    tokens.listMyTokens.mockResolvedValue({ available: false, reason: 'missing' });
+  it('personal tokens turned off by the deployment: a notice and no New token', async () => {
+    tokens.listMyTokens.mockResolvedValue([]);
     tokens.fetchAuthMethods.mockResolvedValue({
-      available: false,
-      pat: { enabled: false, default_days: 0, max_days: 0 },
+      available: true,
+      pat: { enabled: false, default_days: 90, max_days: 365 },
       oauth: { enabled: false, hosted_connectors: false },
     });
     renderPage();
-    expect(await screen.findByText('Not available yet')).toBeInTheDocument();
-    expect(screen.getByText('Not enabled for this deployment')).toBeInTheDocument();
+    expect(await screen.findAllByText('Not enabled for this deployment')).toHaveLength(2);
+    expect(screen.queryByText('Not available yet')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /New token/ })).not.toBeInTheDocument();
+  });
+
+  it('a failed token load is an error with Retry and no New token', async () => {
+    tokens.listMyTokens.mockRejectedValue(new Error('offline'));
+    renderPage();
+    expect(await screen.findByText("Couldn't load your tokens")).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /New token/ })).not.toBeInTheDocument();
   });
 });

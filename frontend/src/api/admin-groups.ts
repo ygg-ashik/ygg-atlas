@@ -4,7 +4,7 @@ import { api } from './axios-instance';
 import { type GroupStanding } from './access';
 import { seg } from './params';
 
-/** Phase-3 row scope: dimension → allowed values (`$self` allowed). */
+/** A row scope: dimension → allowed values (`$self` allowed on grants). */
 export type RowScope = Record<string, string[]>;
 
 /** `GroupOut`. */
@@ -63,7 +63,7 @@ export type SubjectType = 'group' | 'user';
 export type GrantEffect = 'allow' | 'deny';
 export type GrantTargetKind = 'resource' | 'capability' | 'clearance';
 
-/** `GrantOut`; `row_scope` arrives with phase 3. */
+/** `GrantOut`; `row_scope` null = all rows. */
 export interface GrantOut {
   id: string;
   subject_type: SubjectType;
@@ -75,10 +75,10 @@ export interface GrantOut {
   expires_at: string | null;
   created_by: string | null;
   created_at: string;
-  row_scope?: RowScope | null;
+  row_scope: RowScope | null;
 }
 
-/** `GrantCreate`. Send `row_scope` only once phase 3 is live (resource allows only). */
+/** `GrantCreate`. `row_scope` only on a resource allow; omitted or null = all rows. */
 export interface GrantCreate {
   subject_type: SubjectType;
   subject_id: string;

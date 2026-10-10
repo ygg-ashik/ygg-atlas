@@ -20,6 +20,7 @@ const ADMIN: MeAccess = {
   pending_requests: 1,
   pending_approvals: 3,
   is_manager: true,
+  clearances: [],
 };
 
 describe('useMyAccess', () => {

@@ -22,6 +22,12 @@ const CATALOG: CapabilityCatalog = {
     { name: 'viewer', capabilities: ['chat:use'] },
     { name: 'analyst', capabilities: ['chat:use', 'mcp:use', 'tokens:create'] },
   ],
+  clearances: [
+    { code: 'fields:business_names', description: 'See business names in clear' },
+    { code: 'fields:people_names', description: "See people's names in clear" },
+  ],
+  label_classes: ['category', 'business_name', 'person_name'],
+  mask_modes: ['pseudonymise', 'suppress', 'bucket'],
 };
 
 function renderPage(entry: string | { pathname: string; state: unknown } = '/account') {
@@ -97,10 +103,17 @@ describe('MyAccessPage', () => {
     );
   });
 
-  it('clearances wait for row and field controls (phase 3)', () => {
+  it('lists the clearances from /me/access', () => {
+    state.view = accessView({ has_data_access: true, clearances: ['fields:people_names'] });
+    renderPage();
+    expect(screen.queryByText('Arrives with row and field controls')).not.toBeInTheDocument();
+    expect(screen.getByText('fields:people_names')).toBeInTheDocument();
+  });
+
+  it('no clearances: says names may show masked', () => {
     state.view = PERSONAS.viewer;
     renderPage();
-    expect(screen.getByText('Arrives with row and field controls')).toBeInTheDocument();
+    expect(screen.getByText(/None · names in answers may show masked/)).toBeInTheDocument();
   });
 
   it('a failed capability catalog says so with a retry; the codes still show', async () => {

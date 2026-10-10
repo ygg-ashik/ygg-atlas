@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useRevokeMyToken } from '@/api/hooks/use-tokens';
+import { CREDENTIAL_EVENT } from '@/api/credential-events';
 import { type Token } from '@/api/tokens';
 import { Button, DataTable, StatusPill, type DataColumn, type DiffLine } from '@/ui';
 import { isoDate, lastUsed } from '../token-format';
@@ -9,7 +10,7 @@ const isExpired = (t: Token) => new Date(t.expires_at).getTime() <= Date.now();
 
 function tokenRevokeLines(t: Token): DiffLine[] {
   return [
-    { kind: 'context', text: 'token.revoke' },
+    { kind: 'context', text: CREDENTIAL_EVENT.tokenRevoked },
     { kind: 'remove', text: `token ${t.prefix}…  ${t.name}` },
     { kind: 'context', text: 'anything using it gets 401 on the next call' },
   ];
@@ -66,7 +67,7 @@ export function TokenList({ tokens }: { tokens: readonly Token[] }) {
       {reviewing && (
         <RevokeReview
           title="Revoke token"
-          auditAction="token.revoke"
+          auditAction={CREDENTIAL_EVENT.tokenRevoked}
           applyLabel="Revoke token"
           lines={tokenRevokeLines(reviewing)}
           mutation={revoke}

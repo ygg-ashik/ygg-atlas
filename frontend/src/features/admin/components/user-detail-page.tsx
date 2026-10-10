@@ -59,7 +59,7 @@ function TabPanel({ tab, user, isSelf }: { tab: UserTab; user: UserDetail; isSel
       return (
         <>
           <EffectiveAccessPanel user={user} />
-          <AttributesEditor user={user} />
+          <AttributesEditor user={user} isSelf={isSelf} />
         </>
       );
     case 'tokens':

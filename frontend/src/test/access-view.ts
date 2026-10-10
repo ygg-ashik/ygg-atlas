@@ -13,6 +13,7 @@ const BASE: MeAccess = {
   pending_requests: 0,
   pending_approvals: 0,
   is_manager: false,
+  clearances: [],
 };
 
 /** A view as `useMyAccess` returns it: fails closed unless `status` is ready. */

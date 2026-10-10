@@ -445,12 +445,6 @@ components:
     rounded: "{rounded.card}"
     padding: 22px 22px 20px
     width: 560px
-  future-control:
-    backgroundColor: "{colors.card-2}"
-    textColor: "{colors.muted}"
-    typography: "{typography.caption}"
-    rounded: "{rounded.md}"
-    padding: 12px 14px
   catalog-combobox:
     backgroundColor: "{colors.glass}"
     textColor: "{colors.ink}"
@@ -655,13 +649,13 @@ Every admin and account screen is a **view of backend responses**: the UI never 
 - **`skeleton`**: recessed bars and circles in the **shape of what is coming** (table rows, list rows, the split view), shimmering slowly; the region is `aria-busy`. No spinners for page loads.
 - **`notice-error`**: the neutral notice with "!" stating the failure as fact ("Couldn't load users", the status code in mono, "Nothing changed") and a **Retry** pill that morphs to "Loading…".
 - **`route-guard`**: a full-page `notice-denied` (560px, centred low on the canvas) for routes the token's capabilities don't cover: "This area needs `capability`", why (access comes from sign-in, nothing typed can widen it), provenance chips for scope and role, then "Go to My access" and "Request access".
-- **`future-control`**: a control that exists in the design but not yet in the backend, shown **disabled and inert** inside a dashed `{colors.card-2}` block with a lock caption such as "Arrives with row and field controls". Never hidden, never interactive.
 - **`catalog-combobox`**: an inline `cmdk` combobox under a mono `field-input`: a glass popover (`{rounded.shell}`) grows from the field and lists catalog entries as kind (source / entity / metric), name and mono path. Arrow keys and Enter pick; Escape closes. Only real catalog paths can be chosen.
 - **`avatar`**: initials on a `{colors.primary-soft}` disc in the accent (30px, 48px on detail headers). **`avatar-service`** is a rounded square on `{colors.card-2}` with a muted glyph for service identities.
 - **Sidebar additions**: **`sidebar-section-header`** (uppercase micro-label, `0.06em` tracking, muted) above the Account and Admin groups; the Admin group renders only when the token's capabilities include an admin capability. **`count-badge`**: a clay pill with a tabular count on a nav item (pending approvals); it counts exactly the requests the viewer can decide, excluding their own, the same set as the queue's Pending tab. **`user-chip`**: avatar, name, email (truncated) and role pill pinned to the sidebar foot.
 - **`action-toast`**: the glass `toast` in a **warning tone** with an amber "!" disc and a **Retry** pill. It stays until acted on or dismissed. Used for a stale-actor conflict (HTTP 409: "Access changed while this request was running; retry.").
 - **`series-hatch`**: the second series in a two-series bar chart (e.g. denied vs allowed decisions) keeps the accent hue at 45% opacity with a diagonal hatch, so it reads without colour. Its legend swatch uses the same pattern.
 - **`route-label`**: a muted mono route on the right of the `glass-toolbar` (e.g. `/admin/users`), truncated, hidden below 1000px.
+- **Label masking panel**: a list on a solid card below the groups workspace on Admin › Groups (admin:groups only), one hairline-separated row per label class with a mode select (suppress, pseudonymise, bucket) and, for bucket, a tabular size field (1–50). It lists only the maskable classes `GET /admin/label-classes` returns, never `category`, and every change opens a `review-card` (`label_class.update`, mode and bucket before → after) before anything is written.
 - **`toolbar-crumb`**: an optional back link before the `glass-toolbar` title on detail and sub-pages ("Users ›" on a user, "My access ›" on a new request): the parent's name as a muted serif link (ink on hover), then a muted "›". One level only; the title stays the page's own name.
 
 ### Dashboard
@@ -766,7 +760,7 @@ Library: **`motion`** (springs, layout/shared-element, `AnimatePresence`). Numbe
 ## Known Gaps
 
 - "Save to dashboard" on the artifact panel needs saved-dashboard persistence, which doesn't exist yet.
-- The grant editor's row-scope builder and field clearances wait for auth phase 3 (shown as `future-control` until then). Connected apps wait for the OAuth connector (auth phase 4); until its routes exist the screen says "Not available yet".
+- The grant editor's row-scope builder, field clearances and connected apps are live (auth phases 3 and 4). A deployment can still turn personal tokens or OAuth off through `/meta/auth-methods`; those screens then say "Not enabled for this deployment".
 
 - The categorical chart palette for more than four series is undefined. Use accent opacity steps until one is designed.
 - Mobile bottom sheets (`vaul`) and the gesture rules (velocity handoff, rubber-banding) are deferred until there's a mobile surface.

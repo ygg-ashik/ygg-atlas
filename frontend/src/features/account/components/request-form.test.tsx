@@ -41,6 +41,12 @@ const CATALOG: CapabilityCatalog = {
     { name: 'analyst', capabilities: ['chat:use', 'mcp:use', 'tokens:create'] },
     { name: 'builder', capabilities: ['chat:use', 'mcp:use', 'tokens:create', 'atlas:build'] },
   ],
+  clearances: [
+    { code: 'fields:business_names', description: 'See business names in clear' },
+    { code: 'fields:people_names', description: "See people's names in clear" },
+  ],
+  label_classes: ['category', 'business_name', 'person_name'],
+  mask_modes: ['pseudonymise', 'suppress', 'bucket'],
 };
 const SENT: AccessRequest = {
   id: 'r1',

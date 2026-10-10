@@ -17,15 +17,43 @@ import {
   revokeClient,
   revokeConnectedApp,
   revokeMyToken,
+  type CredentialEvent,
+  type Token,
 } from './tokens';
 
 vi.mock('./axios-instance', async () => (await import('./test-api-mock')).apiMock);
 
-describe('tokens client (phase 4)', () => {
+// Exactly the fields of the backend schemas (app/mcp/schemas.py).
+const TOKEN: Token = {
+  id: 't1',
+  kind: 'oauth_refresh',
+  name: 'Claude Code',
+  prefix: 'atl_ort_77c1ab',
+  user_id: 'u1',
+  client_id: 'oc_8f3a1c',
+  created_at: '2026-10-01T00:00:00Z',
+  expires_at: '2026-12-30T00:00:00Z',
+  last_used_at: null,
+  revoked_at: null,
+  revoked_reason: null,
+};
+const EVENT: CredentialEvent = {
+  id: 'e1',
+  at: '2026-10-09T08:00:00Z',
+  event: 'client.registered',
+  user_id: null,
+  actor_user_id: null,
+  via: 'system',
+  token_id: null,
+  client_id: 'oc_8f3a1c',
+  details: {},
+};
+
+describe('tokens client', () => {
   beforeEach(() => answerWith([]));
 
   it('maps the self-service routes', async () => {
-    await expect(listMyTokens()).resolves.toEqual({ available: true, data: [] });
+    await expect(listMyTokens()).resolves.toEqual([]);
     expect(http.get).toHaveBeenCalledWith('/me/tokens', { params: undefined });
     await createMyToken({ name: 'laptop', expires_in_days: 30 });
     expect(http.post).toHaveBeenCalledWith('/me/tokens', { name: 'laptop', expires_in_days: 30 });
@@ -63,13 +91,14 @@ describe('tokens client (phase 4)', () => {
     });
   });
 
-  it('resolves list reads to unavailable when the route is missing and rethrows others', async () => {
+  it('list reads return the backend arrays; every failure is an error', async () => {
+    http.get.mockResolvedValueOnce({ data: [TOKEN] });
+    await expect(listAdminTokens()).resolves.toEqual([TOKEN]);
+    http.get.mockResolvedValueOnce({ data: [EVENT] });
+    await expect(listCredentialEvents({ limit: 100 })).resolves.toEqual([EVENT]);
     http.get.mockRejectedValue(httpError(404, { detail: 'Not Found' }));
-    const missing = { available: false, reason: 'missing' };
-    await expect(listMyTokens()).resolves.toEqual(missing);
-    await expect(listCredentialEvents()).resolves.toEqual(missing);
-    http.get.mockRejectedValue(httpError(404, { detail: 'No such user.' }));
-    await expect(listAdminTokens({ user_id: 'u9' })).rejects.toBeTruthy();
+    await expect(listMyTokens()).rejects.toMatchObject({ response: { status: 404 } });
+    await expect(listCredentialEvents()).rejects.toMatchObject({ response: { status: 404 } });
     http.get.mockRejectedValue(httpError(403, { detail: 'no' }));
     await expect(listClients()).rejects.toMatchObject({ response: { status: 403 } });
   });

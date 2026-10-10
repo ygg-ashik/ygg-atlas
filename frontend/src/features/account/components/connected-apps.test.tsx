@@ -1,14 +1,13 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { type Availability } from '@/api/availability';
 import { createQueryWrapper } from '@/api/hooks/test-query-wrapper';
 import { type AuthMethods, type ConnectedApp } from '@/api/tokens';
 import { ConnectedApps } from './connected-apps';
 
 const tokens = vi.hoisted(() => ({
   fetchAuthMethods: vi.fn<() => Promise<AuthMethods>>(),
-  listConnectedApps: vi.fn<() => Promise<Availability<ConnectedApp[]>>>(),
+  listConnectedApps: vi.fn<() => Promise<ConnectedApp[]>>(),
   revokeConnectedApp: vi.fn<(familyId: string) => Promise<void>>(),
 }));
 // The real token client is spread in; its axios instance pulls in the Firebase SDK.
@@ -48,7 +47,7 @@ function renderApps() {
 describe('ConnectedApps', () => {
   beforeEach(() => {
     tokens.fetchAuthMethods.mockReset().mockResolvedValue(ENABLED);
-    tokens.listConnectedApps.mockReset().mockResolvedValue({ available: true, data: [] });
+    tokens.listConnectedApps.mockReset().mockResolvedValue([]);
     tokens.revokeConnectedApp.mockReset().mockResolvedValue(undefined);
   });
 
@@ -84,14 +83,14 @@ describe('ConnectedApps', () => {
     expect(screen.queryByText(/claude\.ai/)).not.toBeInTheDocument();
   });
 
-  it('enabled but the route is missing: "Not available yet"', async () => {
-    tokens.listConnectedApps.mockResolvedValue({ available: false, reason: 'missing' });
+  it('enabled but the list fails: an error with Retry', async () => {
+    tokens.listConnectedApps.mockRejectedValue(new Error('offline'));
     renderApps();
-    expect(await screen.findByText('Not available yet')).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load your connected apps")).toBeInTheDocument();
   });
 
   it('populated: Revoke opens a review card and only Apply revokes the family', async () => {
-    tokens.listConnectedApps.mockResolvedValue({ available: true, data: [APP] });
+    tokens.listConnectedApps.mockResolvedValue([APP]);
     const user = renderApps();
     const list = await screen.findByRole('list', { name: 'Connected apps' });
     const row = within(list).getByRole('listitem');
@@ -99,7 +98,7 @@ describe('ConnectedApps', () => {
     expect(row).toHaveTextContent('oc_8f3a1c');
     await user.click(within(row).getByRole('button', { name: 'Revoke Claude Code' }));
     const card = screen.getByRole('region', { name: 'Revoke Claude Code' });
-    expect(card).toHaveTextContent('client.revoke');
+    expect(card).toHaveTextContent('oauth.family_revoked');
     expect(card).toHaveTextContent('its refresh tokens stop working immediately');
     expect(tokens.revokeConnectedApp).not.toHaveBeenCalled();
     await user.click(within(card).getByRole('button', { name: 'Revoke app' }));
@@ -107,7 +106,7 @@ describe('ConnectedApps', () => {
   });
 
   it('Dismiss closes the review card without revoking', async () => {
-    tokens.listConnectedApps.mockResolvedValue({ available: true, data: [APP] });
+    tokens.listConnectedApps.mockResolvedValue([APP]);
     const user = renderApps();
     await user.click(await screen.findByRole('button', { name: 'Revoke Claude Code' }));
     await user.click(screen.getByRole('button', { name: 'Dismiss' }));

@@ -34,6 +34,7 @@ const ME: MeAccess = {
   pending_requests: 0,
   pending_approvals: 3,
   is_manager: false,
+  clearances: [],
 };
 
 function req(id: string, overrides: Partial<AccessRequest> = {}): AccessRequest {

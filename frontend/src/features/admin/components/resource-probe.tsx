@@ -1,16 +1,32 @@
 import { useState } from 'react';
+import { type RowScope } from '@/api/admin-groups';
 import { type EffectiveAccess, type Rule } from '@/api/admin-users';
 import { useEffectiveAccess } from '@/api/hooks/use-admin-users';
 import { FieldError, Input, Tag } from '@/ui';
 import { EffectPill } from './effect-pill';
 import { isResourcePath } from '../grant-rules';
 import { useDebouncedValue } from '../hooks/use-debounced-value';
+import { scopeText } from '../review-lines';
 import { CARD } from './surfaces';
 
 /** The rule the backend's reason names (`… by grant <id> (<origin>)`), if any. */
 function decidingRule(access: EffectiveAccess): Rule | null {
   const reason = access.decision?.reason ?? '';
   return [...access.deny, ...access.allow].find((r) => reason.includes(r.grant_id)) ?? null;
+}
+
+/** `decision.row_scope`: null = all rows, [] = no rows, else alternatives ORed. */
+function RowsLine({ scope }: { scope: RowScope[] | null }) {
+  let text: string;
+  if (scope === null) text = 'all rows';
+  else if (scope.length === 0) text = 'no rows';
+  else text = scope.map(scopeText).join('  or  ');
+  return (
+    <p className="mt-2 flex flex-wrap items-baseline gap-2 text-caption text-muted-foreground">
+      Rows
+      <span className="font-mono text-xs text-ink">{text}</span>
+    </p>
+  );
 }
 
 function ProbeResult({ access, firstName }: { access: EffectiveAccess; firstName: string }) {
@@ -23,10 +39,12 @@ function ProbeResult({ access, firstName }: { access: EffectiveAccess; firstName
         <EffectPill effect={decision.allowed ? 'allow' : 'deny'} />
         <span className="font-mono text-xs text-ink">{decision.reason}</span>
       </div>
+      {decision.allowed && <RowsLine scope={decision.row_scope} />}
       {rule ? (
         <div className="mt-2.5 flex flex-wrap items-center gap-2 rounded-md bg-card-2 px-3 py-2">
           <span className="font-mono text-[12.5px] text-ink">{rule.pattern}</span>
           <span className="text-caption text-muted-foreground">deciding grant {rule.grant_id}</span>
+          {rule.row_scope && <Tag mono>{scopeText(rule.row_scope)}</Tag>}
           <Tag mono className="ml-auto">
             {rule.origin}
           </Tag>

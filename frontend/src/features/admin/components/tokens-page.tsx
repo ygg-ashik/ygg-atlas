@@ -13,7 +13,6 @@ import {
   DataTable,
   EmptyState,
   ErrorNotice,
-  Notice,
   SegmentedControl,
   SkeletonRegion,
   SkeletonRows,
@@ -21,7 +20,7 @@ import {
 } from '@/ui';
 import { isoDate, plural, seenAt } from '../format';
 import { useReviewedWrite, type ReviewedWrite } from '../hooks/use-reviewed-write';
-import { revokeAllLines, TOKEN_REVOKE_ALL, tokenRevokeLines } from '../review-lines';
+import { revokeAllLines, TOKEN_REVOKE, TOKEN_REVOKE_ALL, tokenRevokeLines } from '../review-lines';
 import { AdminPage } from './admin-page';
 import { ReviewSlot } from './review-slot';
 
@@ -79,14 +78,7 @@ export function AdminTokensPage() {
           retrying={tokens.isFetching}
         />
       )}
-      {tokens.data && !tokens.data.available && (
-        <Notice icon={<KeyRound className="h-4 w-4" />} title="Not available yet">
-          Tokens arrive with MCP sign-in on this deployment. Until then there is nothing to revoke.
-        </Notice>
-      )}
-      {tokens.data?.available && (
-        <TokenGroups tokens={tokens.data.data} write={write} revokeAll={kind === 'all'} />
-      )}
+      {tokens.data && <TokenGroups tokens={tokens.data} write={write} revokeAll={kind === 'all'} />}
     </AdminPage>
   );
 }
@@ -143,7 +135,7 @@ function UserTokens({ userId, tokens, write, revokeAll: canRevokeAll }: UserToke
     write.open({
       slot: `one:${userId}`,
       title: 'Revoke token',
-      auditAction: 'token.revoke',
+      auditAction: TOKEN_REVOKE,
       lines: tokenRevokeLines(t),
       applyLabel: 'Revoke token',
       appliedLabel: 'Revoked',

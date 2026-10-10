@@ -10,8 +10,7 @@ export interface GroupRef {
   standing: GroupStanding;
 }
 
-/** `MeAccessOut`. The identity and count fields arrive with phase 5 (B5);
- * `clearances` arrives with phase 3 and is absent until then. */
+/** `MeAccessOut`. */
 export interface MeAccess {
   role: string;
   capabilities: string[];
@@ -25,7 +24,8 @@ export interface MeAccess {
   /** Requests the caller may decide, never their own (backend `decidable_scope`). */
   pending_approvals: number;
   is_manager: boolean;
-  clearances?: string[];
+  /** Field clearance codes the caller holds (e.g. `fields:people_names`). */
+  clearances: string[];
 }
 
 export interface CapabilityInfo {
@@ -38,13 +38,21 @@ export interface RoleInfo {
   capabilities: string[];
 }
 
-/** `CatalogOut`. `clearances`, `label_classes` and `mask_modes` arrive with phase 3. */
+/** `ClearanceOut`: a field clearance a grant can give. */
+export interface ClearanceInfo {
+  code: string;
+  description: string;
+}
+
+/** `CatalogOut`. `label_classes` is the whole YAML vocabulary (it includes
+ * `category`, which is never masked); the classes an admin may set come from
+ * `GET /admin/label-classes`, never from this list. */
 export interface CapabilityCatalog {
   capabilities: CapabilityInfo[];
   roles: RoleInfo[];
-  clearances?: CapabilityInfo[];
-  label_classes?: string[];
-  mask_modes?: string[];
+  clearances: ClearanceInfo[];
+  label_classes: string[];
+  mask_modes: string[];
 }
 
 export async function fetchMyAccess(): Promise<MeAccess> {

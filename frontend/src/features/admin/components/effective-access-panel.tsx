@@ -1,6 +1,7 @@
-import { type User } from '@/api/admin-users';
+import { type EffectiveAccess, type User } from '@/api/admin-users';
 import { useEffectiveAccess } from '@/api/hooks/use-admin-users';
 import { useCapabilityCatalog } from '@/api/hooks/use-capability-catalog';
+import { Notice, Tag } from '@/ui';
 import { CatalogDecisions } from './catalog-decisions';
 import { ResourceProbe } from './resource-probe';
 import { CARD } from './surfaces';
@@ -44,15 +45,56 @@ function Capabilities({ userId }: { userId: string }) {
       <p className="mt-2.5 text-caption text-muted-foreground">
         Groups never grant capabilities; only the role and user overrides do.
       </p>
+      {access && <Clearances codes={access.clearances} />}
     </div>
+  );
+}
+
+/** Field clearances: which masked label classes this user sees in clear. */
+function Clearances({ codes }: { codes: readonly string[] }) {
+  return (
+    <div className="mt-3.5 border-t border-border/60 pt-3">
+      <p className="mb-1.5 text-label font-medium text-ink">Clearances</p>
+      {codes.length ? (
+        <div className="flex flex-wrap gap-1.5">
+          {codes.map((c) => (
+            <Tag key={c} mono>
+              {c}
+            </Tag>
+          ))}
+        </div>
+      ) : (
+        <p className="text-caption text-muted-foreground">None: masked labels show masked.</p>
+      )}
+    </div>
+  );
+}
+
+/** Grants the evaluator ignored (fail closed), e.g. a `$self` scope with no attribute. */
+function SkippedGrants({ access }: { access: EffectiveAccess | undefined }) {
+  if (!access?.skipped.length) return null;
+  return (
+    <Notice role="status" icon="!" title="Some grants don't apply">
+      <ul className="mt-1 grid gap-1">
+        {access.skipped.map((r) => (
+          <li key={r.grant_id} className="flex flex-wrap items-baseline gap-2">
+            <span className="font-mono text-xs text-ink">{r.pattern}</span>
+            <span className="text-caption">{r.reason}</span>
+            <Tag mono>{r.origin}</Tag>
+          </li>
+        ))}
+      </ul>
+    </Notice>
   );
 }
 
 /** Screen 8: what the target user can see and do, as the evaluator decides it. */
 export function EffectiveAccessPanel({ user }: { user: User }) {
   const firstName = firstNameOf(user);
+  const access = useEffectiveAccess(user.id).data;
   return (
     <div className="grid gap-3">
+      <SkippedGrants access={access} />
       <ResourceProbe userId={user.id} firstName={firstName} />
       <div className="grid gap-3 min-[900px]:grid-cols-[1.6fr_1fr]">
         <CatalogDecisions userId={user.id} firstName={firstName} />

@@ -1,6 +1,4 @@
-import { useState } from 'react';
 import { KeyRound } from 'lucide-react';
-import { isRouteMissing } from '@/api/availability';
 import { type User } from '@/api/admin-users';
 import { useAdminTokens, useRevokeAllUserTokens } from '@/api/hooks/use-tokens';
 import { type Token } from '@/api/tokens';
@@ -9,7 +7,6 @@ import {
   DataTable,
   EmptyState,
   ErrorNotice,
-  Notice,
   SkeletonRegion,
   SkeletonRows,
   type DataColumn,
@@ -27,21 +24,11 @@ const COLUMNS: DataColumn<Token>[] = [
   { key: 'used', header: 'Last used', cell: (t) => seenAt(t.last_used_at) },
 ];
 
-function NotAvailable() {
-  return (
-    <Notice icon="·" title="Not available yet">
-      Personal access tokens arrive with MCP sign-in. Until then there is nothing to revoke.
-    </Notice>
-  );
-}
-
-/** Phase 4: the user's live tokens and an admin "revoke all" (review first). */
+/** The user's live tokens of every kind and an admin "revoke all" (review first). */
 export function UserTokensPanel({ user }: { user: User }) {
   const tokens = useAdminTokens({ user_id: user.id });
   const revokeAll = useRevokeAllUserTokens();
   const write = useReviewedWrite();
-  const [missing, setMissing] = useState(false);
-  const data = tokens.data;
   if (tokens.isPending) {
     return (
       <SkeletonRegion label="tokens" className="rounded-lg bg-card">
@@ -58,8 +45,7 @@ export function UserTokensPanel({ user }: { user: User }) {
       />
     );
   }
-  if (missing || (data && !data.available)) return <NotAvailable />;
-  const live = data?.available ? data.data.filter((t) => !t.revoked_at) : [];
+  const live = tokens.data.filter((t) => !t.revoked_at);
   const open = () =>
     write.open({
       slot: 'revoke-all',
@@ -69,14 +55,7 @@ export function UserTokensPanel({ user }: { user: User }) {
       applyLabel: `Revoke ${live.length} tokens`,
       appliedLabel: 'Revoked',
       retryOn409: false,
-      run: async () => {
-        try {
-          return await revokeAll.mutateAsync(user.id);
-        } catch (error) {
-          if (isRouteMissing(error)) setMissing(true);
-          throw error;
-        }
-      },
+      run: () => revokeAll.mutateAsync(user.id),
     });
   return (
     <div>
@@ -92,9 +71,9 @@ export function UserTokensPanel({ user }: { user: User }) {
       {live.length > 0 && (
         <DataTable caption="Tokens" columns={COLUMNS} rows={live} rowKey={(t) => t.id} />
       )}
-      {data?.available && live.length === 0 && (
-        <EmptyState icon={<KeyRound className="h-5 w-5" />} title="No tokens">
-          This user has no personal access tokens.
+      {live.length === 0 && (
+        <EmptyState icon={<KeyRound className="h-5 w-5" />} title="No live tokens">
+          This user has no personal, service or connected-app tokens.
         </EmptyState>
       )}
     </div>

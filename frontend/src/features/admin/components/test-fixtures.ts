@@ -15,6 +15,12 @@ export const CATALOG: CapabilityCatalog = {
       capabilities: ['chat:use', 'mcp:use', 'admin:users', 'admin:groups', 'admin:audit'],
     },
   ],
+  clearances: [
+    { code: 'fields:business_names', description: 'See business names in clear' },
+    { code: 'fields:people_names', description: "See people's names in clear" },
+  ],
+  label_classes: ['category', 'business_name', 'person_name'],
+  mask_modes: ['pseudonymise', 'suppress', 'bucket'],
 };
 
 export function user(id: string, overrides: Partial<User> = {}): User {
@@ -43,6 +49,7 @@ export function grant(id: string, overrides: Partial<GrantOut> = {}): GrantOut {
     expires_at: null,
     created_by: null,
     created_at: '2026-09-24T00:00:00Z',
+    row_scope: null,
     ...overrides,
   };
 }

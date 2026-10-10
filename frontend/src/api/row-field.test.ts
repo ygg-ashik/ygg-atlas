@@ -6,44 +6,58 @@ import {
   listUserAttributes,
   putLabelClass,
   putUserAttribute,
+  type LabelClass,
+  type ScopeDimension,
+  type UserAttribute,
 } from './row-field';
 import { answerWith, http } from './test-api-mock';
 import { httpError } from './test-support';
 
 vi.mock('./axios-instance', async () => (await import('./test-api-mock')).apiMock);
 
-describe('row and field client (phase 3)', () => {
-  beforeEach(() => answerWith([{ key: 'csm', value: 'sara' }]));
+// Exactly the fields of the backend schemas (app/access/schemas.py).
+const ATTRIBUTE: UserAttribute = {
+  key: 'csm',
+  value: 'sara',
+  set_by: null,
+  set_at: '2026-10-01T00:00:00Z',
+};
+const LABEL_CLASS: LabelClass = {
+  label_class: 'person_name',
+  mode: 'suppress',
+  bucket_size: 5,
+  updated_at: '2026-10-01T00:00:00Z',
+};
+const DIMENSION: ScopeDimension = {
+  source: 'demo',
+  entity: 'order',
+  dimension: 'country',
+  self_attribute: null,
+  description: 'Shopper country',
+};
 
-  it('wraps reads as available', async () => {
-    await expect(listUserAttributes('u1')).resolves.toEqual({
-      available: true,
-      data: [{ key: 'csm', value: 'sara' }],
-    });
+describe('row and field client', () => {
+  beforeEach(() => answerWith([]));
+
+  it('reads return the backend arrays as they are', async () => {
+    http.get.mockResolvedValueOnce({ data: [ATTRIBUTE] });
+    await expect(listUserAttributes('u1')).resolves.toEqual([ATTRIBUTE]);
     expect(http.get).toHaveBeenCalledWith('/admin/users/u1/attributes');
-    await listLabelClasses();
+    http.get.mockResolvedValueOnce({ data: [LABEL_CLASS] });
+    await expect(listLabelClasses()).resolves.toEqual([LABEL_CLASS]);
     expect(http.get).toHaveBeenCalledWith('/admin/label-classes');
-    await listScopeDimensions();
+    http.get.mockResolvedValueOnce({ data: [DIMENSION] });
+    await expect(listScopeDimensions()).resolves.toEqual([DIMENSION]);
     expect(http.get).toHaveBeenCalledWith('/meta/scope-dimensions');
   });
 
-  it('resolves every read to unavailable when the route is missing', async () => {
+  it('every failure is an error: there is no "not deployed" state any more', async () => {
     http.get.mockRejectedValue(httpError(404, { detail: 'Not Found' }));
-    const missing = { available: false, reason: 'missing' };
-    await expect(listUserAttributes('u1')).resolves.toEqual(missing);
-    await expect(listLabelClasses()).resolves.toEqual(missing);
-    await expect(listScopeDimensions()).resolves.toEqual(missing);
-  });
-
-  it('keeps a business 404 (unknown user) as an error', async () => {
+    await expect(listLabelClasses()).rejects.toMatchObject({ response: { status: 404 } });
     http.get.mockRejectedValue(httpError(404, { detail: 'No such user.' }));
     await expect(listUserAttributes('u1')).rejects.toMatchObject({ response: { status: 404 } });
-  });
-
-  it('scope dimensions: a 403 (self-service viewer) is unavailable, not an error', async () => {
     http.get.mockRejectedValue(httpError(403, { detail: 'This needs admin:groups.' }));
-    await expect(listScopeDimensions()).resolves.toEqual({ available: false, reason: 'forbidden' });
-    await expect(listLabelClasses()).rejects.toMatchObject({ response: { status: 403 } });
+    await expect(listScopeDimensions()).rejects.toMatchObject({ response: { status: 403 } });
   });
 
   it('writes attributes per key (escaped) and label classes', async () => {

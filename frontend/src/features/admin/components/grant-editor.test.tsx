@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { type CatalogResources } from '@/api/catalog-admin';
 import { createQueryWrapper } from '@/api/hooks/test-query-wrapper';
+import { type ScopeDimension } from '@/api/row-field';
 import { httpError } from '@/api/test-support';
 import { plusDays, todayUtc } from '../grant-rules';
 import { CATALOG, diffLines, fast, grant } from './test-fixtures';
@@ -39,6 +40,23 @@ const RESOURCES: CatalogResources = {
   ],
 };
 
+const DIMENSIONS: ScopeDimension[] = [
+  {
+    source: 'demo',
+    entity: 'checkout',
+    dimension: 'country',
+    self_attribute: null,
+    description: 'Shopper country',
+  },
+  {
+    source: 'demo',
+    entity: 'order',
+    dimension: 'csm',
+    self_attribute: 'csm',
+    description: 'Account manager',
+  },
+];
+
 const GROUP: GrantEditorProps = {
   subject: { type: 'group', id: 'g-m', label: 'group:marketing' },
   reach: 'reaches 5 members + marketing-paid',
@@ -73,7 +91,7 @@ describe('GrantEditor', () => {
     createGrant.mockReset();
     createGrant.mockResolvedValue(grant('new'));
     fetchCatalogResources.mockResolvedValue(RESOURCES);
-    listScopeDimensions.mockResolvedValue({ available: false, reason: 'missing' });
+    listScopeDimensions.mockResolvedValue(DIMENSIONS);
     fetchCapabilityCatalog.mockResolvedValue(CATALOG);
   });
 
@@ -89,6 +107,7 @@ describe('GrantEditor', () => {
       ['add', 'effect    allow'],
       ['add', 'target    demo/checkout/*'],
       ['add', `expires   ${expiry}`],
+      ['context', 'scope     all rows'],
       ['context', 'reaches 5 members + marketing-paid'],
     ]);
     expect(createGrant).not.toHaveBeenCalled();
@@ -155,10 +174,77 @@ describe('GrantEditor', () => {
     expect(card).toHaveAttribute('data-status', 'open');
   });
 
-  it('row scope and clearance wait for phase 3', async () => {
+  it('a row scope from /meta/scope-dimensions rides on a resource allow', async () => {
     renderEditor();
-    await waitFor(() =>
-      expect(screen.getAllByText('Arrives with row and field controls')).toHaveLength(2),
+    await pickTarget('checkout', /Checkout journey · all/);
+    expect(screen.queryByText('Arrives with row and field controls')).not.toBeInTheDocument();
+    const dimension = await screen.findByRole('combobox', { name: 'Dimension' });
+    expect(
+      within(dimension)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Dimension', 'country', 'csm']);
+    await fast().selectOptions(dimension, 'country');
+    await fast().type(screen.getByRole('textbox', { name: 'Values' }), 'AE, SA, AE');
+    await fast().click(screen.getByRole('button', { name: 'Add' }));
+    await fast().click(review());
+    const card = screen.getByRole('region', { name: 'Add grant · group:marketing' });
+    expect(diffLines(card)).toContainEqual(['add', 'scope     country=AE,SA']);
+    await fast().click(within(card).getByRole('button', { name: 'Apply grant' }));
+    expect(createGrant).toHaveBeenCalledWith(
+      expect.objectContaining({ target: 'demo/checkout/*', row_scope: { country: ['AE', 'SA'] } }),
     );
+  });
+
+  it('a deny carries no row scope: the builder is replaced by a note', async () => {
+    renderEditor();
+    await screen.findByRole('combobox', { name: 'Dimension' });
+    await fast().click(screen.getByRole('radio', { name: /Deny/ }));
+    expect(screen.queryByRole('combobox', { name: 'Dimension' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Row scope narrows a resource allow only/)).toBeInTheDocument();
+  });
+
+  it('a clearance picker whose catalog fails says so with Retry', async () => {
+    fetchCapabilityCatalog.mockRejectedValue(httpError(503));
+    renderEditor();
+    expect(await screen.findByText("Couldn't load clearances")).toBeInTheDocument();
+  });
+
+  it('a clearance grant comes from the catalog and is reviewed as a clearance', async () => {
+    renderEditor();
+    const picker = await screen.findByRole('combobox', { name: 'Clearance' });
+    await waitFor(() => expect(picker).toBeEnabled());
+    await fast().selectOptions(picker, 'fields:people_names');
+    expect(screen.getByText("See people's names in clear")).toBeInTheDocument();
+    await fast().click(review());
+    const card = screen.getByRole('region', { name: 'Add grant · group:marketing' });
+    expect(diffLines(card)).toContainEqual(['add', 'clearance fields:people_names']);
+    await fast().click(within(card).getByRole('button', { name: 'Apply grant' }));
+    expect(createGrant).toHaveBeenCalledWith(
+      expect.not.objectContaining({ row_scope: expect.anything() }),
+    );
+    expect(createGrant).toHaveBeenCalledWith(
+      expect.objectContaining({ target_kind: 'clearance', target: 'fields:people_names' }),
+    );
+  });
+
+  it('scope dimensions that fail to load: Retry, and a resource allow cannot be staged', async () => {
+    listScopeDimensions.mockRejectedValue(httpError(503));
+    renderEditor();
+    await pickTarget('checkout', /Checkout journey · all/);
+    expect(await screen.findByText("Couldn't load scope dimensions")).toBeInTheDocument();
+    expect(review()).toBeDisabled();
+    await fast().click(screen.getByRole('radio', { name: /Deny/ }));
+    await fast().click(
+      screen.getByRole('checkbox', { name: 'I understand this restricts 5 members' }),
+    );
+    expect(review()).toBeEnabled();
+  });
+
+  it('while scope dimensions load, a resource allow cannot be staged', async () => {
+    listScopeDimensions.mockReturnValue(new Promise(() => {}));
+    renderEditor();
+    await pickTarget('checkout', /Checkout journey · all/);
+    expect(review()).toBeDisabled();
   });
 });

@@ -18,6 +18,11 @@ const api = vi.hoisted(() => ({
   deleteGroup: vi.fn(),
 }));
 vi.mock('@/api/admin-groups', () => ({ ...api, CANDIDATE_QUERY_MIN: 3, CANDIDATE_QUERY_MAX: 100 }));
+const listLabelClasses = vi.hoisted(() => vi.fn());
+vi.mock('@/api/row-field', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  listLabelClasses,
+}));
 let view: MyAccessView = PERSONAS.admin;
 vi.mock('@/api/hooks/use-my-access', () => ({ useMyAccess: () => view }));
 
@@ -63,6 +68,28 @@ describe('Groups', () => {
     });
     api.listMembers.mockResolvedValue([member('omar')]);
     api.listGrants.mockResolvedValue([grant('4c2e91')]);
+    listLabelClasses.mockReset().mockResolvedValue([
+      {
+        label_class: 'business_name',
+        mode: 'pseudonymise',
+        bucket_size: 5,
+        updated_at: '2026-10-01T00:00:00Z',
+      },
+      {
+        label_class: 'person_name',
+        mode: 'suppress',
+        bucket_size: 5,
+        updated_at: '2026-10-01T00:00:00Z',
+      },
+    ]);
+  });
+
+  it('an admin edits label masking for exactly the maskable classes', async () => {
+    renderAt('/admin/groups');
+    const list = await screen.findByRole('list', { name: 'Label classes' });
+    expect(within(list).getByText('business_name')).toBeInTheDocument();
+    expect(within(list).getByText('person_name')).toBeInTheDocument();
+    expect(within(list).queryByText('category')).not.toBeInTheDocument();
   });
 
   it('an admin sees the tree, members and grants of the first group', async () => {
@@ -126,6 +153,8 @@ describe('Groups', () => {
     expect(screen.queryByRole('button', { name: '＋ New group' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '＋ Add grant' })).not.toBeInTheDocument();
     expect(screen.getByText(/Managing grants needs/)).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Label masking' })).not.toBeInTheDocument();
+    expect(listLabelClasses).not.toHaveBeenCalled();
   });
 
   it('a manager whose groups fail to load sees the failure, not an empty tree', async () => {

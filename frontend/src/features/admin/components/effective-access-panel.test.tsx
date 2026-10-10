@@ -13,7 +13,13 @@ const fetchCatalogResources = vi.hoisted(() => vi.fn());
 vi.mock('@/api/catalog-admin', () => ({ fetchCatalogResources }));
 vi.mock('@/api/access', () => ({
   fetchCapabilityCatalog: () =>
-    Promise.resolve({ capabilities: [], roles: [{ name: 'viewer', capabilities: ['chat:use'] }] }),
+    Promise.resolve({
+      capabilities: [],
+      roles: [{ name: 'viewer', capabilities: ['chat:use'] }],
+      clearances: [],
+      label_classes: [],
+      mask_modes: [],
+    }),
 }));
 
 const BASE: EffectiveAccess = {
@@ -21,9 +27,25 @@ const BASE: EffectiveAccess = {
   role: 'viewer',
   active: true,
   capabilities: ['chat:use', 'mcp:use'],
-  allow: [{ pattern: 'demo/order/*', grant_id: 'g-4c2e91', origin: 'group:marketing' }],
-  deny: [{ pattern: 'demo/order/refund_amount', grant_id: 'g-9b07e3', origin: 'group:marketing' }],
+  allow: [
+    {
+      pattern: 'demo/order/*',
+      grant_id: 'g-4c2e91',
+      origin: 'group:marketing',
+      row_scope: { country: ['AE', 'SA'] },
+    },
+  ],
+  deny: [
+    {
+      pattern: 'demo/order/refund_amount',
+      grant_id: 'g-9b07e3',
+      origin: 'group:marketing',
+      row_scope: null,
+    },
+  ],
   decision: null,
+  clearances: ['fields:business_names'],
+  skipped: [],
 };
 
 const CATALOG: CatalogResources = {
@@ -66,11 +88,15 @@ function decide(resource: string | undefined): EffectiveAccess {
         resource,
         allowed: true,
         reason: 'allowed by grant g-4c2e91 (group:marketing)',
+        row_scope: [{ country: ['AE', 'SA'] }],
       },
     };
   }
   if (resource)
-    return { ...BASE, decision: { resource, allowed: false, reason: 'no grant allows it' } };
+    return {
+      ...BASE,
+      decision: { resource, allowed: false, reason: 'no grant allows it', row_scope: [] },
+    };
   return BASE;
 }
 
@@ -117,6 +143,57 @@ describe('EffectiveAccessPanel', () => {
     );
     expect(within(result()).getByText('demo/order/*')).toBeInTheDocument();
     expect(within(result()).getByText('deciding grant g-4c2e91')).toBeInTheDocument();
+  });
+
+  it('an allow shows the row scope the policy grants, and the rule carries it', async () => {
+    renderPanel();
+    await fast().type(probe(), 'demo/order/revenue');
+    await waitFor(() => expect(within(result()).getByText('allow')).toBeInTheDocument());
+    expect(within(result()).getAllByText('country=AE,SA')).toHaveLength(2);
+  });
+
+  it('an unscoped allow reads "all rows"; a deny shows no rows line', async () => {
+    fetchEffectiveAccess.mockImplementation((_id: string, resource?: string) =>
+      Promise.resolve(
+        resource === 'demo/order/revenue'
+          ? {
+              ...BASE,
+              decision: { resource, allowed: true, reason: 'allowed', row_scope: null },
+            }
+          : decide(resource),
+      ),
+    );
+    renderPanel();
+    await fast().type(probe(), 'demo/order/revenue');
+    expect(
+      await within(await screen.findByRole('status', { name: 'Probe result' })).findByText(
+        'all rows',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('lists the clearances the user holds', async () => {
+    renderPanel();
+    expect(await screen.findByText('fields:business_names')).toBeInTheDocument();
+  });
+
+  it('a grant the evaluator skipped is stated with its reason', async () => {
+    fetchEffectiveAccess.mockResolvedValue({
+      ...BASE,
+      skipped: [
+        {
+          pattern: 'demo/order/*',
+          grant_id: 'g-77',
+          origin: 'user',
+          reason: "$self needs the attribute 'csm', which isn't set",
+        },
+      ],
+    });
+    renderPanel();
+    expect(await screen.findByText("Some grants don't apply")).toBeInTheDocument();
+    expect(
+      screen.getByText("$self needs the attribute 'csm', which isn't set"),
+    ).toBeInTheDocument();
   });
 
   it('an invalid path is refused before any request', async () => {

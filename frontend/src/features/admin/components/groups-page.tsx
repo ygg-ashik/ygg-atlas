@@ -10,6 +10,7 @@ import { AdminPage } from './admin-page';
 import { GroupDetailPanel } from './group-detail-page';
 import { GroupForm } from './group-form';
 import { GroupTree } from './group-tree';
+import { LabelClassesPanel } from './label-classes-panel';
 
 /** `GET /admin/groups`: every group for admin:groups; for a group manager,
  * the groups they manage and their subgroups, with real parent ids (P5-D22).
@@ -94,6 +95,7 @@ function GroupsWorkspace() {
       )}
       {!list.isError && !ready && <GroupsSkeleton />}
       {ready && <GroupsBody groups={groups} selected={selected} creating={creating} />}
+      {admin && <LabelClassesPanel />}
     </AdminPage>
   );
 }

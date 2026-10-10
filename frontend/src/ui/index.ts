@@ -74,7 +74,6 @@ export { Skeleton, SkeletonRegion, SkeletonRows, type SkeletonProps } from './sk
 export { Notice, type NoticeProps } from './notice';
 export { ErrorNotice, type ErrorNoticeProps } from './error-notice';
 export { RouteGuardPage, type RouteGuardPageProps } from './route-guard-page';
-export { FutureControl, type FutureControlProps } from './future-control';
 export { CatalogCombobox, type CatalogOption, type CatalogComboboxProps } from './catalog-combobox';
 export { Avatar, initials, type AvatarProps } from './avatar';
 export { SidebarSectionHeader } from './sidebar-section-header';
