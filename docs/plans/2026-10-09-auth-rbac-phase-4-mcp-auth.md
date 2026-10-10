@@ -81,6 +81,56 @@ where they differ:
   (`user_disabled`, `not_company_account`, `service_account`); the consent route and the consent
   page switch on it, so **the consent page shows fixed Atlas copy and never a backend message**.
   `hash_secret` is exported from identity and reused by `app/mcp/auth.py`.
+- **Task 6 (accepted deviation, C7/D31):** a `tools/call` from a caller without `mcp:use` is
+  refused at the MCP layer and logged as `mcp.tool_denied` with its token and client ids, but it
+  writes **no `atlas_audit_log` DENY row**: the audit write lives in `atlas/tools.py` (a shared
+  hotspot phase 4 may not change beyond `_audit`). Follow-up: a DENY row with
+  `deny_reason="capability:mcp:use"` through a public atlas API after integration (phase 5
+  decisions view).
+- **Task 4 (independent re-review after `d5aaae8`):**
+  - Lock order for issuing transactions is client row → family advisory lock → user row
+    `FOR SHARE` (`CredentialRepository.lock_user`, PostgreSQL only) → token or code rows. A user
+    disable (`update_user`) therefore waits for an in-flight issue and its post-commit revoke-all
+    sees the new pair; or the disable commits first and the issuer refuses. `update_user` takes
+    no client or family lock, so there is no cycle.
+  - `revoke_user_tokens` (admin or CLI revoke-all, and the disable hook) locks the user row
+    `FOR NO KEY UPDATE` (PostgreSQL) before the token rows. An issuer holding the row `FOR SHARE`
+    commits its pair first and the revoke sees it; a later issuer waits, then finds its refresh
+    token revoked (reuse path) and mints nothing. The order is user row → token rows on both
+    sides, so there is no cycle.
+  - Multi-row token writes (revokes by family, client or user, and the GC delete of OAuth token
+    rows) are single statements, `WHERE id IN (SELECT id … ORDER BY id FOR UPDATE)`, so they
+    lock in id order and overlapping writes queue instead of deadlocking. PostgreSQL keeps the
+    locking subquery unflattened (checked with EXPLAIN).
+  - The per-issue user status check re-reads the row (`populate_existing`) after `lock_user`.
+  - Eligibility has three outcomes: True; False (`no_mcp_use`: the code is spent, or the family
+    is revoked on refresh); or `EligibilityUnavailableError` (could not check).
+  - Transient grant failures (any `SQLAlchemyError` in load, exchange or rotate, or an
+    eligibility check that could not be made) raise `GrantUnavailableError` (exported from
+    `app.identity`; not an `OAuthGrantError`). The provider lets it propagate and the
+    `oauth_routes` guard answers a fixed 500 `server_error` (no-store; only the exception type is
+    logged). Nothing is issued, spent or revoked, so the client's code or refresh token stays
+    usable. `invalid_grant` is reserved for definite refusals.
+  - Revoking an OAuth token by id (`DELETE /admin/tokens/{id}`, `DELETE /me/tokens/{id}`, CLI
+    `revoke-token`) revokes its whole family under the family lock and writes
+    `oauth.family_revoked`; revoking only the access row would let the live refresh token mint a
+    new pair.
+  - Revoke-all (admin, CLI, disable hook) and client revoke also delete outstanding unused,
+    unexpired authorization codes (id-ordered, after the user or client row), so a code consented
+    to before the revoke cannot mint a pair after it. They are deleted rather than marked used, so
+    a later exchange is a plain dead code, not a false `oauth.reuse_detected`. The events carry a
+    `codes` count: `tokens.revoked_all` {count, codes, reason}, `client.revoked` {tokens, codes}.
+  - Client revoke revokes and counts only live rows (unrevoked and unexpired), so its lock set
+    never overlaps GC's (rows expired or revoked over 30 days ago, then client rows).
+  - A refresh token revoked for any reason other than rotation (admin, disable, client revoke,
+    family cut) is a plain dead token on its next use: `invalid_grant`, no `oauth.reuse_detected`
+    alarm and no second family revoke. A rotated token outside the grace and a missing row are
+    still reuse.
+  - Accepted residual: consent `approve` takes no user lock, so a consent approved at the same
+    instant as a revoke-all can insert a code after `spend_user_codes` and still mint a pair. The
+    window is tiny and needs the user's own live Firebase session.
+  - `oauth.database_error` carries `op`. A failed revoke on a reuse path logs `oauth.reuse_revoke_failed`;
+    `oauth.reuse_detected` logs `presented_by_client_id` for cross-client reuse.
 - **Task 11:** nginx redacts the txn from access logs with a log-format map instead of
   `access_log off` (Task 11 section). The discovery location is narrowed to
   `location ^~ /.well-known/oauth-` (every backend discovery path starts with it), so an outer TLS
@@ -88,6 +138,14 @@ where they differ:
   implementer (out of bounds for agents); the guardrail-4 sentence below is left to the user.
   `backend/tests/test_deploy_config.py` was written in the Task 11 completion pass (after Task 6);
   the config was also checked with `nginx -t` and a header and log smoke test.
+- **Task 12 (smoke script, from review):** `scripts/mcp_oauth_smoke.py` takes PATs from the
+  environment (`ATLAS_PAT`, and `ATLAS_REVOKED_PAT` for the revoked-PAT → 401 check) instead of
+  shelling out to `app.mcp.cli`, so it can run against the public URL; the consent bearer comes from
+  `ATLAS_FIREBASE_TOKEN` (no secret flags). `--base-url` is required (no default: `localhost:8080`
+  is the tunnel to the shared box) and plain http is refused for non-loopback hosts. Every OAuth
+  endpoint is discovered (401 challenge → PRM → RFC 8414 AS metadata) and must live under
+  `--base-url`. The `/register` limit check is opt-in (`--check-register-limit
+  --allow-shared-impact`): in 4a it blocks DCR for all clients for an hour.
 
 ## 0. Contradictions found while verifying (read first)
 
@@ -2522,14 +2580,14 @@ and get a manual look after the user-approved deploy. The MCP door itself never 
 
 **Steps**
 
-- [ ] **Step 1: Smoke script.** `scripts/mcp_oauth_smoke.py --base http://localhost:5173` (httpx,
+- [ ] **Step 1: Smoke script.** `scripts/mcp_oauth_smoke.py --base-url http://localhost:5173` (httpx,
   `print` allowed in `scripts/`), each step asserting and printing `PASS <step>`; tokens printed
   only as display prefixes:
   1. `POST /mcp-server/mcp` without a bearer → 401; parse `resource_metadata` from
      `WWW-Authenticate`.
   2. GET the PRM → `resource == <base>/mcp-server/mcp`; GET AS metadata at
      `/.well-known/oauth-authorization-server/mcp-server` → `none` and `S256` advertised.
-  3. `POST /register` (public client, redirect `http://127.0.0.1:<free port>/callback`) → 201.
+  3. `POST /register` (public client, redirect `http://localhost:<free port>/callback`) → 201.
   4. `GET /authorize` (S256 challenge, `state`, `resource`) → 302 to `/oauth/consent?txn=…`.
   5. `GET /api/v1/oauth/consent/<txn>` → prompt (dev user, loopback); `POST /api/v1/oauth/consent`
      approve → `redirect_to` with `code` and the same `state`.
@@ -2540,9 +2598,12 @@ and get a manual look after the user-approved deploy. The MCP door itself never 
      new access token now → 401.
   9. Re-authorize (steps 3–6), then `POST /revoke` the refresh → 200; access → 401.
   10. Replay a used code → `invalid_grant`.
-  11. PAT: `uv run python -m app.mcp.cli create-pat dev@yougotagift.com --name smoke` → call
-      `tools/list` with `Authorization: Bearer <pat>` → 200; `revoke-token` → 401.
-  12. Rate limit: 11th `/register` within the hour → 429 with `Retry-After`.
+  11. PAT: mint one beforehand (`uv run python -m app.mcp.cli create-pat dev@yougotagift.com
+      --name smoke`) and pass it as `ATLAS_PAT` → `tools/list` with `Authorization: Bearer <pat>`
+      → 200; a second PAT revoked beforehand (`revoke-token`) passed as `ATLAS_REVOKED_PAT` →
+      `initialize` and `tools/list` → 401.
+  12. Rate limit (opt-in, `--check-register-limit --allow-shared-impact`): 11th `/register`
+      within the hour → 429 with `Retry-After`.
 - [ ] **Step 2: Claude Code, by hand** (this machine; OAuth to localhost is allowed):
   `claude mcp add --transport http atlas-p4 http://localhost:5173/mcp-server/mcp` → in Claude Code
   `/mcp` → atlas-p4 → Authenticate → browser shows the consent page (check client name, redirect
