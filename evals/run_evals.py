@@ -2,7 +2,9 @@
 
 Runs each golden question through the real agent loop (the configured LLM provider
 and the seeded demo data) and checks tool usage, provenance, answer blocks and
-answer content.
+answer content (`expect_*` fields; see goldens/core_metrics.yaml, plus
+`expect_none`: substrings that must NOT appear anywhere the user sees: the answer,
+its blocks and its provenance, case-insensitive).
 
 Usage (from backend/, so the installed `app` package and its venv are used):
     uv run python ../evals/run_evals.py [--filter SUBSTRING]
@@ -10,19 +12,29 @@ Usage (from backend/, so the installed `app` package and its venv are used):
 Requires: an LLM key (OPENAI_API_KEY or ANTHROPIC_API_KEY), seeded demo data
 (uv run python scripts/seed_demo.py), and the ygg-atlas database per backend/.env.
 
-Access: each golden runs under a synthetic, in-memory policy built from its `allow`
-patterns (default `*`, everything), never from the grants in the database. This is
-an operator-only tool, run on a trusted box; it is not an access path for users.
+Access: each golden runs under a synthetic, in-memory policy built from the golden,
+never from the grants in the database. This is an operator-only tool, run on a
+trusted box; it is not an access path for users. Golden access fields (all optional):
+    allow:        resource patterns (default ["*"], everything); an entry is a plain
+                  pattern string or `{pattern, row_scope: {dimension: [values]}}`
+                  (values may hold "$self")
+    attributes:   `{key: value}` user attributes that `$self` resolves against;
+                  the built-ins `email` and `user_id` always come from the eval user
+    clearances:   field-clearance codes granted (e.g. fields:people_names)
+    label_modes:  `{label_class: {mode, bucket_size}}` overriding the defaults
+                  (person_name suppress, business_name pseudonymise; bucket 5),
+                  which mirror the settings migration 0004 seeds
 """
 
 import argparse
 import asyncio
+import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import yaml
@@ -126,6 +138,22 @@ def _check_artifact(golden: Golden, turn: Turn) -> str:
     return ""
 
 
+def _check_none(golden: Golden, turn: Turn) -> str:
+    """None of `expect_none` may appear in anything the user sees: the answer,
+    its blocks (artifact rows included) and its provenance (case-insensitive)."""
+    seen = " ".join(
+        (
+            turn.answer,
+            json.dumps(turn.blocks, default=str),
+            json.dumps(turn.provenance, default=str),
+        )
+    ).lower()
+    leaked = [s for s in golden.get("expect_none", []) if s.lower() in seen]
+    if leaked:
+        return f"expected none of {leaked} in the answer, blocks or provenance"
+    return ""
+
+
 _CHECKS: list[Callable[[Golden, Turn], str]] = [
     _check_tool,
     _check_metric,
@@ -134,6 +162,7 @@ _CHECKS: list[Callable[[Golden, Turn], str]] = [
     _check_no_numbers,
     _check_clarify,
     _check_artifact,
+    _check_none,
 ]
 
 
@@ -157,20 +186,106 @@ def _record(turn: Turn, event: dict[str, Any]) -> None:
 EVAL_EMAIL = "evals@yougotagift.com"
 
 
+# Mirrors the label_class_settings rows migration 0004 seeds.
+_DEFAULT_LABEL_MODES: dict[str, tuple[str, int]] = {
+    "person_name": ("suppress", 5),
+    "business_name": ("pseudonymise", 5),
+}
+
+
+def _grant(
+    user: User,
+    target_kind: str,
+    target: str,
+    row_scope: Mapping[str, Sequence[str]] | None = None,
+) -> GrantFacts:
+    return GrantFacts(
+        id=uuid4(),
+        subject_type="user",
+        subject_id=user.id,
+        effect="allow",
+        target_kind=target_kind,
+        target=target,
+        expires_at=None,
+        row_scope=row_scope,
+    )
+
+
+def _allow_grant(user: User, entry: str | dict[str, Any]) -> GrantFacts:
+    """A plain pattern, or `{pattern, row_scope}` for a row-scoped allow."""
+    if isinstance(entry, str):
+        return _grant(user, "resource", entry)
+    pattern = entry.get("pattern")
+    if not isinstance(pattern, str) or set(entry) - {"pattern", "row_scope"}:
+        msg = f"allow entry must be a pattern or {{pattern, row_scope}}: {entry!r}"
+        raise ValueError(msg)
+    row_scope = entry.get("row_scope")
+    if row_scope is not None and not _is_row_scope(row_scope):
+        msg = f"row_scope must map dimension names to lists of strings: {entry!r}"
+        raise ValueError(msg)
+    return _grant(user, "resource", pattern, row_scope)
+
+
+def _is_row_scope(value: object) -> bool:
+    """`{dimension: [values]}`, string keys and string values only."""
+    if not isinstance(value, dict):
+        return False
+    items = cast("dict[object, object]", value)
+    return all(
+        isinstance(dimension, str)
+        and isinstance(values, list)
+        and all(isinstance(v, str) for v in cast("list[object]", values))
+        for dimension, values in items.items()
+    )
+
+
+def _attributes(user: User, golden: Golden) -> dict[str, str]:
+    """Golden attributes plus the built-ins, which a golden cannot override."""
+    raw = golden.get("attributes", {})
+    if not isinstance(raw, dict):
+        msg = f"golden {golden.get('id')!r}: attributes must be a mapping"
+        raise ValueError(msg)
+    items = cast("dict[object, object]", raw).items()
+    attributes = {str(k): str(v) for k, v in items}
+    attributes.update(email=EVAL_EMAIL, user_id=str(user.id))
+    return attributes
+
+
+def _self_attributes() -> dict[str, str]:
+    """dimension -> its `$self` attribute, registry-wide; a dimension declared
+    with conflicting attributes is left out (fail closed, like the repository)."""
+    declared: dict[str, set[str | None]] = {}
+    for _source, _entity, dimension, attribute, _ in get_registry().scope_catalog():
+        declared.setdefault(dimension, set()).add(attribute)
+    mapping: dict[str, str] = {}
+    for dimension, attributes in declared.items():
+        only = next(iter(attributes)) if len(attributes) == 1 else None
+        if only is not None:
+            mapping[dimension] = only
+    return mapping
+
+
+def _label_modes(golden: Golden) -> dict[str, tuple[str, int]]:
+    modes = dict(_DEFAULT_LABEL_MODES)
+    for label_class, setting in golden.get("label_modes", {}).items():
+        if not isinstance(setting, dict) or "mode" not in setting:
+            msg = f"golden {golden.get('id')!r}: label_modes.{label_class} needs a mode"
+            raise ValueError(msg)
+        bucket_size = setting.get("bucket_size", 5)
+        if not isinstance(bucket_size, int) or isinstance(bucket_size, bool):
+            msg = (
+                f"golden {golden.get('id')!r}: label_modes.{label_class} "
+                "bucket_size must be an integer"
+            )
+            raise ValueError(msg)
+        modes[label_class] = (setting["mode"], bucket_size)
+    return modes
+
+
 def _policy(user: User, golden: Golden) -> Policy:
     """The eval user sees what the golden allows (default: everything)."""
-    grants = [
-        GrantFacts(
-            id=uuid4(),
-            subject_type="user",
-            subject_id=user.id,
-            effect="allow",
-            target_kind="resource",
-            target=pattern,
-            expires_at=None,
-        )
-        for pattern in golden.get("allow", ["*"])
-    ]
+    grants = [_allow_grant(user, entry) for entry in golden.get("allow", ["*"])]
+    grants += [_grant(user, "clearance", c) for c in golden.get("clearances", [])]
     inputs = PolicyInputs(
         user=UserFacts(
             id=user.id, role=user.role, status=user.status, tenant=user.tenant
@@ -179,6 +294,9 @@ def _policy(user: User, golden: Golden) -> Policy:
         memberships={},
         grants=grants,
         policy_version=0,
+        attributes=_attributes(user, golden),
+        self_attributes=_self_attributes(),
+        label_modes=_label_modes(golden),
     )
     return evaluate(inputs, datetime.now(UTC))
 

@@ -146,6 +146,9 @@ where they differ:
   endpoint is discovered (401 challenge → PRM → RFC 8414 AS metadata) and must live under
   `--base-url`. The `/register` limit check is opt-in (`--check-register-limit
   --allow-shared-impact`): in 4a it blocks DCR for all clients for an hour.
+- **D34 (final review):** the service-token outranking check covers capabilities **and** field
+  clearances (`target.clearances ⊆ actor.clearances`, in `mint_service_token`); the row-scope part
+  of "outranks" (data rules) stays a phase-5 follow-up (`p4-followups.md`).
 
 ## 0. Contradictions found while verifying (read first)
 

@@ -35,6 +35,7 @@ async def test_a_new_user_can_chat_but_has_no_data(api: AsyncClient) -> None:
         "capabilities": ["chat:use"],
         "groups": [],
         "has_data_access": False,
+        "clearances": [],
     }
 
 

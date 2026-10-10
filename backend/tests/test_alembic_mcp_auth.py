@@ -134,7 +134,7 @@ def test_0005_disables_the_shared_mcp_user_and_bumps_the_version(
 ) -> None:
     db = tmp_path / "m.db"
     config = _config(f"sqlite+aiosqlite:///{db}")
-    command.upgrade(config, "0003")
+    command.upgrade(config, "0004")
     user_id = _seed_user(f"sqlite:///{db}", SHARED_MCP_EMAIL)
     _, _, version_before = _state(f"sqlite:///{db}")
 
@@ -154,7 +154,7 @@ def test_0005_disables_the_shared_mcp_user_and_bumps_the_version(
 def test_0005_without_the_shared_user_is_a_no_op(tmp_path: Path) -> None:
     db = tmp_path / "m.db"
     config = _config(f"sqlite+aiosqlite:///{db}")
-    command.upgrade(config, "0003")
+    command.upgrade(config, "0004")
     _, _, version_before = _state(f"sqlite:///{db}")
 
     command.upgrade(config, "0005")
@@ -168,7 +168,7 @@ def test_0005_without_the_shared_user_is_a_no_op(tmp_path: Path) -> None:
 def test_0005_leaves_an_already_disabled_shared_user_alone(tmp_path: Path) -> None:
     db = tmp_path / "m.db"
     config = _config(f"sqlite+aiosqlite:///{db}")
-    command.upgrade(config, "0003")
+    command.upgrade(config, "0004")
     _seed_user(f"sqlite:///{db}", SHARED_MCP_EMAIL, status="disabled")
     _, _, version_before = _state(f"sqlite:///{db}")
 
@@ -181,11 +181,11 @@ def test_0005_leaves_an_already_disabled_shared_user_alone(tmp_path: Path) -> No
 def test_0005_round_trips(tmp_path: Path) -> None:
     db = tmp_path / "m.db"
     config = _config(f"sqlite+aiosqlite:///{db}")
-    command.upgrade(config, "0003")
+    command.upgrade(config, "0004")
     _seed_user(f"sqlite:///{db}", SHARED_MCP_EMAIL)
 
     command.upgrade(config, "head")
-    command.downgrade(config, "0003")
+    command.downgrade(config, "0004")
 
     assert not set(CREDENTIAL_TABLES) & _tables(f"sqlite:///{db}")
     status, changes, _ = _state(f"sqlite:///{db}")
@@ -202,9 +202,7 @@ def test_0005_round_trips(tmp_path: Path) -> None:
     assert set(CREDENTIAL_TABLES) <= _tables(f"sqlite:///{db}")
 
 
-def test_0005_down_revision_is_marked_for_the_chain() -> None:
+def test_0005_follows_0004_in_the_chain() -> None:
     source = MIGRATION.read_text()
     assert 'revision = "0005"' in source
-    assert (
-        'down_revision = "0003"  # chain: set to predecessor at integration' in source
-    )
+    assert 'down_revision = "0004"\n' in source

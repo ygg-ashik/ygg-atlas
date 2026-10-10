@@ -2,6 +2,7 @@
 D26, D27, D31). HTTP behaviour end to end is in test_mcp_e2e.py."""
 
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -13,15 +14,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 from structlog.testing import capture_logs
 
-from app.access import PolicyUnavailableError
-from app.atlas import AtlasTools
+from app.access import PolicyUnavailableError, sync_scope_dimensions
+from app.atlas import AtlasTools, get_registry
 from app.config import get_settings
 from app.identity import TokenKind, User
 from app.mcp import TOOL_REQUIREMENTS, build_mcp
 from app.mcp import server as mcp_server
 from app.mcp.auth import AtlasAccessToken, AtlasTokenVerifier
 from app.models.audit import AtlasAuditLog
-from tests.access_helpers import add_grant, make_user
+from tests.access_helpers import (
+    add_grant,
+    make_user,
+    seed_label_classes,
+    set_attribute,
+)
 from tests.identity.credential_helpers import insert_token, make_client
 from tests.mcp.oauth_client import RESOURCE
 
@@ -330,6 +336,51 @@ async def test_run_tool_audits_the_credential(
     assert row.token_id == token.token_id
     assert row.client_id == client.client_id
     assert row.tool == "list_metrics"
+
+
+async def test_run_tool_applies_row_scope_and_masking_like_chat(
+    db: AsyncSession, signed_in: SignedIn
+) -> None:
+    """The phase 3/4 seam: a PAT call is scoped and masked, and audited with both."""
+    await sync_scope_dimensions(db, get_registry().scope_catalog())
+    await seed_label_classes(db, person="suppress")
+    rep = await _user(db)
+    await add_grant(db, rep, "demo/order/*", row_scope={"sales_rep": ["$self"]})
+    await set_attribute(db, rep, "rep_name", "Aisha Khan")
+    token = await _token(db, rep)
+    signed_in.append(token)
+    today = datetime.now(UTC).date()
+    week = {
+        "start_date": (today - timedelta(days=7)).isoformat(),
+        "end_date": (today - timedelta(days=1)).isoformat(),
+    }
+
+    result = await mcp_server.run_tool(
+        "metric_breakdown", {"metric_id": "orders_by_rep", "limit": 10, **week}
+    )
+
+    assert "error" not in result, result
+    assert result["rows"] == []
+    assert result["suppressed_rows"] == 1  # only their own row, and uncleared
+    provenance = result["provenance"][0]
+    assert provenance["scope"] == {"restricted": True, "dimensions": ["sales_rep"]}
+    assert provenance["masking"] == {"label_class": "person_name", "mode": "suppress"}
+    assert "Aisha" not in repr(result)
+    row = (
+        await db.execute(
+            select(AtlasAuditLog).where(col(AtlasAuditLog.user_id) == rep.id)
+        )
+    ).scalar_one()
+    assert (row.surface, row.tool, row.token_id) == (
+        "mcp",
+        "metric_breakdown",
+        token.token_id,
+    )
+    assert row.scope is not None
+    assert row.scope["restricted"] is True
+    assert row.masking is not None
+    assert row.masking["label_class"] == "person_name"
+    assert row.masking["mode"] == "suppress"
 
 
 # ---- factories (D26, D27) ------------------------------------------------------------

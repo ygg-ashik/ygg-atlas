@@ -5,10 +5,12 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlmodel import col, select
 from structlog.testing import capture_logs
+from structlog.typing import EventDict
 
 from app import main
 from app.access.catalog import CAPABILITIES
-from app.access.models import Capability, PolicyState
+from app.access.models import Capability, PolicyState, ScopeDimension
+from app.atlas.registry import get_registry
 from app.config import Settings
 from app.identity import CredentialEvent, OAuthClient, OAuthService
 from app.identity.api_tokens import EVENT_GC
@@ -66,6 +68,58 @@ async def test_startup_never_re_elevates_a_demoted_bootstrap_admin(
     assert boss is not None
     await db.refresh(boss)
     assert boss.role == "viewer"
+
+
+async def test_startup_mirrors_scope_dimensions(db) -> None:
+    await main.apply_startup()
+
+    rows = (await db.execute(select(ScopeDimension))).scalars().all()
+    mirrored = sorted((r.source, r.entity, r.dimension, r.self_attribute) for r in rows)
+    expected = sorted(
+        (source, entity, dimension, self_attribute)
+        for source, entity, dimension, self_attribute, _ in (
+            get_registry().scope_catalog()
+        )
+    )
+    assert expected
+    assert mirrored == expected
+
+
+async def _production_startup_events(
+    monkeypatch: pytest.MonkeyPatch, key: str
+) -> list[EventDict]:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("AUTH_DISABLED", "false")
+    monkeypatch.setenv("FIREBASE_PROJECT_ID", "test-project")
+    monkeypatch.setenv("ATLAS_PSEUDONYM_KEY", key)
+    main.get_settings.cache_clear()
+    try:
+        with capture_logs() as logs:
+            await main.apply_startup()  # logs, never fails startup
+    finally:
+        main.get_settings.cache_clear()
+    return [e for e in logs if e["event"] == "atlas.pseudonym_key_missing"]
+
+
+@pytest.mark.parametrize("key", ["", "   "])
+async def test_startup_logs_a_missing_pseudonym_key_in_production(
+    db, monkeypatch: pytest.MonkeyPatch, key: str
+) -> None:
+    missing = await _production_startup_events(monkeypatch, key)
+    assert len(missing) == 1
+    assert missing[0]["log_level"] == "error"
+
+
+async def test_startup_accepts_a_set_pseudonym_key_in_production(
+    db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert await _production_startup_events(monkeypatch, "k" * 64) == []
+
+
+async def test_startup_is_quiet_about_the_key_outside_production(db) -> None:
+    with capture_logs() as logs:
+        await main.apply_startup()
+    assert all(e["event"] != "atlas.pseudonym_key_missing" for e in logs)
 
 
 async def test_startup_prepares_mcp_auth(db) -> None:

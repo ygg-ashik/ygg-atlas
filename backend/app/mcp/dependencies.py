@@ -90,15 +90,19 @@ async def mint_service_token(
     request: TokenCreate,
     settings: Settings,
 ) -> IssuedToken:
-    """D34: an active service account in the actor's tenant whose capabilities are a
-    subset of the actor's. The caller has already checked admin:tokens."""
+    """D34: an active service account in the actor's tenant whose capabilities and
+    field clearances are subsets of the actor's. The caller has already checked
+    admin:tokens."""
     principal = await principal_for_user(db, service_user_id)
     if principal is None or principal.tenant != actor.tenant:
         raise HTTPException(404, _NO_SERVICE_ACCOUNT)
     if principal.kind != UserKind.SERVICE:
         raise HTTPException(400, _NOT_A_SERVICE_ACCOUNT)
     target = await policy_for(db, principal)
-    if not target.capabilities <= actor.capabilities:
+    if not (
+        target.capabilities <= actor.capabilities
+        and target.clearances <= actor.clearances
+    ):
         raise HTTPException(403, _OUTRANKS)
     with credential_errors():
         return await tokens.create_service_token(

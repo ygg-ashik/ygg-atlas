@@ -5,7 +5,8 @@ Every execution is audited. Every numeric result carries provenance.
 """
 
 import time
-from collections.abc import Collection
+from collections.abc import Awaitable, Callable, Collection
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from datetime import time as dt_time
@@ -14,6 +15,7 @@ from typing import Any
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.atlas.masking import CATEGORY, CLEARANCE_FOR_CLASS, MaskMode, mask_breakdown
 from app.atlas.models import EntityDef, FunnelDef, MetricDef
 from app.atlas.policy import (
     AtlasCaller,
@@ -24,6 +26,16 @@ from app.atlas.policy import (
 )
 from app.atlas.provenance import build_provenance
 from app.atlas.registry import AtlasRegistry, get_registry
+from app.atlas.scope import (
+    SCOPE_TOKEN,
+    UNDECLARED,
+    CompiledScope,
+    RowScope,
+    ScopeCompileError,
+    compile_scope,
+    narrow_scope,
+)
+from app.config import get_settings
 from app.models.audit import AtlasAuditLog
 from app.sources import ConnectorError, ConnectorNotConfiguredError, get_connector
 
@@ -38,6 +50,11 @@ UNKNOWN_TOOL = "unknown tool"
 
 DEFAULT_BREAKDOWN_LIMIT = 10
 MAX_BREAKDOWN_LIMIT = 50
+
+FIELDS_HIDDEN_NOTE = (
+    "Field details are hidden: your access covers only some of this data, not "
+    "the whole dataset. Ask an atlas admin if you need them."
+)
 
 
 class AtlasToolError(Exception):
@@ -60,6 +77,86 @@ class AtlasAccessDeniedError(AtlasToolError):
 
 class AtlasPolicyError(AtlasToolError):
     """The caller's policy could not be evaluated; fail closed (spec §12)."""
+
+
+@dataclass(slots=True)
+class _CallTrace:
+    """What one execute() call touched, for its audit row (C15, C16).
+
+    `scope`: None when no query ran, else the concrete compiled alternatives.
+    `masking`: None, or the applied label masking (class and mode, row counts;
+    never label values).
+    """
+
+    scope: dict[str, Any] | None = None
+    masking: dict[str, Any] | None = None
+
+
+# Per execute() call; a ContextVar so concurrent calls never share a trace.
+_TRACE: ContextVar[_CallTrace | None] = ContextVar("atlas_call_trace", default=None)
+
+
+def _policy_failed(label: str) -> AtlasAccessDeniedError:
+    """An honest denial for a policy that could not be evaluated."""
+    return AtlasAccessDeniedError(
+        label,
+        POLICY_FAILED,
+        message=(
+            f"{label} couldn't be checked against your access right now. "
+            "Try again shortly."
+        ),
+    )
+
+
+def _columns(entity: EntityDef | None) -> dict[str, str]:
+    """Declared scope dimension -> SQL column text (vetted plugin YAML)."""
+    if entity is None:
+        return {}
+    return {name: dim.column for name, dim in entity.scope_dimensions.items()}
+
+
+def _provenance_scope(scope: RowScope | None) -> dict[str, Any]:
+    """Dimension names only, never values (D3.11)."""
+    if scope is None:
+        return {"restricted": False, "dimensions": []}
+    return {
+        "restricted": True,
+        "dimensions": sorted({dim for alternative in scope for dim in alternative}),
+    }
+
+
+def _well_formed(mode: MaskMode | None) -> bool:
+    """A mode object of the wrong shape suppresses (fail closed)."""
+    if mode is None:
+        return False
+    try:
+        name, size = mode.mode, mode.bucket_size
+    except Exception:
+        return False
+    return (
+        isinstance(name, str) and isinstance(size, int) and not isinstance(size, bool)
+    )
+
+
+def _settings_pseudonym_key() -> str:
+    """The deployment's pseudonym key, read lazily at mask time (C13).
+
+    A missing or empty setting reads as "", which masking turns into
+    `suppress` (fail closed).
+    """
+    return get_settings().atlas_pseudonym_key.strip()
+
+
+def _audit_scope(compiled: CompiledScope) -> dict[str, Any]:
+    if not compiled.restricted:
+        return {"restricted": False}
+    return {
+        "restricted": True,
+        "alternatives": [
+            {dim: sorted(values) for dim, values in sorted(alternative.items())}
+            for alternative in compiled.alternatives
+        ],
+    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,11 +197,14 @@ class AtlasTools:
         policy: ResourcePolicy,
         db: AsyncSession | None = None,
         registry: AtlasRegistry | None = None,
+        *,
+        pseudonym_key: str | None = None,
     ) -> None:
         self.caller = caller
         self._policy = policy
         self.db = db
         self._registry = registry
+        self._pseudonym_key = pseudonym_key  # None: read from settings at mask time
 
     @property
     def registry(self) -> AtlasRegistry:
@@ -115,14 +215,14 @@ class AtlasTools:
         return {
             mid: m
             for mid, m in self.registry.metrics.items()
-            if self._visible(metric_resource(m))
+            if self._visible(metric_resource(m), self.registry.entities.get(m.entity))
         }
 
     def visible_funnels(self) -> dict[str, FunnelDef]:
         return {
             fid: f
             for fid, f in self.registry.funnels.items()
-            if self._visible(funnel_resource(f))
+            if self._visible(funnel_resource(f), self.registry.entities.get(f.entity))
         }
 
     async def execute(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -144,9 +244,25 @@ class AtlasTools:
             )
             return {"error": error}
 
+        trace = _CallTrace()
+        token = _TRACE.set(trace)
+        try:
+            result, outcome = await self._run(tool, handlers[tool], arguments)
+            elapsed_ms = int((time.monotonic() - started) * 1000)
+            await self._audit(tool, arguments, outcome, elapsed_ms)
+        finally:
+            _TRACE.reset(token)
+        return result
+
+    async def _run(
+        self,
+        tool: str,
+        handler: Callable[..., Awaitable[dict[str, Any]]],
+        arguments: dict[str, Any],
+    ) -> tuple[dict[str, Any], _Outcome]:
         outcome = _Outcome()
         try:
-            result = await handlers[tool](**arguments)
+            result = await handler(**arguments)
         except AtlasAccessDeniedError as exc:
             outcome = _Outcome(False, str(exc), DENY, exc.reason[:MAX_DENY_REASON])
             result = {"error": str(exc)}
@@ -157,13 +273,19 @@ class AtlasTools:
             outcome = _Outcome(False, f"Invalid arguments: {exc}")
             result = {"error": f"Invalid arguments: {exc}"}
         except Exception as exc:  # unexpected — log loudly, keep the answer honest
-            logger.exception("atlas.tool_failed", tool=tool)
-            outcome = _Outcome(False, str(exc))
-            result = {"error": f"Internal error executing {tool}"}
-
-        elapsed_ms = int((time.monotonic() - started) * 1000)
-        await self._audit(tool, arguments, outcome, elapsed_ms)
-        return result
+            logger.exception(
+                "atlas.tool_failed",
+                tool=tool,
+                user_id=str(self.caller.user_id),
+                session_id=str(self.caller.session_id),
+            )
+            # Raw errors can echo bound scope values, so the audit row and the
+            # answer carry none (the class name carries no values). Driver
+            # errors in the log are value-free via hide_parameters.
+            error = f"Internal error executing {tool}"
+            outcome = _Outcome(False, f"{error} ({type(exc).__name__})")
+            result = {"error": error}
+        return result, outcome
 
     async def _audit(
         self,
@@ -174,6 +296,7 @@ class AtlasTools:
     ) -> None:
         if self.db is None:
             return
+        trace = _TRACE.get()
         self.db.add(
             AtlasAuditLog(
                 user_uid=str(self.caller.user_id),
@@ -188,6 +311,8 @@ class AtlasTools:
                 duration_ms=duration_ms,
                 decision=outcome.decision,
                 deny_reason=outcome.deny_reason,
+                scope=trace.scope if trace else None,
+                masking=trace.masking if trace else None,
                 token_id=self.caller.token_id,
                 client_id=self.caller.client_id,
             )
@@ -201,13 +326,47 @@ class AtlasTools:
         except Exception as exc:
             raise AtlasPolicyError(POLICY_FAILED) from exc
 
-    def _visible(self, resource: str) -> bool:
-        """Discovery check (point 1): a failing policy hides the item."""
+    def _row_scope(self, resource: str, entity: EntityDef | None) -> RowScope | None:
+        """Rows this caller may read of an allowed resource (D3.3, D3.7).
+
+        `None` = all rows. Raises `ScopeCompileError` when the scope grants
+        nothing here (empty, undeclared dimension, over a limit): the resource
+        is then denied, never run unscoped. A failing policy, or a scope of the
+        wrong shape, raises `AtlasPolicyError`.
+        """
+        columns = _columns(entity)
         try:
-            return self._allowed(resource)
+            narrowed = narrow_scope(self._policy.row_scope(resource), columns)
+            # Trial compile: bind limits and column text fail here, so discovery
+            # agrees with execution.
+            compile_scope(SCOPE_TOKEN, columns, narrowed)
+        except ScopeCompileError:
+            raise
+        except Exception as exc:
+            raise AtlasPolicyError(POLICY_FAILED) from exc
+        return narrowed
+
+    def _visible(self, resource: str, entity: EntityDef | None) -> bool:
+        """Discovery check (point 1): allowed with a usable row scope.
+
+        A failing policy, or a scope that grants nothing here, hides the item.
+        """
+        try:
+            if not self._allowed(resource):
+                return False
+            self._row_scope(resource, entity)
         except AtlasPolicyError:
             logger.exception("atlas.policy_error", resource=resource)
             return False
+        except ScopeCompileError as exc:
+            # The reason is fixed text, never values. A dimension this data
+            # lacks is routine (a csm scope over deepsales/*); others are
+            # misconfiguration (empty scope, a cap, bad column text).
+            reason = str(exc)
+            log = logger.info if reason == UNDECLARED else logger.warning
+            log("atlas.scope_hidden", resource=resource, reason=reason)
+            return False
+        return True
 
     def _denied(self, resource: str, label: str) -> AtlasAccessDeniedError:
         try:
@@ -217,38 +376,57 @@ class AtlasTools:
             reason = POLICY_FAILED
         return AtlasAccessDeniedError(label, reason)
 
-    def _authorize(self, resource: str, label: str) -> None:
-        """Execution check (point 2): a failing policy denies.
+    def _hidden(
+        self, resource: str, label: str, entity: EntityDef | None
+    ) -> AtlasAccessDeniedError:
+        """The denial for a resource discovery hid, with its real reason.
+
+        An allowed resource hidden by its row scope is denied with the scope
+        reason, never the policy's (which would say "allowed by grant ...").
+        """
+        try:
+            if self._allowed(resource):
+                self._row_scope(resource, entity)
+        except AtlasPolicyError:
+            logger.exception("atlas.policy_error", resource=resource)
+            # Discovery keeps phase 2's message: the entity is simply hidden.
+            return AtlasAccessDeniedError(label, POLICY_FAILED)
+        except ScopeCompileError as exc:
+            return AtlasAccessDeniedError(label, str(exc))
+        return self._denied(resource, label)
+
+    def _authorize(
+        self, resource: str, label: str, entity: EntityDef | None
+    ) -> RowScope | None:
+        """Execution check (point 2): returns the caller's row scope.
 
         A policy-evaluation failure is not a real denial — it gets its own
         honest message, never "isn't available to you" (that claims the
-        policy was consulted and said no).
+        policy was consulted and said no). A scope that grants nothing here
+        is a denial whose audited reason is the compile error.
         """
         try:
-            allowed = self._allowed(resource)
+            if not self._allowed(resource):
+                raise self._denied(resource, label)
+            return self._row_scope(resource, entity)
         except AtlasPolicyError as exc:
             logger.exception("atlas.policy_error", resource=resource)
-            raise AtlasAccessDeniedError(
-                label,
-                POLICY_FAILED,
-                message=(
-                    f"{label} couldn't be checked against your access right "
-                    "now. Try again shortly."
-                ),
-            ) from exc
-        if not allowed:
-            raise self._denied(resource, label)
+            raise _policy_failed(label) from exc
+        except ScopeCompileError as exc:
+            raise AtlasAccessDeniedError(label, str(exc)) from exc
 
     def _entity_visible(self, entity: EntityDef) -> bool:
         return (
-            self._visible(entity_resource(entity))
-            or any(self._visible(metric_resource(m)) for m in entity.metrics)
-            or any(self._visible(funnel_resource(f)) for f in entity.funnels)
+            self._visible(entity_resource(entity), entity)
+            or any(self._visible(metric_resource(m), entity) for m in entity.metrics)
+            or any(self._visible(funnel_resource(f), entity) for f in entity.funnels)
         )
 
     # ---- helpers ---------------------------------------------------------
 
-    def _get_metric(self, metric_id: str) -> MetricDef:
+    def _get_metric(
+        self, metric_id: str
+    ) -> tuple[MetricDef, EntityDef | None, RowScope | None]:
         metric = self.registry.metrics.get(metric_id)
         if metric is None:
             raise AtlasToolError(
@@ -256,8 +434,22 @@ class AtlasTools:
                 "search_atlas; if nothing fits, ask the user a clarifying question "
                 "instead of guessing."
             )
-        self._authorize(metric_resource(metric), metric.name)
-        return metric
+        entity = self.registry.entities.get(metric.entity)
+        scope = self._authorize(metric_resource(metric), metric.name, entity)
+        return metric, entity, scope
+
+    def _compile(
+        self, sql: str, entity: EntityDef | None, scope: RowScope | None, label: str
+    ) -> CompiledScope:
+        """Compile `{{scope}}` into `sql` and record it for the audit row."""
+        try:
+            compiled = compile_scope(sql, _columns(entity), scope)
+        except ScopeCompileError as exc:
+            raise AtlasAccessDeniedError(label, str(exc)) from exc
+        trace = _TRACE.get()
+        if trace is not None:
+            trace.scope = _audit_scope(compiled)
+        return compiled
 
     def _metric_params(
         self, metric: MetricDef, start_date: str | None, end_date: str | None
@@ -271,33 +463,69 @@ class AtlasTools:
             )
         return _range_params(start_date, end_date)
 
-    async def _freshness(self, entity: EntityDef | None) -> str | None:
+    async def _freshness(
+        self, entity: EntityDef | None, scope: RowScope | None
+    ) -> str | None:
         if not entity or not entity.freshness_query:
             return None
         try:
+            compiled = self._compile(entity.freshness_query, entity, scope, entity.name)
             row = await get_connector(entity.source).fetch_one(
-                entity.freshness_query, {}
+                compiled.sql, compiled.params
             )
             if row:
                 value = next(iter(row.values()), None)
                 return str(value) if value is not None else None
         except ConnectorError:
             return None
+        except AtlasAccessDeniedError:
+            # Never run it unscoped; log the entity only, no scope values.
+            logger.warning("atlas.freshness_scope_failed", entity=entity.id)
+            return None
         return None
 
     async def _metric_provenance(
-        self, tool: str, metric: MetricDef
+        self,
+        tool: str,
+        metric: MetricDef,
+        entity: EntityDef | None,
+        scope: RowScope | None,
+        masking: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        entity = self.registry.entities.get(metric.entity)
         return [
             build_provenance(
                 tool,
                 metric.source,
                 metric_id=metric.id,
                 metric_name=metric.name,
-                freshness=await self._freshness(entity) if entity else None,
+                freshness=await self._freshness(entity, scope),
+                scope=_provenance_scope(scope),
+                masking=masking,
             )
         ]
+
+    def _mask_inputs(self, label_class: str) -> tuple[bool, MaskMode | None]:
+        """(cleared, mode) for a label class. A failing policy suppresses."""
+        clearance = CLEARANCE_FOR_CLASS.get(label_class)
+        if clearance is None:  # category (never masked) or unknown (suppressed)
+            return False, None
+        try:
+            if self._policy.has_clearance(clearance):
+                return True, None
+            mode = self._policy.mask_mode(label_class)
+        except Exception:
+            logger.exception("atlas.policy_error", label_class=label_class)
+            return False, None
+        if mode is not None and not _well_formed(mode):
+            # The label class only: never the mode's (possibly sensitive) fields.
+            logger.warning("atlas.mask_mode_malformed", label_class=label_class)
+            return False, None
+        return False, mode
+
+    def _key(self) -> str:
+        if self._pseudonym_key is not None:
+            return self._pseudonym_key
+        return _settings_pseudonym_key()
 
     # ---- the seven tools -------------------------------------------------
 
@@ -339,16 +567,21 @@ class AtlasTools:
     async def query_metric(
         self, metric_id: str, start_date: str | None = None, end_date: str | None = None
     ) -> dict[str, Any]:
-        metric = self._get_metric(metric_id)
+        metric, entity, scope = self._get_metric(metric_id)
         params = self._metric_params(metric, start_date, end_date)
-        row = await get_connector(metric.source).fetch_one(metric.query, params)
+        compiled = self._compile(metric.query, entity, scope, metric.name)
+        row = await get_connector(metric.source).fetch_one(
+            compiled.sql, params | compiled.params
+        )
         value = row.get("value") if row else None
         result = {
             "metric_id": metric.id,
             "name": metric.name,
             "unit": metric.unit,
             "value": float(value) if value is not None else 0.0,
-            "provenance": await self._metric_provenance("query_metric", metric),
+            "provenance": await self._metric_provenance(
+                "query_metric", metric, entity, scope
+            ),
         }
         if metric.time_scope == "snapshot":
             result["as_of"] = datetime.now(UTC).isoformat()
@@ -364,27 +597,68 @@ class AtlasTools:
         start_date: str | None = None,
         end_date: str | None = None,
     ) -> dict[str, Any]:
-        metric = self._get_metric(metric_id)
+        metric, entity, scope = self._get_metric(metric_id)
         if not metric.breakdown_query:
             raise AtlasToolError(f"Metric '{metric_id}' has no breakdown view.")
         limit = max(1, min(int(limit), MAX_BREAKDOWN_LIMIT))
         params = self._metric_params(metric, start_date, end_date) | {"limit": limit}
-        rows = await get_connector(metric.source).fetch_all(
-            metric.breakdown_query, params
+        compiled = self._compile(metric.breakdown_query, entity, scope, metric.name)
+        fetched = await get_connector(metric.source).fetch_all(
+            compiled.sql, params | compiled.params
         )
+        rows = [
+            {
+                "label": r.get("label"),
+                "value": float(r["value"]) if r.get("value") is not None else 0.0,
+            }
+            for r in fetched
+        ]
+        result, masking = self._masked(rows, metric.breakdown_label_class)
         return {
             "metric_id": metric.id,
             "name": metric.name,
             "unit": metric.unit,
-            "rows": [
-                {
-                    "label": r.get("label"),
-                    "value": float(r["value"]) if r.get("value") is not None else 0.0,
-                }
-                for r in rows
-            ],
-            "provenance": await self._metric_provenance("metric_breakdown", metric),
+            **result,
+            "provenance": await self._metric_provenance(
+                "metric_breakdown", metric, entity, scope, masking
+            ),
         }
+
+    def _masked(
+        self, rows: list[dict[str, Any]], label_class: str | None
+    ) -> tuple[dict[str, Any], dict[str, Any] | None]:
+        """Mask breakdown labels once, before they leave the kernel (D3.8).
+
+        Returns the result fields and the provenance masking. A metric without
+        a label class is treated as an unknown class: suppressed.
+        """
+        label_class = label_class or ""
+        cleared, mode = (
+            (False, None) if label_class == CATEGORY else self._mask_inputs(label_class)
+        )
+        masked = mask_breakdown(
+            rows,
+            label_class,
+            cleared=cleared,
+            mode=mode,
+            key=self._key() if mode is not None else "",
+        )
+        result: dict[str, Any] = {"rows": masked.rows}
+        if masked.suppressed_rows is not None:
+            result["suppressed_rows"] = masked.suppressed_rows
+        if masked.others_covers is not None:
+            result["others_covers"] = masked.others_covers
+        if masked.applied is None:
+            return result, None
+        trace = _TRACE.get()
+        if trace is not None:
+            trace.masking = {
+                "label_class": label_class,
+                "mode": masked.applied,
+                "rows_in": len(rows),
+                "rows_out": len(masked.rows),
+            }
+        return result, {"label_class": label_class, "mode": masked.applied}
 
     async def describe_entity(self, entity_id: str) -> dict[str, Any]:
         entity = self.registry.entities.get(entity_id)
@@ -393,18 +667,24 @@ class AtlasTools:
                 f"No entity '{entity_id}' in the atlas. Use search_atlas."
             )
         if not self._entity_visible(entity):
-            raise self._denied(entity_resource(entity), entity.name)
+            raise self._hidden(entity_resource(entity), entity.name, entity)
         metrics, funnels = self.visible_metrics(), self.visible_funnels()
-        return {
+        # Field names need an entity-wide allow; item grants see only items (D3.10).
+        entity_wide = self._visible(entity_resource(entity), entity)
+        result: dict[str, Any] = {
             "id": entity.id,
             "name": entity.name,
             "description": entity.description,
             "source": entity.source,
-            "fields": entity.fields,
-            "pii_fields": entity.pii_fields,
+            "fields": dict(entity.fields) if entity_wide else {},
+            "pii_fields": list(entity.pii_fields) if entity_wide else [],
+            "fields_hidden": not entity_wide,
             "metrics": [m.id for m in entity.metrics if m.id in metrics],
             "funnels": [f.id for f in entity.funnels if f.id in funnels],
         }
+        if not entity_wide:
+            result["note"] = FIELDS_HIDDEN_NOTE
+        return result
 
     async def funnel_analyze(
         self, funnel_id: str, start_date: str, end_date: str
@@ -414,15 +694,20 @@ class AtlasTools:
             raise AtlasToolError(
                 f"No funnel '{funnel_id}' in the atlas. Use list_metrics."
             )
-        self._authorize(funnel_resource(funnel), funnel.name)
+        entity = self.registry.entities.get(funnel.entity)
+        scope = self._authorize(funnel_resource(funnel), funnel.name, entity)
         params = _range_params(start_date, end_date)
+        compiled_steps = [
+            (step, self._compile(step.query, entity, scope, funnel.name))
+            for step in funnel.steps
+        ]
         connector = get_connector(funnel.source)
 
         steps: list[dict[str, Any]] = []
         prev_count: float | None = None
         worst: dict[str, Any] = {"step": None, "drop_pct": 0.0}
-        for step in funnel.steps:
-            row = await connector.fetch_one(step.query, params)
+        for step, compiled in compiled_steps:
+            row = await connector.fetch_one(compiled.sql, params | compiled.params)
             count = float(row.get("value", 0) if row else 0)
             conversion = (count / prev_count * 100) if prev_count else None
             if conversion is not None:
@@ -446,7 +731,6 @@ class AtlasTools:
             if steps and steps[0]["count"]
             else None
         )
-        entity = self.registry.entities.get(funnel.entity)
         return {
             "funnel_id": funnel.id,
             "name": funnel.name,
@@ -461,7 +745,8 @@ class AtlasTools:
                     funnel.source,
                     metric_id=funnel.id,
                     metric_name=funnel.name,
-                    freshness=await self._freshness(entity) if entity else None,
+                    freshness=await self._freshness(entity, scope),
+                    scope=_provenance_scope(scope),
                 )
             ],
         }
@@ -474,7 +759,7 @@ class AtlasTools:
         period_b_start: str,
         period_b_end: str,
     ) -> dict[str, Any]:
-        metric = self._get_metric(metric_id)
+        metric, _, _ = self._get_metric(metric_id)
         if metric.time_scope == "snapshot":
             raise AtlasToolError(
                 f"Metric '{metric_id}' is a point-in-time snapshot and cannot be "

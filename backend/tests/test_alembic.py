@@ -159,6 +159,9 @@ def test_head_matches_model_columns(tmp_path: Path) -> None:
             "grants",
             "rbac_changes",
             "policy_state",
+            "user_attributes",
+            "label_class_settings",
+            "scope_dimensions",
         ):
             migrated = {c["name"] for c in inspector.get_columns(table)}
             declared = set(SQLModel.metadata.tables[table].columns.keys())
@@ -317,3 +320,158 @@ def test_malformed_grant_rows_are_rejected(tmp_path: Path) -> None:
             )
     finally:
         engine.dispose()
+
+
+ROW_FIELD_TABLES = {"user_attributes", "label_class_settings", "scope_dimensions"}
+
+
+def _column_order(sync_url: str, table: str) -> list[str]:
+    engine = sa.create_engine(sync_url)
+    try:
+        return [c["name"] for c in sa.inspect(engine).get_columns(table)]
+    finally:
+        engine.dispose()
+
+
+def test_row_field_tables_and_seeds(tmp_path: Path) -> None:
+    db = tmp_path / "m.db"
+    command.upgrade(_config(f"sqlite+aiosqlite:///{db}"), "head")
+    sync_url = f"sqlite:///{db}"
+    engine = sa.create_engine(sync_url)
+    with engine.connect() as conn:
+        modes = set(
+            conn.execute(
+                sa.text(
+                    "SELECT label_class, mode, bucket_size FROM label_class_settings"
+                )
+            ).tuples()
+        )
+    engine.dispose()
+
+    assert _tables(sync_url) >= ROW_FIELD_TABLES
+    assert modes == {
+        ("person_name", "suppress", 5),
+        ("business_name", "pseudonymise", 5),
+    }
+    # Appended (contract K2): phase 3's columns, then phase 4's credential ones.
+    assert _column_order(sync_url, "grants")[-1] == "row_scope"
+    assert _column_order(sync_url, "atlas_audit_log")[-4:] == [
+        "scope",
+        "masking",
+        "token_id",
+        "client_id",
+    ]
+
+
+def test_row_field_model_columns_are_appended() -> None:
+    def last(table: str, n: int) -> list[str]:
+        return list(SQLModel.metadata.tables[table].columns.keys())[-n:]
+
+    assert last("grants", 1) == ["row_scope"]
+    assert last("atlas_audit_log", 4) == ["scope", "masking", "token_id", "client_id"]
+
+
+def test_row_field_downgrade_round_trips(tmp_path: Path) -> None:
+    db = tmp_path / "m.db"
+    sync_url = f"sqlite:///{db}"
+    config = _config(f"sqlite+aiosqlite:///{db}")
+    command.upgrade(config, "0004")
+
+    command.downgrade(config, "0003")
+
+    assert not ROW_FIELD_TABLES & _tables(sync_url)
+    assert "row_scope" not in _column_order(sync_url, "grants")
+    assert not {"scope", "masking"} & set(_column_order(sync_url, "atlas_audit_log"))
+
+    command.upgrade(config, "0004")
+
+    assert _tables(sync_url) >= ROW_FIELD_TABLES
+    assert _column_order(sync_url, "atlas_audit_log")[-2:] == ["scope", "masking"]
+
+
+@pytest.mark.parametrize(
+    ("mode", "bucket_size"), [("hide", 5), ("bucket", 0)], ids=["mode", "bucket_size"]
+)
+def test_bad_label_mode_is_rejected(
+    tmp_path: Path, mode: str, bucket_size: int
+) -> None:
+    db = tmp_path / "m.db"
+    command.upgrade(_config(f"sqlite+aiosqlite:///{db}"), "head")
+    engine = sa.create_engine(f"sqlite:///{db}")
+    try:
+        with pytest.raises(IntegrityError), engine.begin() as conn:
+            conn.execute(
+                sa.text(
+                    "UPDATE label_class_settings SET mode = :mode, "
+                    "bucket_size = :size WHERE label_class = 'person_name'"
+                ),
+                {"mode": mode, "size": bucket_size},
+            )
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("target_kind", "target", "row_scope"),
+    [
+        ("resource", "deepsales/*", '{"csm": ["Sara"]}'),
+        ("resource", "deepsales/*", "{}"),
+        ("clearance", "fields:people_names", None),
+    ],
+    ids=["scoped", "empty_scope", "clearance"],
+)
+def test_row_field_downgrade_refuses_while_phase_3_grants_exist(
+    tmp_path: Path, target_kind: str, target: str, row_scope: str | None
+) -> None:
+    # Older code ignores row_scope and clearance grants, so dropping them would
+    # turn a scoped allow into an all-rows allow (fail open).
+    db = tmp_path / "m.db"
+    config = _config(f"sqlite+aiosqlite:///{db}")
+    command.upgrade(config, "head")
+    engine = sa.create_engine(f"sqlite:///{db}")
+    with engine.begin() as conn:
+        conn.execute(
+            sa.text(
+                "INSERT INTO grants (id, subject_type, subject_id, effect, "
+                "target_kind, target, reason, created_at, row_scope) VALUES (:id, "
+                "'user', :subject, 'allow', :kind, :target, '', CURRENT_TIMESTAMP, "
+                ":scope)"
+            ),
+            {
+                "id": uuid4().hex,
+                "subject": uuid4().hex,
+                "kind": target_kind,
+                "target": target,
+                "scope": row_scope,
+            },
+        )
+    engine.dispose()
+
+    with pytest.raises(RuntimeError, match="revoke"):
+        command.downgrade(config, "0003")
+
+    assert "row_scope" in _column_order(f"sqlite:///{db}", "grants")
+
+
+def test_row_field_downgrade_allows_unscoped_grants(tmp_path: Path) -> None:
+    db = tmp_path / "m.db"
+    config = _config(f"sqlite+aiosqlite:///{db}")
+    command.upgrade(config, "head")
+    engine = sa.create_engine(f"sqlite:///{db}")
+    with engine.begin() as conn:
+        # A JSON null (what the ORM writes for None) is an all-rows grant.
+        for scope in (None, "null"):
+            conn.execute(
+                sa.text(
+                    "INSERT INTO grants (id, subject_type, subject_id, effect, "
+                    "target_kind, target, reason, created_at, row_scope) VALUES "
+                    "(:id, 'user', :subject, 'allow', 'resource', '*', '', "
+                    "CURRENT_TIMESTAMP, :scope)"
+                ),
+                {"id": uuid4().hex, "subject": uuid4().hex, "scope": scope},
+            )
+    engine.dispose()
+
+    command.downgrade(config, "0003")
+
+    assert "row_scope" not in _column_order(f"sqlite:///{db}", "grants")

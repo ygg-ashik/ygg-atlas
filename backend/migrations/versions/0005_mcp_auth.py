@@ -8,7 +8,7 @@
   rbac_changes row and a policy_version bump like any status change (D17, C13).
 
 Revision ID: 0005
-Revises: 0003 (re-pointed to its predecessor when the phases are integrated)
+Revises: 0004
 """
 
 from datetime import UTC, datetime
@@ -18,7 +18,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "0005"
-down_revision = "0003"  # chain: set to predecessor at integration
+down_revision = "0004"
 branch_labels = None
 depends_on = None
 

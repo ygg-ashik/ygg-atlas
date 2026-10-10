@@ -7,8 +7,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app.access import AccessError, access_error_handler, access_router, prepare_access
+from app.access import (
+    AccessError,
+    access_error_handler,
+    access_router,
+    prepare_access,
+    sync_scope_dimensions,
+)
 from app.api import chat_router
+from app.atlas import get_registry
 from app.config import get_settings
 from app.database import get_session_factory
 from app.identity import identity_router
@@ -40,10 +47,19 @@ except Exception as exc:  # MCP is optional at runtime; never block the chat API
 async def apply_startup() -> None:
     settings = get_settings()
     async with get_session_factory()() as db:
+        # Before prepare_access: its version bump invalidates any policy
+        # evaluated against the old scope-dimension mirror (C8).
+        await sync_scope_dimensions(db, get_registry().scope_catalog())
         # Bootstrap admins are created by access: a role is an authorization
         # change, audited and versioned in the same commit (spec §3.3).
         await prepare_access(db, settings.bootstrap_admin_list)
         await prepare_mcp_auth(db, settings)
+    if (
+        settings.environment == "production"
+        and not settings.atlas_pseudonym_key.strip()
+    ):
+        # Not fatal: pseudonymised labels degrade to suppressed (C13).
+        logger.error("atlas.pseudonym_key_missing")
 
 
 @asynccontextmanager

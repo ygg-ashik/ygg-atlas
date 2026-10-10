@@ -34,5 +34,9 @@ class AtlasAuditLog(SQLModel, table=True):
     created_at: datetime = Field(
         default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True)
     )
+    # Appended (K2). Concrete compiled scope alternatives, or None when no
+    # query ran; masking applied to a breakdown, or None.
+    scope: dict | None = Field(default=None, sa_column=Column(JSON))
+    masking: dict | None = Field(default=None, sa_column=Column(JSON))
     token_id: UUID | None = None  # the credential that ran the call (D12)
     client_id: str | None = Field(default=None, max_length=255)

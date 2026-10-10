@@ -347,6 +347,28 @@ async def test_mint_refused_when_the_account_outranks_the_actor(
     assert allowed.status_code == 201
 
 
+async def test_mint_refused_when_the_account_holds_a_clearance_the_actor_lacks(
+    app: FastAPI, db: AsyncSession
+) -> None:
+    """D34: the outranking check covers field clearances, not only capabilities."""
+    token_admin = await make_user(db, "tok@yougotagift.com", role="builder")
+    await add_grant(db, token_admin, "admin:tokens", kind="capability")
+    named = await _service_account(db, "svc-named", role="analyst")
+    await add_grant(db, named, "fields:people_names", kind="clearance")
+    as_user(app, token_admin)
+    async with client_for(app) as client:
+        refused = await client.post(
+            f"{ADMIN}/service-accounts/{named.id}/tokens", json={"name": "ci"}
+        )
+        assert refused.status_code == 403
+        assert "more access than your own" in refused.json()["detail"]
+        await add_grant(db, token_admin, "fields:people_names", kind="clearance")
+        allowed = await client.post(
+            f"{ADMIN}/service-accounts/{named.id}/tokens", json={"name": "ci"}
+        )
+    assert allowed.status_code == 201
+
+
 async def test_list_and_revoke_clients_cascades_to_tokens(
     api: AsyncClient, db: AsyncSession, ana: User
 ) -> None:

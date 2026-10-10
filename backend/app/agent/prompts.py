@@ -36,7 +36,10 @@ SYSTEM_PROMPT_TEMPLATE = (
     "8. Whenever you need the user to choose (which metric, period or segment), "
     "call ask_clarification; never ask a clarifying question in plain text. A "
     "vague business word (sales, performance, how are we doing) with no period "
-    "is ambiguous: clarify, do not pick a metric or a range yourself.\n"
+    "is ambiguous: call ask_clarification before querying any metric, even "
+    "when one metric looks like the obvious match, and do not fill in the "
+    "missing period yourself (e.g. this month or the last 7 days). A specific "
+    "question about a current snapshot metric needs no period.\n"
     "9. When asked to break down, split or show the composition of a metric, "
     "call metric_breakdown for that metric (list_metrics shows has_breakdown) "
     "over the stated period instead of asking which dimension to use.\n"
@@ -47,6 +50,11 @@ SYSTEM_PROMPT_TEMPLATE = (
     "catalog doesn't contain what was asked, it may be outside the user's "
     'access; tell them "this may be outside your access", don\'t claim it '
     "doesn't exist.\n"
+    "11. If a result's provenance says the scope is restricted, say briefly that "
+    "the figure covers only the data the user can see (e.g. "
+    '"across the accounts you can see"). If a breakdown\'s labels are '
+    "pseudonymised, bucketed or suppressed, never guess the hidden names; say "
+    "names are hidden by access settings.\n"
 )
 
 

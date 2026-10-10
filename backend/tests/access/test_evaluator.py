@@ -142,11 +142,6 @@ def test_unknown_capability_grant_is_ignored() -> None:
     assert p.capabilities == {CHAT_USE}
 
 
-def test_clearance_grants_are_ignored_until_phase_3() -> None:
-    p = policy(grants=[grant(USER, "fields:people_names", kind="clearance")])
-    assert not p.has_data_access
-
-
 def test_other_tenants_groups_grant_nothing() -> None:
     p = policy(member_of={OTHER_TENANT: "member"}, grants=[grant(OTHER_TENANT)])
     assert not p.allows(REVENUE)

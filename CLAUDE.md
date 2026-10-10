@@ -23,16 +23,20 @@ Deployment: AWS EC2 (`ssh atlas`), docker compose, reverse proxy + HTTPS. NOT GC
    definitions in each plugin's `backend/app/sources/<id>/definitions/`. If the registry can't answer, the agent asks a
    clarifying question — it never generates freeform SQL or invents numbers.
 2. **Provenance on every number.** Every metric answer carries metric id, source, and data freshness,
-   threaded through the SSE `done` event and rendered as provenance chips in the UI.
+   threaded through the SSE `done` event and rendered as provenance chips in the UI. Provenance also
+   carries the row scope (dimension names only, never values) and any label masking applied.
 3. **Connectors are read-only.** Source-DB connections use read-only credentials and per-plugin table
    allowlists (`allowed_tables` in each `manifest.py`, linted at load by `backend/app/atlas/registry.py`;
    SELECT-only enforced by `SQLSourceConnector` in `backend/app/sources/base.py`). Never point a connector
    at a production primary for heavy queries. Source DBs are IP-restricted: connect only from the atlas
-   EC2 box (`ssh atlas`), never from a laptop.
+   EC2 box (`ssh atlas`), never from a laptop. Row scopes compile only to bound `IN` parameters
+   (`backend/app/atlas/scope.py`) and breakdown labels are masked only in `AtlasTools`
+   (`backend/app/atlas/masking.py`); both fail closed.
 4. **Scope from token, never from prompt.** Auth/permissions come from the Firebase token (domain-locked
    to `@yougotagift.com`). Nothing user-typed can widen data access. Data access is evaluated
    server-side from groups and grants (`backend/app/access`); the agent and atlas only ever receive
-   the evaluated policy.
+   the evaluated policy. Row scopes come from grants and admin-set user attributes (`$self`), never
+   from the prompt or identity-provider claims.
 5. **Audit everything.** Every atlas tool execution is written to the audit log (`backend/app/models/audit.py`).
 6. **Evals gate merges.** New agent/prompt/registry behavior needs golden coverage in `evals/goldens/`.
 
