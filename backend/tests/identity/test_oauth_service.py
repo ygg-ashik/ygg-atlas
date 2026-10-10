@@ -8,7 +8,9 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy import update
+from sqlalchemy.exc import DBAPIError, PendingRollbackError
+from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 from structlog.testing import capture_logs
@@ -38,10 +40,13 @@ from app.identity.models import (
     OAuthClient,
     OAuthCode,
     User,
+    UserStatus,
 )
 from app.identity.oauth import (
     UNNAMED_CLIENT,
     AuthorizationRequestNotFoundError,
+    EligibilityUnavailableError,
+    GrantUnavailableError,
     OAuthConfig,
     OAuthGrantError,
     OAuthRegistrationError,
@@ -727,16 +732,32 @@ async def test_exchange_refuses_an_ineligible_user(
     assert code.used_at is not None  # the code stays used
 
 
-async def test_exchange_treats_an_eligibility_error_as_ineligible(
-    db: AsyncSession, service: OAuthService, user: User, client_id: str
+@pytest.mark.parametrize(
+    "failure", [EligibilityUnavailableError(), RuntimeError("policy store down")]
+)
+async def test_an_eligibility_check_failure_issues_nothing_and_keeps_the_code(
+    db: AsyncSession,
+    service: OAuthService,
+    user: User,
+    client_id: str,
+    failure: Exception,
 ) -> None:
+    """A check that could not be made is not "not eligible": nothing is issued
+    (fail closed), but the code is not spent either, so the client can retry."""
+
     async def broken(_user_id: object) -> bool:
-        raise RuntimeError("policy store down")
+        raise failure
 
     _, grant = await approved_code(service, user, client_id)
-    with pytest.raises(OAuthGrantError):
+    with capture_logs() as logs, pytest.raises(GrantUnavailableError):
         await service.exchange_code(client_id, grant, broken)
     assert await _family(db, grant.family_id) == []
+    code = await db.get(OAuthCode, grant.code_id, populate_existing=True)
+    assert code is not None
+    assert code.used_at is None
+    assert any(e["event"] == "oauth.eligibility_unavailable" for e in logs)
+    pair = await service.exchange_code(client_id, grant, always_eligible)
+    assert pair.family_id == grant.family_id
 
 
 async def test_exchange_refuses_a_disabled_user(
@@ -744,6 +765,26 @@ async def test_exchange_refuses_a_disabled_user(
 ) -> None:
     _, grant = await approved_code(service, user, client_id)
     await make_user(db, user.email, status="disabled")
+    with pytest.raises(OAuthGrantError):
+        await service.exchange_code(client_id, grant, always_eligible)
+    assert await _family(db, grant.family_id) == []
+
+
+async def test_exchange_rereads_a_user_the_session_already_holds(
+    db: AsyncSession, service: OAuthService, user: User, client_id: str
+) -> None:
+    """The status read after lock_user must come from the database, not from a
+    User the session loaded before the lock (here: still 'active' in memory)."""
+    _, grant = await approved_code(service, user, client_id)
+    assert (await db.get(User, user.id)) is user  # held in the identity map
+    await db.execute(
+        update(User)
+        .where(col(User.id) == user.id)
+        .values(status=UserStatus.DISABLED)
+        .execution_options(synchronize_session=False)
+    )
+    await db.commit()
+    assert user.status == UserStatus.ACTIVE  # the in-memory copy is stale
     with pytest.raises(OAuthGrantError):
         await service.exchange_code(client_id, grant, always_eligible)
     assert await _family(db, grant.family_id) == []
@@ -780,6 +821,19 @@ async def test_exchange_refuses_a_revoked_client(
 
 
 # ---- revocation and GC ---------------------------------------------------------------
+
+
+async def test_revoking_a_client_spends_its_outstanding_codes(
+    db: AsyncSession, service: OAuthService, user: User, client_id: str
+) -> None:
+    raw, grant = await approved_code(service, user, client_id)
+
+    assert await service.revoke_client(client_id, actor=ADMIN)
+
+    assert await db.get(OAuthCode, grant.code_id, populate_existing=True) is None
+    assert await service.load_code(client_id, raw) is None
+    [event] = await _events(db, EVENT_CLIENT_REVOKED)
+    assert event.details == {"tokens": 0, "codes": 1}
 
 
 async def test_revoke_by_token_id_revokes_the_family(
@@ -839,7 +893,35 @@ async def test_revoke_client_cascades_to_its_tokens(
     assert event.client_id == client_id
     assert event.actor_user_id == user.id
     assert event.via == "api"
-    assert event.details == {"tokens": 2}
+    assert event.details == {"tokens": 2, "codes": 0}
+
+
+async def test_revoke_client_leaves_expired_tokens_alone(
+    db: AsyncSession, service: OAuthService, user: User, client_id: str
+) -> None:
+    """Only live rows are revoked: an expired row needs no revoke, and leaving it
+    out keeps this lock set disjoint from GC's (no deadlock)."""
+    pair = await issued_pair(service, user, client_id)
+    expired, _ = await insert_token(
+        db,
+        user,
+        TokenKind.OAUTH_REFRESH,
+        expires_in=-timedelta(days=40),
+        family_id=uuid4(),
+        client_id=client_id,
+    )
+
+    assert await service.revoke_client(client_id, actor=ADMIN) is True
+
+    untouched = await db.get(ApiToken, expired.id, populate_existing=True)
+    assert untouched is not None
+    assert untouched.revoked_at is None
+    assert untouched.revoked_reason is None
+    assert {r.revoked_reason for r in await _family(db, pair.family_id)} == {
+        REVOKED_CLIENT
+    }
+    [event] = await _events(db, EVENT_CLIENT_REVOKED)
+    assert event.details == {"tokens": 2, "codes": 0}
 
 
 async def test_list_clients_counts_live_families(
@@ -959,6 +1041,19 @@ async def test_reuse_log_carries_only_the_family_id(
     assert entry["family_id"] == str(grant.family_id)
 
 
+async def test_cross_client_reuse_log_names_the_presenting_client(
+    service: OAuthService, user: User, client_id: str
+) -> None:
+    raw, grant = await approved_code(service, user, client_id)
+    await service.exchange_code(client_id, grant, always_eligible)
+    other = await register_public_client(service)
+    with capture_logs() as logs:
+        await service.load_code(other, raw)
+    [entry] = [e for e in logs if e["event"] == "oauth.reuse_detected"]
+    assert entry["presented_by_client_id"] == other
+    assert raw not in str(logs)
+
+
 async def test_grant_error_messages_are_generic(
     service: OAuthService, user: User, client_id: str, clock: Clock
 ) -> None:
@@ -969,43 +1064,102 @@ async def test_grant_error_messages_are_generic(
     assert str(caught.value) == "The authorization code is no longer valid."
 
 
-async def test_a_database_error_during_exchange_is_a_generic_grant_error(
+async def test_a_database_error_during_exchange_is_unavailable(
     service: OAuthService,
     user: User,
     client_id: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The SDK token handler must never see a raw DBAPIError (a 500 with a stack)."""
+    """A transient failure is GrantUnavailableError (the edge: server_error), never
+    a raw DBAPIError and never invalid_grant (which makes a client drop a grant
+    that is still good)."""
     _, grant = await approved_code(service, user, client_id)
 
     async def broken(self: CredentialRepository, *args: object) -> bool:
         raise DBAPIError("UPDATE oauth_codes ...", {}, Exception("deadlock detected"))
 
     monkeypatch.setattr(CredentialRepository, "mark_code_used", broken)
-    with pytest.raises(OAuthGrantError) as caught:
+    with capture_logs() as logs, pytest.raises(GrantUnavailableError) as caught:
         await service.exchange_code(client_id, grant, always_eligible)
-    assert caught.value.error == "invalid_grant"
     assert "deadlock" not in str(caught.value)
+    assert "oauth_codes" not in str(caught.value)
+    [entry] = [e for e in logs if e["event"] == "oauth.database_error"]
+    assert entry["op"] == "exchange_code"
 
 
-async def test_a_database_error_while_loading_a_code_is_not_found(
+async def test_a_database_error_while_loading_a_code_is_unavailable(
     service: OAuthService,
     user: User,
     client_id: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """load_code is the SDK token handler's entry too: a raw DBAPIError there would
-    be a 500. It fails closed as 'not found' (invalid_grant)."""
+    """load_code is the SDK token handler's entry too: a database error there is
+    GrantUnavailableError (server_error), not 'not found' (invalid_grant)."""
     raw, _ = await approved_code(service, user, client_id)
 
     async def broken(self: CredentialRepository, *args: object) -> None:
         raise DBAPIError("SELECT oauth_codes ...", {}, Exception("connection lost"))
 
     monkeypatch.setattr(CredentialRepository, "code_by_hash", broken)
-    with capture_logs() as logs:
-        assert await service.load_code(client_id, raw) is None
+    with capture_logs() as logs, pytest.raises(GrantUnavailableError):
+        await service.load_code(client_id, raw)
     [entry] = [e for e in logs if e["event"] == "oauth.database_error"]
     assert entry["error"] == "DBAPIError"
+    assert entry["op"] == "load_code"
+    assert raw not in str(logs)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        SQLAlchemyTimeoutError("QueuePool limit reached"),
+        PendingRollbackError("rolled back"),
+    ],
+)
+async def test_any_sqlalchemy_error_is_unavailable(
+    service: OAuthService,
+    user: User,
+    client_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
+) -> None:
+    """Pool timeouts and pending rollbacks are not DBAPIErrors, but are transient
+    all the same: GrantUnavailableError, never a raw error."""
+    raw, grant = await approved_code(service, user, client_id)
+
+    async def broken(self: CredentialRepository, *args: object) -> object:
+        raise failure
+
+    monkeypatch.setattr(CredentialRepository, "code_by_hash", broken)
+    monkeypatch.setattr(CredentialRepository, "mark_code_used", broken)
+    with pytest.raises(GrantUnavailableError):
+        await service.load_code(client_id, raw)
+    with pytest.raises(GrantUnavailableError):
+        await service.exchange_code(client_id, grant, always_eligible)
+
+
+async def test_a_failed_code_reuse_revoke_is_logged_with_its_family(
+    service: OAuthService,
+    user: User,
+    client_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replayed code whose family revoke fails must not vanish into a generic
+    database error: it is the alarm an operator needs (family id, no secrets)."""
+    raw, grant = await approved_code(service, user, client_id)
+    await service.exchange_code(client_id, grant, always_eligible)
+
+    async def broken(self: CredentialRepository, *args: object) -> int:
+        raise DBAPIError("UPDATE api_tokens ...", {}, Exception("deadlock detected"))
+
+    monkeypatch.setattr(CredentialRepository, "revoke_family", broken)
+    with capture_logs() as logs, pytest.raises(GrantUnavailableError):
+        await service.load_code(client_id, raw)
+    [failed] = [e for e in logs if e["event"] == "oauth.reuse_revoke_failed"]
+    assert failed["family_id"] == str(grant.family_id)
+    assert failed["kind"] == "code"
+    [entry] = [e for e in logs if e["event"] == "oauth.database_error"]
+    assert entry["op"] == "load_code"
     assert raw not in str(logs)
 
 
@@ -1015,10 +1169,11 @@ async def test_exchange_locks_the_client_row_before_the_family_and_the_code(
     client_id: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The one global lock order: client row, family lock, then code/token rows."""
+    """The one global lock order: client row, family lock, user row (FOR SHARE, so
+    a disable waits for the issue), then code/token rows."""
     _, grant = await approved_code(service, user, client_id)
     calls: list[str] = []
-    for method in ("touch_client", "lock_family", "mark_code_used"):
+    for method in ("touch_client", "lock_family", "lock_user", "mark_code_used"):
         original = getattr(CredentialRepository, method)
 
         async def spy(
@@ -1032,4 +1187,4 @@ async def test_exchange_locks_the_client_row_before_the_family_and_the_code(
 
         monkeypatch.setattr(CredentialRepository, method, spy)
     await service.exchange_code(client_id, grant, always_eligible)
-    assert calls[:3] == ["touch_client", "lock_family", "mark_code_used"]
+    assert calls[:4] == ["touch_client", "lock_family", "lock_user", "mark_code_used"]

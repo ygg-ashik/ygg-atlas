@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 from uuid import UUID
 
+import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import AsyncClient
@@ -10,10 +11,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, func, select
 
 from app.access.models import RbacChange
-from app.identity import ApiToken, CredentialEvent, TokenKind, User
+from app.identity import (
+    ApiToken,
+    CredentialEvent,
+    OAuthGrantError,
+    TokenKind,
+    User,
+    hash_secret,
+)
 from tests.access_helpers import add_grant, make_user
 from tests.identity.credential_helpers import assert_no_secret, insert_token
-from tests.identity.oauth_helpers import issued_pair, register_public_client
+from tests.identity.oauth_helpers import (
+    always_eligible,
+    issued_pair,
+    register_public_client,
+)
 from tests.mcp.api_helpers import api_app, as_user, client_for, oauth_service
 
 ADMIN = "/api/v1/admin"
@@ -129,6 +141,41 @@ async def test_admin_revokes_any_token_in_the_tenant(
     assert revoked.revoked_at is not None
     assert revoked.revoked_reason == "admin_revoked"
     assert_no_secret(raw, resp.text)
+
+
+async def test_admin_revoking_an_oauth_access_token_cuts_the_whole_family(
+    api: AsyncClient, db: AsyncSession, ana: User
+) -> None:
+    oauth = oauth_service(db)
+    client_id = await register_public_client(oauth)
+    pair = await issued_pair(oauth, ana, client_id)
+    access = await _by_raw(db, pair.access_token)
+
+    resp = await api.delete(f"{ADMIN}/tokens/{access.id}")
+
+    assert resp.status_code == 204
+    family = await _family(db, pair.family_id)
+    assert {row.revoked_reason for row in family} == {"admin_revoked"}
+    grant = await oauth.load_refresh(client_id, pair.refresh_token)
+    assert grant is not None
+    with pytest.raises(OAuthGrantError):  # the SDK answers invalid_grant
+        await oauth.rotate_refresh(client_id, grant, always_eligible)
+
+
+async def _by_raw(db: AsyncSession, raw: str) -> ApiToken:
+    result = await db.execute(
+        select(ApiToken).where(col(ApiToken.token_hash) == hash_secret(raw))
+    )
+    return result.scalar_one()
+
+
+async def _family(db: AsyncSession, family_id: UUID) -> list[ApiToken]:
+    result = await db.execute(
+        select(ApiToken)
+        .where(col(ApiToken.family_id) == family_id)
+        .execution_options(populate_existing=True)
+    )
+    return list(result.scalars().all())
 
 
 async def test_admin_cannot_see_or_revoke_another_tenants_tokens(

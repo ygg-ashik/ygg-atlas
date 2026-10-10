@@ -429,6 +429,18 @@ class TokenService:
             owner = await self._users.get(token.user_id)
             if owner is None or owner.tenant != tenant:
                 raise CredentialNotFoundError(_NO_TOKEN)
+        if token.family_id is not None:
+            # An OAuth row alone is not the credential: its live refresh token
+            # would mint a fresh pair. The whole family goes, under its lock.
+            await self._revoke_family_rows(
+                token.family_id,
+                reason=reason,
+                actor=actor,
+                user_id=token.user_id,
+                client_id=token.client_id,
+                token_id=token.id,
+            )
+            return
         if not await self._creds.revoke_token(token.id, reason, self._clock()):
             return  # already revoked: nothing changed, nothing to log
         self._creds.add(
@@ -453,13 +465,15 @@ class TokenService:
         self, user_id: UUID, *, reason: str, actor: CredentialActor
     ) -> int:
         """Every kind; one tokens.revoked_all event with the count and reason."""
-        count = await self._creds.revoke_user_tokens(user_id, reason, self._clock())
+        now = self._clock()
+        count = await self._creds.revoke_user_tokens(user_id, reason, now)
+        codes = await self._creds.spend_user_codes(user_id, now)
         self._creds.add(
             self._event(
                 EVENT_TOKENS_REVOKED_ALL,
                 actor,
                 user_id=user_id,
-                details={"count": count, "reason": reason},
+                details={"count": count, "codes": codes, "reason": reason},
             )
         )
         await self._creds.commit()
@@ -511,14 +525,37 @@ class TokenService:
                 msg = "No such connected app."
                 raise CredentialNotFoundError(msg)
             client_id = app.client_id
+        await self._revoke_family_rows(
+            family_id,
+            reason=reason,
+            actor=actor,
+            user_id=owner_id,
+            client_id=client_id,
+        )
+
+    async def _revoke_family_rows(
+        self,
+        family_id: UUID,
+        *,
+        reason: str,
+        actor: CredentialActor,
+        user_id: UUID | None,
+        client_id: str | None,
+        token_id: UUID | None = None,
+    ) -> None:
+        """Revokes the family's live rows (the repository takes the family lock
+        first, the order issuers use after the client row) and writes
+        oauth.family_revoked; a dead family changes and logs nothing."""
         count = await self._creds.revoke_family(family_id, reason, self._clock())
         if count == 0:
+            await self._creds.commit()  # nothing staged; ends the family lock
             return
         self._creds.add(
             self._event(
                 EVENT_FAMILY_REVOKED,
                 actor,
-                user_id=owner_id,
+                user_id=user_id,
+                token_id=token_id,
                 client_id=client_id,
                 details={"family_id": str(family_id), "count": count, "reason": reason},
             )

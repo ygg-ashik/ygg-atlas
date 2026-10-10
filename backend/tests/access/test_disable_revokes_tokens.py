@@ -61,7 +61,7 @@ async def test_disabling_a_user_revokes_all_their_tokens(db) -> None:
     assert event.user_id == sara.id
     assert event.actor_user_id == actor.user_id
     assert event.via == "api"
-    assert event.details == {"count": 3, "reason": REVOKED_USER_DISABLED}
+    assert event.details == {"count": 3, "codes": 0, "reason": REVOKED_USER_DISABLED}
 
 
 async def test_role_change_does_not_revoke_tokens(db) -> None:

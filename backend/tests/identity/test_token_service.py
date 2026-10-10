@@ -11,6 +11,7 @@ from structlog.testing import capture_logs
 from app.identity import UNNAMED_CLIENT
 from app.identity.api_tokens import (
     EVENT_FAMILY_REVOKED,
+    EVENT_REUSE_DETECTED,
     EVENT_TOKEN_CREATED,
     EVENT_TOKEN_REVOKED,
     EVENT_TOKENS_REVOKED_ALL,
@@ -36,6 +37,7 @@ from app.identity.errors import (
     CredentialRuleError,
 )
 from app.identity.models import ApiToken, CredentialEvent, User
+from app.identity.oauth import OAuthGrantError, OAuthService
 from app.identity.repository import CredentialRepository
 from app.identity.tokens import InvalidTokenError
 from tests.access_helpers import make_user
@@ -43,6 +45,13 @@ from tests.identity.credential_helpers import (
     assert_no_secret,
     insert_token,
     make_client,
+)
+from tests.identity.oauth_helpers import (
+    always_eligible,
+    approved_code,
+    issued_pair,
+    oauth_config,
+    register_public_client,
 )
 
 DEFAULT_DAYS = 90
@@ -342,7 +351,80 @@ async def test_revoke_all_covers_every_kind_and_writes_one_event(db) -> None:
     (event,) = await _events(db, EVENT_TOKENS_REVOKED_ALL)
     assert event.user_id == user.id
     assert event.actor_user_id == admin.id
-    assert event.details == {"count": 3, "reason": REVOKED_USER_DISABLED}
+    assert event.details == {"count": 3, "codes": 0, "reason": REVOKED_USER_DISABLED}
+
+
+async def test_revoke_all_spends_codes_approved_before_it(db) -> None:
+    """A code consented to before the revoke-all must not mint a pair after it."""
+    user = await _human(db)
+    oauth = OAuthService(db, oauth_config())
+    client_id = await register_public_client(oauth)
+    raw, grant = await approved_code(oauth, user, client_id)
+
+    await TokenService(db).revoke_all_tokens(
+        user.id, reason=REVOKED_BY_ADMIN, actor=CredentialActor(None, "cli")
+    )
+
+    assert await oauth.load_code(client_id, raw) is None
+    with pytest.raises(OAuthGrantError):
+        await oauth.exchange_code(client_id, grant, always_eligible)
+    assert await _family_rows(db, grant.family_id) == []
+    (event,) = await _events(db, EVENT_TOKENS_REVOKED_ALL)
+    assert event.details["codes"] == 1
+    assert await _events(db, EVENT_REUSE_DETECTED) == []  # not a false alarm
+
+
+async def test_revoking_one_oauth_token_revokes_its_whole_family(db) -> None:
+    """An access token alone is not a credential: revoking it must also kill the
+    refresh token that would mint a fresh pair a second later."""
+    user = await _human(db)
+    admin = await _human(db)
+    oauth = OAuthService(db, oauth_config())
+    client_id = await register_public_client(oauth)
+    pair = await issued_pair(oauth, user, client_id)
+    access_id = (await _by_raw(db, pair.access_token)).id
+    user_id, admin_id = user.id, admin.id  # the service's rollbacks expire rows
+    service = TokenService(db)
+
+    for _ in range(2):  # idempotent: the second call changes and logs nothing
+        await service.revoke_token(
+            access_id, reason=REVOKED_BY_ADMIN, actor=_api(admin), tenant="ygg"
+        )
+
+    rows = await _family_rows(db, pair.family_id)
+    assert len(rows) == 2
+    assert {row.revoked_reason for row in rows} == {REVOKED_BY_ADMIN}
+    grant = await oauth.load_refresh(client_id, pair.refresh_token)
+    assert grant is not None
+    with pytest.raises(OAuthGrantError):
+        await oauth.rotate_refresh(client_id, grant, always_eligible)
+    (event,) = await _events(db, EVENT_FAMILY_REVOKED)
+    assert event.token_id == access_id
+    assert event.user_id == user_id
+    assert event.client_id == client_id
+    assert event.actor_user_id == admin_id
+    assert event.details == {
+        "family_id": str(pair.family_id),
+        "count": 2,
+        "reason": REVOKED_BY_ADMIN,
+    }
+    assert await _events(db, EVENT_TOKEN_REVOKED) == []
+
+
+async def _by_raw(db: AsyncSession, raw: str) -> ApiToken:
+    result = await db.execute(
+        select(ApiToken).where(col(ApiToken.token_hash) == hash_secret(raw))
+    )
+    return result.scalar_one()
+
+
+async def _family_rows(db: AsyncSession, family_id: UUID) -> list[ApiToken]:
+    result = await db.execute(
+        select(ApiToken)
+        .where(col(ApiToken.family_id) == family_id)
+        .execution_options(populate_existing=True)
+    )
+    return list(result.scalars().all())
 
 
 async def test_connected_apps_lists_live_families_and_revoke_family_kills_them(

@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 
+import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import AsyncClient
@@ -9,10 +10,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 from structlog.testing import capture_logs
 
-from app.identity import ApiToken, TokenKind, User
+from app.identity import ApiToken, OAuthGrantError, TokenKind, User, hash_secret
 from tests.access_helpers import make_user
 from tests.identity.credential_helpers import assert_no_secret, insert_token
-from tests.mcp.api_helpers import api_app, as_user, client_for, real_door
+from tests.identity.oauth_helpers import (
+    always_eligible,
+    issued_pair,
+    register_public_client,
+)
+from tests.mcp.api_helpers import (
+    api_app,
+    as_user,
+    client_for,
+    oauth_service,
+    real_door,
+)
 
 
 @pytest_asyncio.fixture
@@ -122,6 +134,32 @@ async def test_revoke_my_token(
     assert (await api.get("/api/v1/me/tokens")).json() == []
     again = await api.delete(f"/api/v1/me/tokens/{mine['id']}")
     assert again.status_code == 204  # idempotent
+
+
+async def test_revoking_my_oauth_access_token_cuts_the_whole_family(
+    api: AsyncClient, db: AsyncSession, analyst: User
+) -> None:
+    oauth = oauth_service(db)
+    client_id = await register_public_client(oauth)
+    pair = await issued_pair(oauth, analyst, client_id)
+    access = (
+        await db.execute(
+            select(ApiToken).where(
+                col(ApiToken.token_hash) == hash_secret(pair.access_token)
+            )
+        )
+    ).scalar_one()
+
+    resp = await api.delete(f"/api/v1/me/tokens/{access.id}")
+
+    assert resp.status_code == 204
+    rows = [r for r in await _rows(db, analyst) if r.family_id == pair.family_id]
+    assert len(rows) == 2
+    assert {row.revoked_reason for row in rows} == {"user_revoked"}
+    grant = await oauth.load_refresh(client_id, pair.refresh_token)
+    assert grant is not None
+    with pytest.raises(OAuthGrantError):
+        await oauth.rotate_refresh(client_id, grant, always_eligible)
 
 
 async def test_revoke_someone_elses_token_is_404(

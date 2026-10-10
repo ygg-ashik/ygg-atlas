@@ -21,6 +21,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Mapped
 from sqlmodel import SQLModel, col, select
 
 from app.identity.api_tokens import CLIENT_IDLE_GC, REVOKED_ROTATED, TokenKind
@@ -38,14 +39,17 @@ from app.identity.models import (
 PENDING_RETENTION: Final = timedelta(days=1)
 OAUTH_TOKEN_RETENTION: Final = timedelta(days=30)
 _OAUTH_KINDS: Final = (TokenKind.OAUTH_ACCESS, TokenKind.OAUTH_REFRESH)
+_TOKEN_ID: Final = col(ApiToken.id)
+_CODE_ID: Final = col(OAuthCode.id)
 
 
 class UserRepository:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
-    async def get(self, user_id: UUID) -> User | None:
-        return await self._db.get(User, user_id)
+    async def get(self, user_id: UUID, *, fresh: bool = False) -> User | None:
+        """`fresh` re-reads the row even if this session already holds it."""
+        return await self._db.get(User, user_id, populate_existing=fresh)
 
     async def get_by_email(self, email: str) -> User | None:
         result = await self._db.execute(
@@ -122,6 +126,20 @@ def _rowcount(result: Result[Any]) -> int:
 
 def _live_token(now: datetime) -> ColumnElement[bool]:
     return and_(col(ApiToken.revoked_at).is_(None), col(ApiToken.expires_at) > now)
+
+
+def _locked_in_id_order(
+    row_id: Mapped[UUID], where: ColumnElement[bool]
+) -> ColumnElement[bool]:
+    """`id IN (SELECT id ... ORDER BY id FOR UPDATE)`: one statement that locks the
+    matching rows in id order before it changes them, so two multi-row writes over
+    overlapping rows (revokes by family, client or user; spent codes; GC) queue
+    instead of deadlocking. PostgreSQL keeps a locking subquery as its own sorted,
+    locking scan (verified with EXPLAIN). SQLite ignores FOR UPDATE."""
+    ids = (
+        select(row_id).where(where).order_by(row_id).with_for_update().scalar_subquery()
+    )
+    return row_id.in_(ids)
 
 
 class CredentialRepository:
@@ -227,36 +245,71 @@ class CredentialRepository:
             {"family": str(family_id)},
         )
 
-    async def revoke_family(self, family_id: UUID, reason: str, now: datetime) -> int:
-        """Revokes the family's live rows under the family lock; never overwrites an
-        earlier reason."""
-        await self.lock_family(family_id)
+    async def lock_user(self, user_id: UUID) -> None:
+        """Hold the user row (FOR SHARE) until this transaction ends.
+
+        An issuing transaction takes it after the family lock, so a concurrent
+        disable (an UPDATE of the row) waits until the new pair is committed, and
+        its post-commit revoke-all then sees that pair; or the disable commits
+        first and the issuer reads the user as disabled. PostgreSQL only, like
+        lock_family: SQLite serialises writers already.
+        """
+        if self._db.get_bind().dialect.name != "postgresql":
+            return
+        await self._db.execute(
+            select(col(User.id))
+            .where(col(User.id) == user_id)
+            .with_for_update(read=True)
+        )
+
+    async def _revoke_live(
+        self, owned_by: ColumnElement[bool], reason: str, now: datetime
+    ) -> int:
+        """Revokes the not-yet-revoked token rows matching `owned_by`, locked in id
+        order; never overwrites an earlier reason."""
+        unrevoked = col(ApiToken.revoked_at).is_(None)
         return await self._update(
             update(ApiToken)
-            .where(
-                col(ApiToken.family_id) == family_id, col(ApiToken.revoked_at).is_(None)
-            )
+            .where(_locked_in_id_order(_TOKEN_ID, and_(owned_by, unrevoked)), unrevoked)
             .values(revoked_at=now, revoked_reason=reason)
+        )
+
+    async def revoke_family(self, family_id: UUID, reason: str, now: datetime) -> int:
+        """Revokes the family's live rows under the family lock."""
+        await self.lock_family(family_id)
+        return await self._revoke_live(
+            col(ApiToken.family_id) == family_id, reason, now
         )
 
     async def revoke_user_tokens(
         self, user_id: UUID, reason: str, now: datetime
     ) -> int:
-        return await self._update(
-            update(ApiToken)
-            .where(col(ApiToken.user_id) == user_id, col(ApiToken.revoked_at).is_(None))
-            .values(revoked_at=now, revoked_reason=reason)
-        )
+        """Every token of the user. The user row is locked first (FOR NO KEY UPDATE,
+        PostgreSQL only): an issuer holding it FOR SHARE (lock_user) commits its
+        pair before this revoke reads the token rows, and a later one waits until
+        the revoke commits. User row before token rows, like issuers: no cycle."""
+        if self._db.get_bind().dialect.name == "postgresql":
+            await self._db.execute(
+                select(col(User.id))
+                .where(col(User.id) == user_id)
+                .with_for_update(key_share=True)
+            )
+        return await self._revoke_live(col(ApiToken.user_id) == user_id, reason, now)
 
     async def revoke_client_tokens(
         self, client_id: str, reason: str, now: datetime
     ) -> int:
-        return await self._update(
-            update(ApiToken)
-            .where(
-                col(ApiToken.client_id) == client_id, col(ApiToken.revoked_at).is_(None)
-            )
-            .values(revoked_at=now, revoked_reason=reason)
+        """The client's live rows only. An expired row needs no revoke, and leaving
+        it out keeps this lock set (client row, then unexpired tokens) disjoint
+        from delete_stale's (tokens expired or revoked 30 days ago, then client
+        rows), so the two never lock the same rows in opposite order."""
+        return await self._revoke_live(
+            and_(
+                col(ApiToken.client_id) == client_id,
+                col(ApiToken.expires_at) > now,
+            ),
+            reason,
+            now,
         )
 
     async def family_has_live_token(self, family_id: UUID, now: datetime) -> bool:
@@ -445,6 +498,25 @@ class CredentialRepository:
             == 1
         )
 
+    async def spend_user_codes(self, user_id: UUID, now: datetime) -> int:
+        """Deletes the user's unused, unexpired codes (revoke-all: a code consented
+        to before it must not mint a pair after it). Deleted rather than marked
+        used, so a later exchange is a dead code, not a false reuse alarm. Call
+        after revoke_user_tokens, which holds the user row."""
+        return await self._spend_codes(col(OAuthCode.user_id) == user_id, now)
+
+    async def spend_client_codes(self, client_id: str, now: datetime) -> int:
+        """The client's unused, unexpired codes, as spend_user_codes."""
+        return await self._spend_codes(col(OAuthCode.client_id) == client_id, now)
+
+    async def _spend_codes(self, owned_by: ColumnElement[bool], now: datetime) -> int:
+        unused = and_(
+            owned_by, col(OAuthCode.used_at).is_(None), col(OAuthCode.expires_at) > now
+        )
+        return await self._update(
+            delete(OAuthCode).where(_locked_in_id_order(_CODE_ID, unused))
+        )
+
     # ---- events and garbage collection ---------------------------------------
 
     async def list_events(
@@ -480,13 +552,18 @@ class CredentialRepository:
             )
         )
         token_cutoff = now - OAUTH_TOKEN_RETENTION
-        tokens = await self._update(
+        tokens = await self._update(  # id order, like the revokes: no deadlock
             delete(ApiToken).where(
-                col(ApiToken.kind).in_(_OAUTH_KINDS),
-                or_(
-                    col(ApiToken.expires_at) < token_cutoff,
-                    col(ApiToken.revoked_at) < token_cutoff,
-                ),
+                _locked_in_id_order(
+                    _TOKEN_ID,
+                    and_(
+                        col(ApiToken.kind).in_(_OAUTH_KINDS),
+                        or_(
+                            col(ApiToken.expires_at) < token_cutoff,
+                            col(ApiToken.revoked_at) < token_cutoff,
+                        ),
+                    ),
+                )
             )
         )
         clients = await self._delete_dead_clients(now - CLIENT_IDLE_GC)

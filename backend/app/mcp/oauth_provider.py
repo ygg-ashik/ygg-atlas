@@ -44,6 +44,7 @@ from app.identity import (
     AuthorizationRequestData,
     ClientRegistration,
     CodeGrant,
+    EligibilityUnavailableError,
     OAuthConfig,
     OAuthGrantError,
     OAuthRegistrationError,
@@ -193,9 +194,12 @@ class AtlasOAuthProvider(
     """The nine SDK protocol methods over OAuthService, one session per call.
 
     Expected refusals map to the SDK's typed errors with identity's safe
-    descriptions. Anything unexpected propagates to the route guard in
-    `oauth_routes`, which answers a generic `server_error` (a transient failure
-    must not read as `invalid_grant`, or clients drop a good refresh token).
+    descriptions. Transient failures (identity's GrantUnavailableError: a database
+    error or an eligibility check that could not be made) and anything unexpected
+    are deliberately not TokenErrors: they propagate to the route guard in
+    `oauth_routes`, which answers a fixed `server_error` 500. A transient failure
+    must not read as `invalid_grant`, or clients drop a good code or refresh
+    token.
     """
 
     def __init__(
@@ -317,7 +321,9 @@ class AtlasOAuthProvider(
             return await OAuthService(db, self._config).find_access_token(raw)
 
     async def eligible(self, user_id: UUID) -> bool:
-        """Active and holds mcp:use. Any error is False (fail closed)."""
+        """Active and holds mcp:use. A check that fails raises
+        EligibilityUnavailableError: OAuthService then issues nothing (fail closed)
+        but revokes nothing either, unlike a definite False."""
         try:
             async with self._sessions()() as db:
                 principal = await principal_for_user(db, user_id)
@@ -326,7 +332,7 @@ class AtlasOAuthProvider(
                 return (await policy_for(db, principal)).has(MCP_USE)
         except Exception as exc:
             logger.error("mcp.eligibility_check_failed", error=type(exc).__name__)
-            return False
+            raise EligibilityUnavailableError from None
 
 
 def _basic_secret(header: str, client_id: str) -> str:

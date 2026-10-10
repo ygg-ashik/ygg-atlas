@@ -20,7 +20,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 from structlog.testing import capture_logs
 
-from app.identity import ApiToken, OAuthClient, User
+from app.identity import (
+    ApiToken,
+    EligibilityUnavailableError,
+    GrantUnavailableError,
+    OAuthClient,
+    User,
+)
 from app.identity.api_tokens import hash_secret
 from app.mcp.oauth_provider import (
     AtlasAuthorizationCode,
@@ -295,14 +301,40 @@ async def test_eligibility_fails_closed(
         raise RuntimeError("policy store down")
 
     monkeypatch.setattr("app.mcp.oauth_provider.policy_for", broken)
-    with capture_logs() as logs:
-        assert await _provider(store).eligible(user.id) is False
+    with capture_logs() as logs, pytest.raises(EligibilityUnavailableError):
+        await _provider(store).eligible(user.id)
 
     assert logs[-1] == {
         "event": "mcp.eligibility_check_failed",
         "error": "RuntimeError",
         "log_level": "error",
     }
+
+
+async def test_a_failed_eligibility_check_on_refresh_keeps_the_family(
+    store: Store, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A check that could not be made refuses the refresh but does not revoke the
+    family as if the user had lost mcp:use: the token works once it recovers."""
+    provider = _provider(store)
+    client = await _registered(provider)
+    _, code = await _code(store, provider, client, await _user(db))
+    pair = await provider.exchange_authorization_code(client, code)
+    assert pair.refresh_token is not None
+    refresh = await provider.load_refresh_token(client, pair.refresh_token)
+    assert refresh is not None
+
+    async def broken(*_args: object) -> None:
+        raise RuntimeError("policy store down")
+
+    with monkeypatch.context() as patched:
+        patched.setattr("app.mcp.oauth_provider.policy_for", broken)
+        # not a TokenError: the route guard answers server_error, not invalid_grant
+        with pytest.raises(GrantUnavailableError):
+            await provider.exchange_refresh_token(client, refresh, [])
+
+    rotated = await provider.exchange_refresh_token(client, refresh, [])
+    assert rotated.refresh_token is not None
 
 
 async def test_eligibility_needs_an_active_user_with_mcp_use(

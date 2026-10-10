@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import update
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, func, select
 from structlog.testing import capture_logs
@@ -15,6 +16,7 @@ from structlog.testing import capture_logs
 from app.config import get_settings
 from app.identity import ApiToken, OAuthAuthorizationRequest, OAuthClient, User
 from app.identity.api_tokens import hash_secret
+from app.identity.repository import CredentialRepository
 from app.mcp.auth import AtlasTokenVerifier
 from tests.access_helpers import make_user
 from tests.identity.credential_helpers import LOOPBACK_REDIRECT, assert_no_secret
@@ -451,6 +453,65 @@ async def test_token_internal_failure_is_generic(
     assert response.json()["error"] == "server_error"
     assert response.headers["cache-control"] == "no-store"
     assert_no_secret(code, response.text)
+
+
+SERVER_ERROR = {
+    "error": "server_error",
+    "error_description": "The authorization server could not handle the request.",
+}
+
+
+async def test_a_transient_refresh_failure_is_server_error_and_the_token_survives(
+    store: Store, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed eligibility check is not invalid_grant (a client would drop a good
+    refresh token): a fixed server_error body, nothing leaked, and the same
+    refresh token works once the check recovers."""
+    user = await _user(db)
+    app = oauth_test_app(store)
+
+    async def broken(*_args: object) -> None:
+        raise RuntimeError("policy store down: SELECT * FROM grants")
+
+    async with http(app.app) as client:
+        client_id, tokens = await tokens_for(store, client, user)
+        with monkeypatch.context() as patched:
+            patched.setattr("app.mcp.oauth_provider.policy_for", broken)
+            failed = await refresh(client, client_id, tokens["refresh_token"])
+        retried = await refresh(client, client_id, tokens["refresh_token"])
+
+    assert failed.status_code == 500
+    assert failed.json() == SERVER_ERROR
+    assert failed.headers["cache-control"] == "no-store"
+    assert "policy" not in failed.text
+    assert "SELECT" not in failed.text
+    assert_no_secret(tokens["refresh_token"], failed.text)
+    assert retried.status_code == 200
+
+
+async def test_a_database_error_during_refresh_is_server_error_without_sql(
+    store: Store, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user = await _user(db)
+    app = oauth_test_app(store)
+
+    async def broken(*_args: object) -> bool:
+        raise DBAPIError(
+            "UPDATE api_tokens SET revoked_at=$1", {}, Exception("deadlock detected")
+        )
+
+    async with http(app.app) as client:
+        client_id, tokens = await tokens_for(store, client, user)
+        with monkeypatch.context() as patched:
+            patched.setattr(CredentialRepository, "mark_rotated", broken)
+            failed = await refresh(client, client_id, tokens["refresh_token"])
+        retried = await refresh(client, client_id, tokens["refresh_token"])
+
+    assert failed.status_code == 500
+    assert failed.json() == SERVER_ERROR
+    for leak in ("UPDATE", "api_tokens", "deadlock"):
+        assert leak not in failed.text
+    assert retried.status_code == 200
 
 
 # ---- revoke -----------------------------------------------------------------------

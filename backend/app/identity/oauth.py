@@ -19,7 +19,7 @@ from uuid import UUID, uuid4
 
 import structlog
 from pydantic import AnyHttpUrl, AnyUrl, ValidationError
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -98,7 +98,9 @@ _DEAD_REFRESH: Final = "The refresh token is no longer valid."
 _INELIGIBLE: Final = "Authorization is no longer valid. Sign in again."
 _UNAVAILABLE: Final = "The grant could not be processed. Try again."
 
-# Supplied by app/mcp: the user is active and holds mcp:use.
+# Supplied by app/mcp: True when the user is active and holds mcp:use, False when
+# not. It raises EligibilityUnavailableError when it could not check; any other
+# exception is treated the same way.
 Eligibility = Callable[[UUID], Awaitable[bool]]
 ReuseKind = Literal["code", "refresh"]
 
@@ -287,6 +289,23 @@ class AuthorizationRequestNotFoundError(Exception):
     """Unknown, expired or already consumed authorization request (404)."""
 
 
+class EligibilityUnavailableError(Exception):
+    """An `Eligibility` check could not be made (not "not eligible"). The grant is
+    refused with nothing issued, and nothing is revoked or spent."""
+
+
+class GrantUnavailableError(Exception):
+    """A grant could not be processed for a transient reason: a database error or
+    an eligibility check that could not be made. Nothing was issued (fail closed),
+    and nothing the client holds was spent or revoked, so it should retry. Not an
+    OAuthGrantError on purpose: the edge answers `server_error`, because
+    `invalid_grant` would make a client drop a code or refresh token that is still
+    good. The message is fixed and generic."""
+
+    def __init__(self) -> None:
+        super().__init__(_UNAVAILABLE)
+
+
 # ---- pure URL rules ---------------------------------------------------------------
 
 
@@ -471,11 +490,15 @@ def _presenter(owner_client_id: str, presented_by: str) -> dict[str, str]:
 
 
 async def _is_eligible(eligible: Eligibility, user_id: UUID) -> bool:
+    """False only for a definite "not eligible"; a failed check raises
+    EligibilityUnavailableError, so it never revokes a family as `no_mcp_use`."""
     try:
         return await eligible(user_id)
-    except Exception as exc:  # fail closed: any error is "not eligible"
+    except EligibilityUnavailableError:
+        raise
+    except Exception as exc:  # could not check: fail closed, but revoke nothing
         logger.error("oauth.eligibility_check_failed", error=type(exc).__name__)
-        return False
+        raise EligibilityUnavailableError from None
 
 
 class OAuthService:
@@ -563,19 +586,20 @@ class OAuthService:
         )
 
     async def revoke_client(self, client_id: str, *, actor: CredentialActor) -> bool:
-        """Revokes the client and all its tokens; writes client.revoked. False when
-        the client is unknown or already revoked."""
+        """Revokes the client, all its tokens and its unused codes; writes
+        client.revoked. False when the client is unknown or already revoked."""
         now = self._clock()
         if not await self._creds.revoke_client(client_id, now):
             return False
         tokens = await self._creds.revoke_client_tokens(client_id, REVOKED_CLIENT, now)
+        codes = await self._creds.spend_client_codes(client_id, now)
         self._creds.add(
             CredentialEvent(
                 event=EVENT_CLIENT_REVOKED,
                 via=actor.via,
                 actor_user_id=actor.user_id,
                 client_id=client_id,
-                details={"tokens": tokens},
+                details={"tokens": tokens, "codes": codes},
             )
         )
         await self._creds.commit()
@@ -733,12 +757,12 @@ class OAuthService:
     async def load_code(self, client_id: str, raw_code: str) -> CodeGrant | None:
         """None for unknown, foreign or reused codes. A used code revokes its family
         whoever presents it. Expiry is the SDK's check (C14). An unexpected database
-        error is None too (fail closed)."""
+        error raises GrantUnavailableError."""
         try:
             return await self._load_code(client_id, raw_code)
-        except DBAPIError as exc:
-            await self._database_error(exc)
-            return None
+        except SQLAlchemyError as exc:
+            await self._database_error(exc, op="load_code")
+            raise GrantUnavailableError from None
 
     async def _load_code(self, client_id: str, raw_code: str) -> CodeGrant | None:
         row = await self._creds.code_by_hash(hash_secret(raw_code))
@@ -762,9 +786,9 @@ class OAuthService:
     ) -> TokenPair:
         """Exactly one exchange of a code succeeds; a second one (reuse or a lost
         race) revokes the family, the winner's tokens included (D30, C8). Raises
-        OAuthGrantError, also for an unexpected database error."""
-        return await self._db_errors_as_grant_errors(
-            self._exchange_code(client_id, grant, eligible)
+        OAuthGrantError, or GrantUnavailableError for a transient failure."""
+        return await self._db_errors_as_unavailable(
+            self._exchange_code(client_id, grant, eligible), op="exchange_code"
         )
 
     async def _exchange_code(
@@ -780,7 +804,7 @@ class OAuthService:
             if fresh is not None and fresh.used_at is not None:
                 await self._revoke_family(family, REVOKED_CODE_REUSE, kind="code")
             raise OAuthGrantError(_DEAD_CODE)
-        denial = await self._issue_denial(family, grant.resource, eligible)
+        denial = await self._checked_denial(family, grant.resource, eligible)
         if denial is not None:
             await self._creds.commit()  # the code stays used; nothing is issued
             logger.info(
@@ -796,13 +820,13 @@ class OAuthService:
     ) -> RefreshGrant | None:
         """None for non-refresh or unknown tokens; a cross-client presentation revokes
         the family (no grace across clients). Revoked rows load too: rotation
-        decides between grace and reuse. An unexpected database error is None too
-        (fail closed)."""
+        decides between grace and reuse. An unexpected database error raises
+        GrantUnavailableError."""
         try:
             return await self._load_refresh(client_id, raw_refresh)
-        except DBAPIError as exc:
-            await self._database_error(exc)
-            return None
+        except SQLAlchemyError as exc:
+            await self._database_error(exc, op="load_refresh")
+            raise GrantUnavailableError from None
 
     async def _load_refresh(
         self, client_id: str, raw_refresh: str
@@ -836,9 +860,9 @@ class OAuthService:
     ) -> TokenPair:
         """Rotation with reuse detection and a 30 s same-client grace (D6). Every
         refresh re-checks the user, mcp:use, the client and the audience. Raises
-        OAuthGrantError, also for an unexpected database error."""
-        return await self._db_errors_as_grant_errors(
-            self._rotate_refresh(client_id, grant, eligible)
+        OAuthGrantError, or GrantUnavailableError for a transient failure."""
+        return await self._db_errors_as_unavailable(
+            self._rotate_refresh(client_id, grant, eligible), op="rotate_refresh"
         )
 
     async def _rotate_refresh(
@@ -871,14 +895,23 @@ class OAuthService:
     async def _retry_or_reuse(
         self, token_id: UUID, family: _Family, eligible: Eligibility
     ) -> TokenPair:
-        """The presented token was already rotated or revoked: a same-client retry
-        within the grace gets a fresh pair; anything else is reuse. The grace check
-        (the family still has a live token) runs under the family lock, so a
-        concurrent revoke either lands first and is seen, or waits for the issue
-        and then covers the new pair too."""
+        """The presented token was already rotated or revoked. One revoked for any
+        reason but rotation (admin, disable, client or family revoke) is simply dead:
+        the legitimate client next refreshing it is no replay, so no alarm and no
+        revoke. A rotated one: a same-client retry within the grace gets a fresh
+        pair; anything else is reuse. The grace check (the family still has a live
+        token) runs under the family lock, so a concurrent revoke either lands first
+        and is seen, or waits for the issue and then covers the new pair too."""
         await self._creds.rollback()
         now = await self._enter_family(family)
         row = await self._creds.token(token_id, fresh=True)
+        if (
+            row is not None
+            and row.revoked_at is not None
+            and row.revoked_reason != REVOKED_ROTATED
+        ):
+            await self._creds.rollback()
+            raise OAuthGrantError(_DEAD_REFRESH)
         if row is not None and await self._in_grace(row, now):
             audience = row.audience or ""
             return await self._issue_checked(
@@ -890,30 +923,33 @@ class OAuthService:
     async def _enter_family(self, family: _Family) -> datetime:
         """Takes the locks an issuing transaction needs, in the one global order:
         the client row first (revoke_client locks it and then the client's token
-        rows), then the family lock, and only then token or code rows. Returns
-        the time after the waits, so a lock wait never stretches a window such as
-        the refresh grace."""
+        rows), then the family lock, then the user row FOR SHARE (a disable waits
+        for this issue, so its revoke-all sees the new pair), and only then token
+        or code rows. A disable takes no client or family lock, so there is no
+        cycle. Returns the time after the waits, so a lock wait never stretches a
+        window such as the refresh grace."""
         await self._creds.touch_client(family.client_id, self._clock())
         await self._creds.lock_family(family.family_id)
+        await self._creds.lock_user(family.user_id)
         return self._clock()
 
-    async def _db_errors_as_grant_errors(
-        self, issuing: Awaitable[TokenPair]
+    async def _db_errors_as_unavailable(
+        self, issuing: Awaitable[TokenPair], *, op: str
     ) -> TokenPair:
-        """Defence in depth for the SDK token handler: an unexpected database error
-        (a deadlock, a lost connection) becomes a generic invalid_grant, never a
-        500 with a stack. Logged by type only: the statement may carry hashes."""
+        """An unexpected database error (a deadlock, a lost connection, a pool
+        timeout) becomes GrantUnavailableError: never a raw error with SQL in it,
+        and never invalid_grant for a grant that is still good."""
         try:
             return await issuing
-        except DBAPIError as exc:
-            await self._database_error(exc)
-            raise OAuthGrantError(_UNAVAILABLE) from None
+        except SQLAlchemyError as exc:
+            await self._database_error(exc, op=op)
+            raise GrantUnavailableError from None
 
-    async def _database_error(self, exc: DBAPIError) -> None:
-        """Logs a database error by type only (the statement may carry hashes) and
-        leaves the session usable."""
-        logger.error("oauth.database_error", error=type(exc).__name__)
-        with suppress(DBAPIError):
+    async def _database_error(self, exc: SQLAlchemyError, *, op: str) -> None:
+        """Logs a database error by type and operation only (the statement may
+        carry hashes) and leaves the session usable."""
+        logger.error("oauth.database_error", op=op, error=type(exc).__name__)
+        with suppress(SQLAlchemyError):
             await self._creds.rollback()
 
     async def _in_grace(self, row: ApiToken, now: datetime) -> bool:
@@ -933,8 +969,10 @@ class OAuthService:
     async def _issue_denial(
         self, family: _Family, audience: str, eligible: Eligibility
     ) -> str | None:
-        """Why tokens may not be issued now (a revoke reason), or None."""
-        user = await self._users.get(family.user_id)
+        """Why tokens may not be issued now (a revoke reason), or None. The user is
+        re-read (not taken from the session's identity map): this runs after
+        lock_user, and a status read before it could be stale."""
+        user = await self._users.get(family.user_id, fresh=True)
         if (
             user is None
             or user.status != UserStatus.ACTIVE
@@ -949,6 +987,21 @@ class OAuthService:
             return REVOKED_NO_MCP_USE
         return None
 
+    async def _checked_denial(
+        self, family: _Family, audience: str, eligible: Eligibility
+    ) -> str | None:
+        """`_issue_denial`, except that a check which could not be made rolls back
+        (no code spent, no token rotated) and raises GrantUnavailableError: fail
+        closed, but never revoke a family on a transient error."""
+        try:
+            return await self._issue_denial(family, audience, eligible)
+        except EligibilityUnavailableError:
+            await self._creds.rollback()
+            logger.warning(
+                "oauth.eligibility_unavailable", family_id=str(family.family_id)
+            )
+            raise GrantUnavailableError from None
+
     async def _issue_checked(
         self,
         family: _Family,
@@ -959,7 +1012,7 @@ class OAuthService:
     ) -> TokenPair:
         """Issues a pair after the per-refresh checks; a failed check revokes the
         whole family with that reason."""
-        denial = await self._issue_denial(family, audience, eligible)
+        denial = await self._checked_denial(family, audience, eligible)
         if denial is not None:
             await self._creds.rollback()
             await self._revoke_family(family, denial)
@@ -1011,27 +1064,43 @@ class OAuthService:
     ) -> None:
         """Revokes every live row of the family (under the family lock, taken by the
         repository) and records why, then commits. The event's client_id is the
-        family's client; `extra_details` adds forensics such as the presenter."""
-        await self._creds.revoke_family(family.family_id, reason, self._clock())
+        family's client; `extra_details` adds forensics such as the presenter (ids,
+        never secrets). A failed reuse revoke is logged as such before the database
+        error propagates: a replayed credential whose family is still live is the
+        alarm an operator needs."""
         family_id = str(family.family_id)
+        forensics = dict(extra_details or {})
         if reason in _REUSE_REASONS:
             event = EVENT_REUSE_DETECTED
             details: dict[str, Any] = {"family_id": family_id, "kind": kind}
-            logger.warning(EVENT_REUSE_DETECTED, family_id=family_id, kind=kind)
+            logger.warning(
+                EVENT_REUSE_DETECTED, family_id=family_id, kind=kind, **forensics
+            )
         else:
             event = EVENT_FAMILY_REVOKED
             details = {"family_id": family_id, "reason": reason}
             logger.info(EVENT_FAMILY_REVOKED, family_id=family_id, reason=reason)
-        self._creds.add(
-            CredentialEvent(
-                event=event,
-                via="oauth",
-                user_id=family.user_id,
-                client_id=family.client_id,
-                details=details | dict(extra_details or {}),
+        try:
+            await self._creds.revoke_family(family.family_id, reason, self._clock())
+            self._creds.add(
+                CredentialEvent(
+                    event=event,
+                    via="oauth",
+                    user_id=family.user_id,
+                    client_id=family.client_id,
+                    details=details | forensics,
+                )
             )
-        )
-        await self._creds.commit()
+            await self._creds.commit()
+        except SQLAlchemyError as exc:
+            if reason in _REUSE_REASONS:
+                logger.error(
+                    "oauth.reuse_revoke_failed",
+                    family_id=family_id,
+                    kind=kind,
+                    error=type(exc).__name__,
+                )
+            raise
 
     async def find_access_token(self, raw_access: str) -> AccessTokenRef | None:
         """RFC 7009 lookup of an OAuth access token: expired, revoked or owned by a
