@@ -4,6 +4,9 @@ production sources are connected. Idempotent: drops and recreates demo tables.
 Per full day, going back 90 days from today (UTC):
   - 5 paid b2c orders of 100 AED + 2 paid b2b orders of 500 AED + 1 refunded 50 AED
     => daily paid revenue = 1500 AED (500 b2c + 1000 b2b), 7 paid orders
+  - sales reps: b2b orders are "Lina Saab"; b2c orders alternate "Aisha Khan"
+    (even positions in the day's list) and "Omar Haddad" (odd)
+    => daily paid orders per rep: Aisha 3, Omar 2, Lina 2
   - 3 new customers (2 consumer, 1 corporate)
   - checkout events: 100 view_product, 60 add_to_cart, 40 begin_checkout,
     25 payment_info, 20 purchase (distinct users per step)
@@ -30,7 +33,8 @@ DDL = [
         channel TEXT NOT NULL,
         amount NUMERIC NOT NULL,
         status TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL
+        created_at TIMESTAMPTZ NOT NULL,
+        sales_rep TEXT NOT NULL
     )
     """,
     """
@@ -59,6 +63,13 @@ FUNNEL_COUNTS = [
 ]
 
 
+def sales_rep(position: int, channel: str) -> str:
+    """Deterministic rep for the order at `position` in a day's order list."""
+    if channel == "b2b":
+        return "Lina Saab"
+    return "Aisha Khan" if position % 2 == 0 else "Omar Haddad"
+
+
 async def seed() -> None:
     engine = create_async_engine(DemoSettings().appdb_url)
     today = datetime.now(UTC).date()
@@ -80,8 +91,9 @@ async def seed() -> None:
                 await conn.execute(
                     text(
                         "INSERT INTO demo_orders"
-                        " (customer_id, channel, amount, status, created_at)"
-                        " VALUES (:c, :ch, :a, :s, :t)"
+                        " (customer_id, channel, amount, status, created_at,"
+                        " sales_rep)"
+                        " VALUES (:c, :ch, :a, :s, :t, :r)"
                     ),
                     {
                         "c": day_offset * 10 + i,
@@ -89,6 +101,7 @@ async def seed() -> None:
                         "a": amount,
                         "s": status,
                         "t": noon,
+                        "r": sales_rep(i, channel),
                     },
                 )
 

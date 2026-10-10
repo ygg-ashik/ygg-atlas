@@ -90,7 +90,11 @@ class SQLSourceConnector:
             url = self._url_getter()
             if not url:
                 raise ConnectorNotConfiguredError("Data source URL is not configured")
-            self._engine = create_async_engine(url, pool_pre_ping=True)
+            # hide_parameters: driver errors carry no bound values (row-scope
+            # values such as CSM names) into logs or the audit trail.
+            self._engine = create_async_engine(
+                url, pool_pre_ping=True, hide_parameters=True
+            )
         return self._engine
 
     async def fetch_one(

@@ -4,6 +4,7 @@ from app.access.catalog import (
     ADMIN_GROUPS,
     CAPABILITIES,
     CHAT_USE,
+    CLEARANCES,
     MCP_USE,
     ROLES,
     role_capabilities,
@@ -34,3 +35,8 @@ def test_unknown_role_grants_nothing() -> None:
 def test_every_capability_is_described_and_reachable() -> None:
     assert all(CAPABILITIES.values())
     assert set(CAPABILITIES) == role_capabilities("admin")
+
+
+def test_clearances_are_described() -> None:
+    assert set(CLEARANCES) == {"fields:business_names", "fields:people_names"}
+    assert all(CLEARANCES.values())

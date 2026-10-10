@@ -68,4 +68,6 @@ async def get_principal(
     except UnauthenticatedError as exc:
         raise HTTPException(401, str(exc), headers=_CHALLENGE) from None
     except ForbiddenError as exc:
-        raise HTTPException(403, str(exc)) from None
+        # Chained on purpose: an edge that needs the machine reason (the MCP consent
+        # page) reads `ForbiddenError.reason` from `__cause__`; the body stays text.
+        raise HTTPException(403, str(exc)) from exc

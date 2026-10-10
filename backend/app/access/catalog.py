@@ -39,6 +39,21 @@ CAPABILITIES: Final[Mapping[str, str]] = MappingProxyType(
     }
 )
 
+CLEARANCE_BUSINESS_NAMES: Final = "fields:business_names"
+CLEARANCE_PEOPLE_NAMES: Final = "fields:people_names"
+
+# Field clearances (spec §5.6): a breakdown label class is shown in clear only
+# with the matching clearance. The atlas keeps the same label class ->
+# clearance mapping in app/atlas/masking.py; a test asserts they agree.
+CLEARANCES: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        CLEARANCE_BUSINESS_NAMES: "See customer and business names in breakdowns",
+        CLEARANCE_PEOPLE_NAMES: (
+            "See the names of people, such as account managers, in breakdowns"
+        ),
+    }
+)
+
 # Ascending: each role includes everything below it.
 ROLES: Final[tuple[str, ...]] = ("viewer", "analyst", "builder", "admin")
 

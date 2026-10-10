@@ -264,6 +264,46 @@ metrics:
   If such a grant exists anyway (e.g. a definition changed), it grants nothing.
 - `$self` resolves from `user_attributes`. A missing attribute grants nothing.
 
+**As built (phase 3).** Differences from the text above, and the decisions taken while building it:
+
+- **Placeholders.** `{{scope}}` compiles to numbered bound `IN` lists,
+  `AND ((col IN (:scope_0_0, :scope_0_1)) OR ((c2 IN (:scope_1_0)) AND (c3 IN (:scope_1_1))))`, not
+  `= ANY(...)` (Postgres-only; the demo plugin runs on SQLite). Every `{{scope}}` occurrence gets the
+  same predicate. Authors write `WHERE TRUE {{scope}}` where a query has no `WHERE`. The bind prefix
+  `:scope_` is reserved: a query that names a `:scope_*` bind is rejected at load (registry lint) and
+  again at compile time. When compiling, a value set that is a bare string or holds duplicate values
+  is rejected and the execution fails closed (the admin API de-duplicates values before storing).
+- **Placement lint.** Because `{{scope}}` is spliced in as `AND (...)`, a scoped query must hold
+  it at the top level of its `WHERE` clause, followed only by `AND`, a later clause or the end, and
+  may contain no comments, `UNION`/`INTERSECT`/`EXCEPT`, top-level `OR` or `BETWEEN`, prefixed (`E''`, `U&''`) or
+  dollar-quoted strings, backslashes or `;`. Parentheses must balance. Checked at registry load.
+- **Lint failures stop the app, not one plugin.** The text above says the plugin fails to load. As
+  built, `AtlasRegistry` raises while it is built and `main.py` builds it at startup, so a lint
+  violation stops the backend from starting.
+- **Caps.** At most 100 values per dimension per alternative, 20 dimensions per grant, 50
+  alternatives and 1000 bind values per compiled predicate. Dimension names (declared in plugin YAML and
+  named in grants) and attribute keys all match `^[a-z][a-z0-9_]{0,63}$` (at most 64 characters). Over a cap ⇒ the grant (or the execution) fails closed.
+- **Semantics.** Matching allows are ORed, the dimensions of one grant ANDed; one unscoped allow
+  means all rows; deny wins; denies cannot carry a scope. A malformed scope makes the grant
+  malformed (deny-all for everyone it applies to). In the atlas, an alternative naming a dimension
+  the entity does not declare is dropped; if nothing is left the resource is denied and hidden from
+  discovery.
+- **One `self` attribute per dimension (C1, accepted deviation).** A dimension name maps to one
+  `self` attribute registry-wide, linted at load, because a `deepsales/*` grant spans several
+  entities. `ds_task.csm` is `{column: assignee_name, self: csm_name}` as in the example above.
+  Declared dimensions are mirrored into a `scope_dimensions` table at startup so `access` validates
+  grants and resolves `$self` without importing `atlas`.
+- **Leads are scoped by owner (C2, accepted deviation).** `ds_lead` declares `owner` (`self:
+  csm_email`), not `csm`, so a CSM grant `deepsales/*` with `csm=$self` hides leads; leads are
+  granted separately with `owner=$self`.
+- **`ds_revenue`** carries `csm` through a `corporate` join (`c.csm_name`); its EXPLAIN is checked
+  on the box before deploy.
+- **Attributes (C11).** `user_attributes` are admin-set only, one value per key, never identity
+  claims; `email` and `user_id` are built-ins and reserved (setting them is rejected). An admin
+  cannot set their own attributes through the API.
+- **Records.** No records query exists yet, so the lint covers metric, breakdown, funnel-step and
+  freshness queries.
+
 ### 5.6 Field masking
 
 Each breakdown label and record column declares `label_class`: `category`, `business_name` or
@@ -277,6 +317,30 @@ visible. Contact identifiers stay structurally excluded from every query, as tod
 | bucket | Top N named as "Top 1..N" rank buckets plus "Others" |
 
 Defaults: `person_name` = suppress, `business_name` = pseudonymise.
+
+**As built (phase 3).** Differences from the text above, and the decisions taken while building it:
+
+- **Where.** Masking happens once, in `AtlasTools` (`app/atlas/masking.py`), so chat, insights, MCP
+  and evals inherit it. Breakdowns declare `breakdown_label_class`; record columns are not built
+  yet. Pseudonyms are `"Account 7f3a1c"` / `"Person 7f3a1c"` (first 6 hex of
+  `HMAC-SHA256(ATLAS_PSEUDONYM_KEY, "<class>:<label>")`). A missing setting, an unknown mode or an
+  empty or blank key degrades to suppress.
+- **Bucket.** The first N fetched rows become "Top 1..N"; "Others" is the sum of the **remaining
+  fetched rows** (not the whole population), stated in the result. N is 1..50.
+- **Settable classes (C12).** Only `business_name` and `person_name` are settable (`category` is
+  never masked).
+- **`describe_entity`.** Fields and PII fields are returned only with an entity-wide allow
+  (`source/entity/*` or wider); item-only grants see `fields_hidden: true`.
+- **Clearance self-escalation (C10, accepted deviation).** Through the API, an actor may grant a
+  clearance allow, or revoke a clearance deny, only if they hold that clearance. While building it,
+  the same holding rule was **extended to group membership and re-parenting**: adding a member to a
+  group inherits the lineage's clearance allows, removing one lifts its clearance denies, and moving
+  a group gains the new ancestors' allows and lifts the old ancestors' denies, so each requires the
+  actor to hold the affected clearances. The CLI is exempt, so the first clearances are granted
+  there. **Needs user confirmation** (the extension to membership and re-parenting especially).
+- **Provenance and audit.** Provenance carries `scope: {restricted, dimensions}` (names, never
+  values) and `masking: {label_class, mode} | null`; the audit log keeps the compiled alternatives
+  and `{label_class, mode, rows_in, rows_out}`.
 
 ## 6. Enforcement points
 
@@ -448,6 +512,31 @@ Until phase 5, administration happens through the admin API (and the bootstrap a
    (already a member, role already at or above, an identical live grant) writes only
    `request.approve`, so it never demotes. Approving for a requester whose account has since been
    disabled is refused (409), checked under the lock.
+### Phase 4 deltas (MCP authentication, as built)
+
+Phase 4 follows §4.1, §4.3 and §11.5 with these recorded changes (plan
+`docs/plans/2026-10-09-auth-rbac-phase-4-mcp-auth.md`, decisions D1–D36). Accepted deviations
+(user-approved 2026-10-09) are marked **deviation**.
+
+| Area | As built |
+|---|---|
+| Endpoint and discovery (§4.3) | One setting, `ATLAS_PUBLIC_URL`. Resource `<url>/mcp-server/mcp`, issuer `<url>/mcp-server`, AS metadata (RFC 8414) at `<url>/.well-known/oauth-authorization-server/mcp-server` and under the issuer, protected-resource metadata (RFC 9728) at `<url>/.well-known/oauth-protected-resource/mcp-server/mcp`. Rollout splits into 4a (`http://localhost:8080` through the SSH tunnel; Claude Code, PATs) and 4b (public https; hosted connectors), which is configuration plus binding consent to the browser. |
+| DCR and redirects (D8) | DCR on. A `redirect_uri` is loopback `http` (`localhost`, `127.0.0.1`, `[::1]`; any port and path, so Claude Desktop's `http://localhost:35535/oauth/callback` works) or exactly one of `OAUTH_HOSTED_REDIRECT_URIS` (default `https://claude.ai/api/mcp/auth_callback`). Public clients are the expected case; confidential clients are accepted with the secret hashed. At most 5 redirect URIs; a missing or long name shows as "Unnamed client". |
+| CIMD (D9) | **Deviation.** Client ID Metadata Documents are deferred and not advertised, so clients use DCR. Supporting them needs port-agnostic loopback matching and an SSRF-safe fetch. |
+| Scopes (D10, §7) | **Deviation.** No OAuth scopes and no token narrowing: `scopes_supported` is omitted, tokens carry no scopes, rights come only from the Policy. The `api_tokens.scope_narrowing` column is not created; it can arrive in its own migration. |
+| Missing `mcp:use` on MCP calls (D31) | The MCP endpoint never answers 403 for a missing capability: the SDK can only express 403 as `insufficient_scope`, which current clients treat as a scope step-up and loop on. A caller without `mcp:use` gets an empty `tools/list` and a tool-level denial on `tools/call` (HTTP 200). The consent page still refuses such a user (§4.1 denial table). |
+| PATs (D11) | PATs and service tokens open the MCP door only; REST `get_principal` stays Firebase-only. Lifetimes `PAT_DEFAULT_DAYS` (90) and `PAT_MAX_DAYS` (365); at most 10 live PATs per user. Until phase 5, admins also mint PATs with the CLI on the box (`via=cli`, shown once). |
+| Tokens (§7) | Opaque 256-bit tokens with typed prefixes, stored as SHA-256 hashes. Access tokens 60 min; refresh 30 d sliding with rotation and reuse detection; a rotated refresh token presented again by the same client within 30 s gets a fresh pair, anything else revokes the family. Codes 60 s, single use; reuse revokes the family. New tables: `oauth_authorization_requests` (pending consent, 10 min, id stored hashed) and `credential_events`. |
+| Audit and revocations (D12, D15, §9) | `atlas_audit_log` gains `token_id` and `client_id`; MCP `auth_method` is `oauth`, `pat` or `service`. **Deviation:** token and client events (created, revoked, revoke-all, consent approved or denied, issued, refreshed, reuse detected, family revoked, gc) go to the identity-owned, append-only `credential_events`, not `rbac_changes`; identity cannot write the access model. `rbac_changes` records only service-account creation and the migration that disables the shared user. |
+| Service accounts (D13) | `users(kind=service, owner_user_id, role)` with email `svc-<slug>@atlas.internal`, created with `admin:users`; service tokens need `admin:tokens` and the account's capabilities must be within the minting admin's; OAuth clients are managed with `admin:clients`. |
+| Routes (§8, §10) | `/me/tokens`, `/me/connected-apps` (not `/me/clients`), `/oauth/consent` (SPA page) with `GET /api/v1/oauth/consent/{txn}` and `POST /api/v1/oauth/consent`, `/admin/tokens`, `/admin/users/{id}/tokens/revoke-all`, `/admin/service-accounts`, `/admin/clients`, `/admin/credential-events`, and `GET /api/v1/meta/auth-methods`. All live in `app/mcp`, not `api/me` and `api/admin`. Disabling a user revokes all of their tokens. |
+| Shared token (§11.5) | Retired: `ATLAS_MCP_TOKEN` and `MCP_SERVICE_EMAIL` are removed and migration 0005 disables `mcp-shared@atlas.internal` (with a policy-version bump). |
+| Rate limits | In-process sliding windows (one uvicorn worker) with 429 and `Retry-After`: MCP calls 120/min per token, consent 10/min per user, and per source `/token` 30/min, `/authorize` 30/min, `/register` 10/h and failed bearers 20/min. Only bearers the door does not recognise count as failed, never an expired real token. A loopback, private or link-local peer is the source "unknown" (`app/mcp/ratelimit.py`): in 4a every caller arrives through nginx or the SSH tunnel, so `/token`, `/authorize` and `/register` each share one global key and the failed-bearer guard only logs, never blocks (ruling E1). At 4b, uvicorn trusts the compose subnet's proxy headers and per-source limits key on the client IP. |
+
+§16 answers: the pinned SDK (`mcp` 1.30.0) provides the authorization-server handlers, which atlas
+wires to its own provider, client authenticator and revocation handler; the redirect URIs are the
+ones in the DCR row above; Claude Code registers with DCR against remote HTTP servers and sends
+OAuth credentials only over https or to localhost.
 
 ## 15. Out of scope (designed for, not built)
 

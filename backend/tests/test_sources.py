@@ -81,3 +81,9 @@ async def test_reset_database_drops_engine_and_session_factory() -> None:
     await reset_database()
     assert get_engine() is not engine
     assert get_session_factory() is not factory
+
+
+def test_source_engines_hide_bound_parameters_from_errors():
+    connector = SQLSourceConnector(lambda: "sqlite+aiosqlite://")
+    engine = connector._get_engine()
+    assert engine.sync_engine.hide_parameters is True

@@ -1,4 +1,4 @@
-from app.atlas.policy import AtlasCaller, ResourcePolicy
+from app.atlas.policy import AtlasCaller, MaskMode, ResourcePolicy, RowScope
 from app.atlas.registry import AtlasRegistry, get_registry
 from app.atlas.tools import ATLAS_TOOL_SCHEMAS, AtlasTools
 
@@ -7,6 +7,8 @@ __all__ = [
     "AtlasCaller",
     "AtlasRegistry",
     "AtlasTools",
+    "MaskMode",
     "ResourcePolicy",
+    "RowScope",
     "get_registry",
 ]

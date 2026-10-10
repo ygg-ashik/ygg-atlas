@@ -9,14 +9,14 @@
   window of the admin decision log.
 
 Revision ID: 0006
-Revises: 0003 (set to the chain predecessor at integration)
+Revises: 0005
 """
 
 import sqlalchemy as sa
 from alembic import op
 
 revision = "0006"
-down_revision = "0003"  # chain: set to predecessor at integration
+down_revision = "0005"
 branch_labels = None
 depends_on = None
 

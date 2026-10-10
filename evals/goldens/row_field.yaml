@@ -1,0 +1,40 @@
+# Row-scope and field-masking goldens (auth phase 3) against seeded demo data.
+# Demo data per full day: revenue 500 b2c + 1000 b2b; paid orders per sales rep
+# Aisha Khan 3, Omar Haddad 2, Lina Saab 2 (scripts/seed_demo.py).
+#
+# Fields beyond core_metrics.yaml:
+#   allow:        entries may be `{pattern, row_scope: {dimension: [values]}}`
+#   attributes:   user attributes `$self` resolves against (e.g. rep_name)
+#   clearances:   field clearances granted (none here: names stay masked)
+#   label_modes:  override the seeded masking settings (not used here)
+#   expect_none:  none of these substrings may appear (case-insensitive)
+
+- id: scoped-revenue-b2c
+  question: "What was total revenue over the last 7 full days?"
+  allow: [{pattern: "demo/order/*", row_scope: {channel: [b2c]}}]
+  expect_metric: revenue
+  expect_value: 3500
+
+# No people_names clearance: person_name labels are suppressed. First names
+# catch partial leaks as well as the full names.
+- id: masked-rep-breakdown
+  question: "Break down paid orders by sales rep for the last 7 full days."
+  expect_tool: metric_breakdown
+  expect_metric: orders_by_rep
+  expect_none: ["Aisha", "Omar", "Lina"]
+
+- id: self-scoped-rep
+  question: "How many paid orders were there over the last 7 full days?"
+  allow: [{pattern: "demo/order/*", row_scope: {sales_rep: ["$self"]}}]
+  attributes: {rep_name: "Aisha Khan"}
+  expect_tool: query_metric
+  expect_metric: orders_count
+  expect_value: 21
+
+# `region` is not a declared scope dimension: the atlas fails closed and the
+# agent must say so rather than answer from unscoped rows.
+- id: undeclared-scope-is-honest
+  question: "What was total revenue over the last 7 full days?"
+  allow: [{pattern: "demo/*", row_scope: {region: [AE]}}]
+  expect_no_numbers: true
+  expect_any: ["access", "admin"]

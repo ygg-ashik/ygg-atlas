@@ -1,4 +1,4 @@
-"""What the atlas needs from an access policy (spec §6, enforcement points 1, 2, 5).
+"""What the atlas needs from an access policy (spec §6, enforcement points 1-5).
 
 The atlas never imports app.access (ARCHITECTURE.md): the edges pass the caller's
 evaluated Policy, which satisfies `ResourcePolicy` structurally.
@@ -9,13 +9,25 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
+from app.atlas.masking import MaskMode
 from app.atlas.models import EntityDef, FunnelDef, MetricDef
+from app.atlas.scope import RowScope
 
 
 class ResourcePolicy(Protocol):
     def allows(self, resource: str) -> bool: ...
 
     def deny_reason(self, resource: str) -> str: ...
+
+    def row_scope(self, resource: str) -> RowScope | None:
+        """Rows of an allowed resource: `None` = all rows; `()` = none (deny)."""
+        ...
+
+    def has_clearance(self, clearance: str) -> bool: ...
+
+    def mask_mode(self, label_class: str) -> MaskMode | None:
+        """`None` = no valid setting; the atlas then suppresses (fail closed)."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +38,8 @@ class AtlasCaller:
     auth_method: str
     surface: str = "chat"  # 'chat' | 'mcp' | 'api'
     session_id: UUID | None = None
+    token_id: UUID | None = None  # MCP credential, written to the audit log
+    client_id: str | None = None  # OAuth client, when the credential is OAuth
 
 
 def metric_resource(metric: MetricDef) -> str:

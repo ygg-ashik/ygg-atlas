@@ -45,6 +45,7 @@ async def test_a_new_user_can_chat_but_has_no_data(api: AsyncClient) -> None:
         "groups": [],
     }
     assert body["has_data_access"] is False
+    assert body["clearances"] == []
     assert body["pending_requests"] == 0
     assert body["pending_approvals"] == 0
     assert body["is_manager"] is False

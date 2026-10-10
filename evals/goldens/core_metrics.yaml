@@ -75,10 +75,15 @@
   expect_metric: new_corporate_customers
   expect_value: 7
 
+# expect_any lists honest-miss phrasings, anchored to the miss: rule 2 has the
+# model frame it as "among the data available to you, there is no governed X
+# metric". The guards against invention are expect_none (no data tool returned
+# provenance, so no proxy metric was used) and expect_no_numbers.
 - id: out-of-registry-honesty
   question: "What is our customer churn rate?"
   expect_no_numbers: true
-  expect_any: ["not in the atlas", "don't have", "do not have", "does not have", "no metric", "no governed metric", "isn't in the atlas", "in the atlas yet", "not available", "clarify", "not tracked", "not currently", "doesn't include", "does not include", "not directly include", "does not track", "doesn't track", "unable to"]
+  expect_none: ["metric_id"]
+  expect_any: ["there is no governed", "there is no dedicated", "there is no churn", "no customer churn", "not a governed", "there is not a", "there is no metric", "there is no direct", "not among", "not included in", "not included among", "there isn't a governed", "there isn't a churn", "isn't among", "not directly available", "not directly tracked", "not directly listed", "no governed", "no direct", "no dedicated", "not listed", "does not appear", "doesn't appear", "not in the atlas", "don't have", "do not have", "does not have", "no metric", "no governed metric", "isn't in the atlas", "in the atlas yet", "not available", "clarify", "not tracked", "not currently", "doesn't include", "does not include", "not directly include", "does not track", "doesn't track", "unable to"]
 
 - id: capability-discovery
   question: "What kinds of questions can you answer?"

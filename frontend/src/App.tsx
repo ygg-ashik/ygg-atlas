@@ -30,6 +30,7 @@ import {
   UsersPage,
 } from '@/features/admin';
 import { ACCESS, ACCOUNT_MENU, buildNav } from './navigation';
+import { ConsentPage } from '@/features/oauth-consent';
 
 /** Composition point: wires auth, access, chat and the command palette into the
  * layout so features stay decoupled. Nav and palette share one filtered list. */
@@ -101,6 +102,7 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/oauth/consent" element={<OAuthConsent />} />
       <Route
         element={
           <ProtectedRoute>
@@ -149,6 +151,14 @@ export function AppRoutes() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+  );
+}
+
+/** /oauth/consent sits outside ProtectedRoute: it signs in itself and keeps ?txn=. */
+function OAuthConsent() {
+  const { user, isLoading, signInWithGoogle } = useAuth();
+  return (
+    <ConsentPage session={{ email: user?.email ?? null, isLoading, signIn: signInWithGoogle }} />
   );
 }
 

@@ -11,7 +11,12 @@ fields:
   assignee_name: CSM responsible (names allowed in answers per internal PII policy)
   due_date: Deadline
   source: What created the task (manual, email_action, topup_invoice, suggestion, insight)
-freshness_query: SELECT MAX(updated_at) AS freshest FROM tasks
+scope_dimensions:
+  csm:
+    column: assignee_name
+    self: csm_name
+    description: CSM assigned to the task ($self = the user's csm_name)
+freshness_query: SELECT MAX(updated_at) AS freshest FROM tasks WHERE TRUE {{scope}}
 metrics:
   - id: ds_open_tasks
     name: Open tasks
@@ -23,10 +28,11 @@ metrics:
     good_direction: down
     query: >
       SELECT COUNT(*) AS value FROM tasks
-      WHERE status IN ('pending', 'in_progress', 'blocked')
+      WHERE status IN ('pending', 'in_progress', 'blocked') {{scope}}
+    breakdown_label_class: person_name
     breakdown_query: >
       SELECT COALESCE(assignee_name, 'Unassigned') AS label, COUNT(*) AS value
-      FROM tasks WHERE status IN ('pending', 'in_progress', 'blocked')
+      FROM tasks WHERE status IN ('pending', 'in_progress', 'blocked') {{scope}}
       GROUP BY 1 ORDER BY value DESC LIMIT :limit
   - id: ds_overdue_tasks
     name: Overdue open tasks
@@ -37,12 +43,13 @@ metrics:
     query: >
       SELECT COUNT(*) AS value FROM tasks
       WHERE status IN ('pending', 'in_progress', 'blocked')
-        AND due_date IS NOT NULL AND due_date < CURRENT_DATE
+        AND due_date IS NOT NULL AND due_date < CURRENT_DATE {{scope}}
+    breakdown_label_class: person_name
     breakdown_query: >
       SELECT COALESCE(assignee_name, 'Unassigned') AS label, COUNT(*) AS value
       FROM tasks
       WHERE status IN ('pending', 'in_progress', 'blocked')
-        AND due_date IS NOT NULL AND due_date < CURRENT_DATE
+        AND due_date IS NOT NULL AND due_date < CURRENT_DATE {{scope}}
       GROUP BY 1 ORDER BY value DESC LIMIT :limit
   - id: ds_tasks_created
     name: Tasks created
@@ -50,7 +57,7 @@ metrics:
     unit: tasks
     query: >
       SELECT COUNT(*) AS value FROM tasks
-      WHERE created_at >= :start AND created_at <= :end
+      WHERE created_at >= :start AND created_at <= :end {{scope}}
   - id: ds_tasks_completed
     name: Tasks completed
     description: >
@@ -60,3 +67,4 @@ metrics:
     query: >
       SELECT COUNT(*) AS value FROM tasks
       WHERE status = 'completed' AND updated_at >= :start AND updated_at <= :end
+        {{scope}}
