@@ -94,9 +94,15 @@ def _first_provenance(result: dict[str, Any]) -> dict[str, Any] | None:
     return prov[0] if prov else None
 
 
+_MASKING_KEYS = ("suppressed_rows", "others_covers")
+
+
 def _breakdown(result: dict[str, Any], seq: int) -> Block | None:
     rows = [[r.get("label"), r.get("value")] for r in result.get("rows", [])]
-    if not rows:
+    # Masking facts (D3.8), only when present. A fully suppressed breakdown
+    # still yields a row-less artifact so the UI can say how many rows were hidden.
+    masking = {k: result[k] for k in _MASKING_KEYS if result.get(k) is not None}
+    if not rows and "suppressed_rows" not in masking:
         return None
     return {
         "id": f"metric_breakdown:{result.get('metric_id')}:{seq}",
@@ -105,6 +111,7 @@ def _breakdown(result: dict[str, Any], seq: int) -> Block | None:
         "unit": result.get("unit") or "",
         "columns": ["Label", "Value"],
         "rows": rows,
+        **masking,
     }
 
 

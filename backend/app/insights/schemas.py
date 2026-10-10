@@ -78,6 +78,10 @@ class OverviewBreakdown(BaseModel):
     unit: str
     rows: list[BreakdownRow]
     provenance: ProvenanceOut
+    # Set only when labels were masked (D3.8): rows hidden by ``suppress``, and
+    # what the bucket ``Others`` row sums.
+    suppressed_rows: int | None = None
+    others_covers: str | None = None
 
 
 class Overview(BaseModel):

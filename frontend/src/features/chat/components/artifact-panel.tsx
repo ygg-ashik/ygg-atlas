@@ -1,5 +1,6 @@
 import { Download, X } from 'lucide-react';
 import type { ArtifactBlock } from '@/api/chat';
+import { maskingNote } from '@/lib/provenance-policy';
 import { Button } from '@/ui';
 import { seriesFor, type SeriesPoint } from '../artifact-series';
 import { artifactFilename, toCsv } from '../csv';
@@ -98,6 +99,7 @@ interface ArtifactPanelProps {
 /** Claude-style artifact panel (DESIGN.md › artifact-panel): data on a solid
  * surface, never on glass. Chart, table, provenance and CSV export. */
 export function ArtifactPanel({ artifact, onClose }: ArtifactPanelProps) {
+  const note = maskingNote(artifact);
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto rounded-shell bg-card px-5 py-[18px] shadow-[0_0_0_1px_hsl(var(--border)),0_20px_60px_rgba(0,0,0,0.14)]">
       <div className="flex items-start gap-2.5">
@@ -108,12 +110,15 @@ export function ArtifactPanel({ artifact, onClose }: ArtifactPanelProps) {
       </div>
       <ProvenanceChips provenance={[artifact.provenance]} />
       <ArtifactBars series={seriesFor(artifact)} />
-      <ArtifactTable artifact={artifact} />
+      {artifact.rows.length > 0 && <ArtifactTable artifact={artifact} />}
+      {note && <p className="text-caption text-muted-foreground">{note}</p>}
       {artifact.unit && <p className="text-caption text-muted-2">Values in {artifact.unit}.</p>}
       <div className="mt-auto flex gap-2 pt-2">
-        <Button variant="pill" size="sm" onClick={() => exportCsv(artifact)}>
-          <Download /> Export CSV
-        </Button>
+        {artifact.rows.length > 0 && (
+          <Button variant="pill" size="sm" onClick={() => exportCsv(artifact)}>
+            <Download /> Export CSV
+          </Button>
+        )}
       </div>
     </div>
   );

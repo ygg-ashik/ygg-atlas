@@ -33,4 +33,76 @@ describe('BreakdownCard', () => {
     render(<BreakdownCard breakdown={breakdown} />);
     expect(screen.getByText(/emapi/).closest('[data-stale]')).toHaveAttribute('data-stale', 'true');
   });
+
+  it('shows scope and masking chips beside the source chip', () => {
+    render(
+      <BreakdownCard
+        breakdown={{
+          ...breakdown,
+          provenance: {
+            ...breakdown.provenance,
+            scope: { restricted: true, dimensions: ['csm'] },
+            masking: { label_class: 'business_name', mode: 'pseudonymise' },
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText('rows · scoped to csm')).toBeInTheDocument();
+    expect(screen.getByText('account names · pseudonymised')).toBeInTheDocument();
+  });
+
+  it('says how many rows a suppressed breakdown hid instead of an empty table', () => {
+    render(
+      <BreakdownCard
+        breakdown={{
+          ...breakdown,
+          rows: [],
+          suppressed_rows: 4,
+          provenance: {
+            ...breakdown.provenance,
+            masking: { label_class: 'business_name', mode: 'suppress' },
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText('4 rows hidden by name masking')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('uses the singular for one hidden row', () => {
+    render(<BreakdownCard breakdown={{ ...breakdown, rows: [], suppressed_rows: 1 }} />);
+    expect(screen.getByText('1 row hidden by name masking')).toBeInTheDocument();
+  });
+
+  it('states what the bucketed Others row covers', () => {
+    render(
+      <BreakdownCard
+        breakdown={{
+          ...breakdown,
+          rows: [
+            { label: 'Top 1', value: 1000 },
+            { label: 'Others', value: 500 },
+          ],
+          others_covers: 'remaining fetched rows',
+        }}
+      />,
+    );
+    expect(screen.getByText('Others = remaining fetched rows')).toBeInTheDocument();
+  });
+
+  it('adds no masking note to an unmasked breakdown', () => {
+    render(<BreakdownCard breakdown={breakdown} />);
+    expect(screen.queryByText(/hidden by name masking|Others =/)).not.toBeInTheDocument();
+  });
+
+  it('says so when an unmasked breakdown has no rows', () => {
+    render(<BreakdownCard breakdown={{ ...breakdown, rows: [] }} />);
+    expect(screen.getByText('No data for this range')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('does not claim no data when rows were suppressed', () => {
+    render(<BreakdownCard breakdown={{ ...breakdown, rows: [], suppressed_rows: 2 }} />);
+    expect(screen.queryByText('No data for this range')).not.toBeInTheDocument();
+  });
 });

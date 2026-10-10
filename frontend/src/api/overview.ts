@@ -21,6 +21,10 @@ export interface OverviewBreakdown {
   unit: string;
   rows: { label: string; value: number }[];
   provenance: Provenance;
+  /** Rows hidden by `suppress` masking; set only when labels were suppressed. */
+  suppressed_rows?: number | null;
+  /** What the bucket `Others` row sums; set only for `bucket` masking. */
+  others_covers?: string | null;
 }
 
 export interface Overview {

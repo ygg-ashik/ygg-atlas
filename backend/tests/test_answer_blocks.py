@@ -159,3 +159,48 @@ def test_errors_and_other_tools_produce_no_artifact():
     assert artifact_from_result("metric_breakdown", empty, seq=1) is None
     no_steps = {"name": "f", "steps": [], "provenance": [PROV]}
     assert artifact_from_result("funnel_analyze", no_steps, seq=1) is None
+
+
+def test_bucketed_breakdown_artifact_states_what_others_covers():
+    result = {
+        "metric_id": "revenue",
+        "name": "Revenue",
+        "unit": "AED",
+        "rows": [{"label": "Top 1", "value": 9.0}, {"label": "Others", "value": 3.0}],
+        "others_covers": "remaining fetched rows",
+        "provenance": [PROV],
+    }
+    art = artifact_from_result("metric_breakdown", result, seq=1)
+    assert art is not None
+    assert art["others_covers"] == "remaining fetched rows"
+    assert "suppressed_rows" not in art
+
+
+def test_fully_suppressed_breakdown_still_yields_an_honest_artifact():
+    result = {
+        "metric_id": "revenue",
+        "name": "Revenue",
+        "unit": "AED",
+        "rows": [],
+        "suppressed_rows": 4,
+        "provenance": [PROV],
+    }
+    art = artifact_from_result("metric_breakdown", result, seq=1)
+    assert art is not None
+    assert art["rows"] == []
+    assert art["suppressed_rows"] == 4
+    assert "others_covers" not in art
+
+
+def test_unmasked_breakdown_artifact_has_no_masking_keys():
+    result = {
+        "metric_id": "revenue",
+        "name": "Revenue",
+        "unit": "",
+        "rows": [{"label": "b2b", "value": 1.0}],
+        "provenance": [PROV],
+    }
+    art = artifact_from_result("metric_breakdown", result, seq=1)
+    assert art is not None
+    assert "suppressed_rows" not in art
+    assert "others_covers" not in art

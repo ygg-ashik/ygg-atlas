@@ -71,4 +71,23 @@ describe('ProvenanceChips', () => {
       'true',
     );
   });
+
+  it('adds scope and masking chips after the provenance chips, once per answer', () => {
+    const scoped: Provenance = {
+      ...base,
+      scope: { restricted: true, dimensions: ['csm'] },
+      masking: { label_class: 'person_name', mode: 'pseudonymise' },
+    };
+    render(<ProvenanceChips provenance={[scoped, { ...scoped, metric_id: 'tasks' }]} />);
+    expect(screen.getAllByText('rows · scoped to csm')).toHaveLength(1);
+    expect(screen.getByText('people names · pseudonymised')).toBeInTheDocument();
+  });
+
+  it('shows no policy chips for an unscoped, unmasked answer', () => {
+    render(
+      <ProvenanceChips provenance={[{ ...base, scope: { restricted: false, dimensions: [] } }]} />,
+    );
+    expect(screen.queryByText(/rows · scoped/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/names ·/)).not.toBeInTheDocument();
+  });
 });

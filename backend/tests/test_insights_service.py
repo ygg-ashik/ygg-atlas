@@ -99,3 +99,84 @@ async def test_no_breakdown_metric_means_no_breakdown_call() -> None:
     overview = await InsightsService(tools).overview(7, date(2026, 10, 8))
     assert overview.breakdown is None
     assert [c[0] for c in tools.calls] == ["compare_periods"]
+
+
+def _breakdown_tools(breakdown: dict[str, Any]) -> ScriptedTools:
+    return ScriptedTools(
+        [_metric("tasks_open", scope="snapshot", breakdown="b")],
+        {
+            "query_metric": {"error": "x"},
+            "metric_breakdown": {"name": "Tasks Open", "unit": "", **breakdown},
+        },
+    )
+
+
+MASKED_PROV = PROV | {
+    "tool": "metric_breakdown",
+    "scope": {"restricted": True, "dimensions": ["csm"]},
+    "masking": {"label_class": "business_name", "mode": "suppress"},
+}
+
+
+async def test_suppressed_breakdown_says_how_many_rows_were_hidden() -> None:
+    tools = _breakdown_tools(
+        {"rows": [], "suppressed_rows": 4, "provenance": [MASKED_PROV]}
+    )
+    overview = await InsightsService(tools).overview(30, date(2026, 10, 8))
+    assert overview.breakdown is not None
+    assert overview.breakdown.rows == []
+    assert overview.breakdown.suppressed_rows == 4
+    assert overview.breakdown.others_covers is None
+
+
+async def test_bucketed_breakdown_states_what_others_covers() -> None:
+    tools = _breakdown_tools(
+        {
+            "rows": [
+                {"label": "Top 1", "value": 5.0},
+                {"label": "Others", "value": 3.0},
+            ],
+            "others_covers": "remaining fetched rows",
+            "provenance": [MASKED_PROV],
+        }
+    )
+    overview = await InsightsService(tools).overview(30, date(2026, 10, 8))
+    assert overview.breakdown is not None
+    assert overview.breakdown.others_covers == "remaining fetched rows"
+    assert overview.breakdown.suppressed_rows is None
+
+
+async def test_unmasked_breakdown_has_no_masking_fields() -> None:
+    tools = _breakdown_tools(
+        {"rows": [{"label": "Ops", "value": 2.0}], "provenance": [PROV]}
+    )
+    overview = await InsightsService(tools).overview(30, date(2026, 10, 8))
+    assert overview.breakdown is not None
+    dumped = overview.breakdown.model_dump()
+    assert dumped["suppressed_rows"] is None
+    assert dumped["others_covers"] is None
+
+
+async def test_provenance_carries_scope_and_masking_when_present() -> None:
+    tools = _breakdown_tools(
+        {"rows": [], "suppressed_rows": 1, "provenance": [MASKED_PROV]}
+    )
+    overview = await InsightsService(tools).overview(30, date(2026, 10, 8))
+    assert overview.breakdown is not None
+    prov = overview.breakdown.provenance
+    assert prov.scope is not None
+    assert prov.scope.restricted is True
+    assert prov.scope.dimensions == ["csm"]
+    assert prov.masking is not None
+    assert prov.masking.label_class == "business_name"
+    assert prov.masking.mode == "suppress"
+
+
+async def test_provenance_scope_and_masking_absent_when_unscoped() -> None:
+    tools = _breakdown_tools(
+        {"rows": [{"label": "Ops", "value": 2.0}], "provenance": [PROV]}
+    )
+    overview = await InsightsService(tools).overview(30, date(2026, 10, 8))
+    assert overview.breakdown is not None
+    assert overview.breakdown.provenance.scope is None
+    assert overview.breakdown.provenance.masking is None

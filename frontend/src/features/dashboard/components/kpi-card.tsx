@@ -2,7 +2,7 @@ import NumberFlow from '@number-flow/react';
 import type { OverviewKpi } from '@/api/overview';
 import { cn } from '@/ui';
 import { deltaLabel, deltaTone, formatKpi, numberFormat } from '../format';
-import { SourceChip } from './source-chip';
+import { ProvenanceRow } from './provenance-row';
 
 const TONE = {
   positive: 'bg-positive/[0.12] text-positive',
@@ -42,7 +42,7 @@ export function KpiCard({ kpi }: { kpi: OverviewKpi }) {
           aria-hidden
         />
       </div>
-      <SourceChip provenance={kpi.provenance} />
+      <ProvenanceRow provenance={kpi.provenance} />
     </div>
   );
 }
