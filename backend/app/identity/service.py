@@ -7,7 +7,6 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 import structlog
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.identity.errors import ForbiddenError, UnauthenticatedError
@@ -63,7 +62,7 @@ class IdentityService:
         if user.status != UserStatus.ACTIVE:
             logger.warning("identity.disabled_user", user_id=str(user.id))
             msg = "Your atlas access is disabled. Contact an admin."
-            raise ForbiddenError(msg)
+            raise ForbiddenError(msg, "user_disabled")
         await self._touch(user)
         return to_principal(user, "web")
 
@@ -85,13 +84,13 @@ class IdentityService:
         if not token.email_verified or not token.email.lower().endswith(f"@{domain}"):
             logger.warning("identity.domain_rejected")
             msg = f"Use your @{domain} account."
-            raise ForbiddenError(msg)
+            raise ForbiddenError(msg, "not_company_account")
         if token.sign_in_provider != GOOGLE_PROVIDER:
             logger.warning(
                 "identity.provider_rejected", provider=token.sign_in_provider
             )
             msg = f"Sign in with your @{domain} Google account."
-            raise ForbiddenError(msg)
+            raise ForbiddenError(msg, "not_company_account")
 
     def _check_session_age(self, token: VerifiedToken) -> None:
         signed_in = datetime.fromtimestamp(token.auth_time, tz=UTC)
@@ -127,7 +126,7 @@ class IdentityService:
         """A service identity has no Firebase session; never link one to it."""
         if user.kind == UserKind.SERVICE:
             msg = "This account can't sign in."
-            raise ForbiddenError(msg)
+            raise ForbiddenError(msg, "service_account")
 
     async def _touch(self, user: User) -> None:
         now = self._clock()
@@ -135,13 +134,3 @@ class IdentityService:
         if last is None or now - _as_utc(last) >= LAST_SEEN_INTERVAL:
             user.last_seen_at = now
             await self._users.save(user)
-
-
-async def service_principal(db: AsyncSession, email: str) -> Principal | None:
-    """The Principal for an active service identity, or None (fail closed)."""
-    user = await UserRepository(db).get_by_email(email)
-    if user is None or user.kind != UserKind.SERVICE:
-        return None
-    if user.status != UserStatus.ACTIVE:
-        return None
-    return to_principal(user, "service")

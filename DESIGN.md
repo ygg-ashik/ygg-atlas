@@ -175,6 +175,13 @@ components:
     rounded: "{rounded.feature}"
     padding: 36px 32px 28px
     width: 380px
+  consent-panel:
+    backgroundColor: "{colors.glass}"
+    textColor: "{colors.body}"
+    typography: "{typography.body}"
+    rounded: "{rounded.feature}"
+    padding: 36px 32px 28px
+    width: 420px
   briefing-card:
     backgroundColor: "{colors.glass}"
     textColor: "{colors.body}"
@@ -422,6 +429,7 @@ Bigger surfaces get bigger radii. Corners nest concentrically: inner radius = ou
 
 - **`brand-mark`**: the Atlas mark, a `{colors.primary}` diamond (a 10px square with 3px corners, rotated 45°; it scales with the wordmark) beside the serif wordmark "Atlas". The diamond is decorative (`aria-hidden`); the wordmark carries the name. One component used by the sidebar, the sign-in panel and the favicon (`frontend/public/favicon.svg`, clay on light, `{colors.primary-on-dark}` on dark).
 - **`sign-in-panel`** (`/login`): one centered glass panel on the canvas wash, materializing on load (opacity + scale + blur), with the specular highlight. Contents, top to bottom: the brand mark at display size, a one-line serif greeting, a body-text sentence on what Atlas is, the primary clay pill "Continue with Google" (the official Google "G" sits on a white disc inside it), and a caption with the access rules ("@yougotagift.com Google accounts only · sessions last 24 hours"). Errors render inline under the button in `{colors.negative}` text with a plain next step; a dismissed popup is not an error. No data, numbers or charts ever appear on it.
+- **`consent-panel`** (`/oauth/consent`, outside the signed-in shell): the `sign-in-panel` surface, 420px wide, where an MCP client (Claude Code, Claude) asks to act as the user. Top to bottom: the brand mark, a serif title "**{client name}** wants to access Atlas", "as {email}", the redirect host in mono, and a short list of what approving means (query the data you're permitted to see, under your current role and groups; disconnect any time). A loopback redirect adds a caution notice in `{colors.warning}` (icon + tinted border) telling the user to approve only if they just started this on this machine; a hosted redirect names the host instead. **Deny** (secondary) and **Approve** (primary clay pill) sit side by side and both disable while a decision is in flight. Signed out, it shows the sign-in pattern ("Continue with Google"). Every dead end (incomplete link, expired request, blocked account, role without MCP access with a plain **Request access** link) is the same panel with a serif title and one sentence of next step, no buttons, and never a redirect. Server error text is never shown. No data, numbers or charts ever appear on it.
 
 ### Answers (Claude + Codex)
 - **`user-bubble`**: right-aligned, `{colors.card-2}`, tail corner 6px bottom-right.

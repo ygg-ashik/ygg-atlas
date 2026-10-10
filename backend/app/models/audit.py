@@ -38,3 +38,5 @@ class AtlasAuditLog(SQLModel, table=True):
     # query ran; masking applied to a breakdown, or None.
     scope: dict | None = Field(default=None, sa_column=Column(JSON))
     masking: dict | None = Field(default=None, sa_column=Column(JSON))
+    token_id: UUID | None = None  # the credential that ran the call (D12)
+    client_id: str | None = Field(default=None, max_length=255)

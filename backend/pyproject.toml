@@ -124,7 +124,7 @@ venv = ".venv"
 typeCheckingMode = "standard"
 reportMissingTypeStubs = false
 # Ratchet: new self-contained modules are added here and checked in strict mode.
-strict = ["app/insights", "app/identity", "app/access", "app/atlas/scope.py", "app/atlas/masking.py"]
+strict = ["app/insights", "app/identity", "app/access", "app/atlas/scope.py", "app/atlas/masking.py", "app/mcp"]
 
 [tool.importlinter]
 root_package = "app"
@@ -186,11 +186,12 @@ exhaustive = true
 layers = [
     "router",
     "dependencies | bootstrap",
+    "credentials | oauth",
     "service | firebase",
     "repository",
     "models",
     "schemas",
-    "principal | tokens | errors",
+    "principal | tokens | errors | api_tokens",
 ]
 
 [[tool.importlinter.contracts]]
@@ -220,9 +221,22 @@ layers = [
     "catalog | patterns | facts | errors",
 ]
 
+[[tool.importlinter.contracts]]
+name = "MCP module layering (ARCHITECTURE.md §2.2)"
+type = "layers"
+containers = ["app.mcp"]
+exhaustive = true
+layers = [
+    "server | cli",
+    "router",
+    "oauth_routes | dependencies",
+    "oauth_provider",
+    "auth | ratelimit | schemas | access_log",
+]
+
 [tool.coverage.run]
 source = ["app"]
-omit = ["app/mcp/*", "migrations/*"]
+omit = ["migrations/*"]
 
 [tool.coverage.report]
 fail_under = 80

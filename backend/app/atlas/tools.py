@@ -313,6 +313,8 @@ class AtlasTools:
                 deny_reason=outcome.deny_reason,
                 scope=trace.scope if trace else None,
                 masking=trace.masking if trace else None,
+                token_id=self.caller.token_id,
+                client_id=self.caller.client_id,
             )
         )
         await self.db.commit()

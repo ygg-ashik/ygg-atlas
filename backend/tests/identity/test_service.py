@@ -68,8 +68,9 @@ async def test_pre_created_user_is_linked_by_email(db) -> None:
 
 
 async def test_other_domain_is_forbidden(db) -> None:
-    with pytest.raises(ForbiddenError, match=r"@yougotagift\.com"):
+    with pytest.raises(ForbiddenError, match=r"@yougotagift\.com") as caught:
         await _service(db).resolve_web(_token(email="x@gmail.com"))
+    assert caught.value.reason == "not_company_account"
 
 
 async def test_lookalike_domain_is_forbidden(db) -> None:
@@ -92,8 +93,9 @@ async def test_disabled_user_is_forbidden(db) -> None:
     await UserRepository(db).save(
         User(email="sara@yougotagift.com", status=UserStatus.DISABLED)
     )
-    with pytest.raises(ForbiddenError, match="disabled"):
+    with pytest.raises(ForbiddenError, match="disabled") as caught:
         await _service(db).resolve_web(_token())
+    assert caught.value.reason == "user_disabled"
 
 
 async def test_last_seen_is_recorded(db) -> None:
@@ -105,8 +107,9 @@ async def test_last_seen_is_recorded(db) -> None:
 
 async def test_non_google_sign_in_is_forbidden(db) -> None:
     # Email-link or password sign-in would bypass Workspace SSO, 2FA and offboarding.
-    with pytest.raises(ForbiddenError, match="Google"):
+    with pytest.raises(ForbiddenError, match="Google") as caught:
         await _service(db).resolve_web(_token(provider="password"))
+    assert caught.value.reason == "not_company_account"
 
 
 async def test_disabled_user_row_is_not_relinked(db) -> None:
@@ -156,8 +159,9 @@ async def test_service_identity_cannot_sign_in_when_found_by_firebase_uid(
             kind=UserKind.SERVICE,
         )
     )
-    with pytest.raises(ForbiddenError, match="can't sign in"):
+    with pytest.raises(ForbiddenError, match="can't sign in") as caught:
         await _service(db).resolve_web(_token())
+    assert caught.value.reason == "service_account"
     stored = await users.get(service.id)
     assert stored is not None
     assert stored.firebase_uid == "fb-sara"  # never relinked
