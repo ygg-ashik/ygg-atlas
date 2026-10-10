@@ -35,6 +35,20 @@ titles and toolbar crumbs`, with review fixes: an audit-only viewer never lists 
 (tested), deny grants read "deny <target>", and the crumb became the `ToolbarCrumb` ui primitive
 (DESIGN.md `toolbar-crumb`) also used for "My access ›" on New request (per the mockup).
 
+## Stacked on phase 4 (2026-10-10)
+
+| Step | SHA | Review |
+|---|---|---|
+| Merge feature/auth-mcp (hotspots per contracts.md; 0006 → 0005; approval path runs phase 3 checks) | a9f80db | gates green; PG 26/26 |
+| Bind to real phase 3/4 contracts; placeholders and FutureControl removed; label masking panel | 5e0c8f9 | approved after fixes |
+| Insights masking counts + policy chips (phase 3 follow-up, C20) | 16038e2 | approved after fixes |
+| B7 structured denied block | c3b6a50 (**unsigned**: 1Password failed twice) | approved; evals 20/20 |
+
+Unsigned SHAs to re-sign before push: c3b6a50.
+
+Visual check in progress (light/dark/reduced-motion done at 1440; reduced-transparency pending). Docker
+(OrbStack) stopped answering mid-run at 14:40, hanging the preview Postgres.
+
 ## Next steps, in order
 
 1. ~~Finish + review the WIP above; frontend gate.~~ Done (4de606f).
