@@ -1,6 +1,11 @@
 """Structured answer blocks: built from tool arguments/results, never from LLM prose."""
 
-from app.agent.blocks import CLARIFY_TOOL, artifact_from_result, build_clarify_block
+from app.agent.blocks import (
+    CLARIFY_TOOL,
+    artifact_from_result,
+    build_clarify_block,
+    denied_from_result,
+)
 
 PROV = {
     "tool": "metric_breakdown",
@@ -204,3 +209,32 @@ def test_unmasked_breakdown_artifact_has_no_masking_keys():
     assert art is not None
     assert "suppressed_rows" not in art
     assert "others_covers" not in art
+
+
+def test_denied_from_result_shape():
+    result = {
+        "error": "Checkout funnel isn't available to you.",
+        "denied": {
+            "resource": "demo/checkout/checkout_funnel",
+            "label": "Checkout funnel",
+        },
+    }
+    assert denied_from_result(result) == {
+        "kind": "denied",
+        "resource": "demo/checkout/checkout_funnel",
+        "label": "Checkout funnel",
+    }
+
+
+def test_denied_from_result_ignores_results_without_a_valid_payload():
+    assert denied_from_result({"error": "couldn't be checked"}) is None
+    assert denied_from_result({"value": 1.0}) is None
+    assert denied_from_result({"error": "x", "denied": "demo/*"}) is None
+    assert (
+        denied_from_result({"error": "x", "denied": {"resource": "", "label": "L"}})
+        is None
+    )
+    assert (
+        denied_from_result({"error": "x", "denied": {"resource": "r", "label": 3}})
+        is None
+    )

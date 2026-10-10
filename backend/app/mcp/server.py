@@ -35,7 +35,7 @@ from starlette.middleware import Middleware
 from starlette.types import Scope
 
 from app.access import MCP_USE, policy_for
-from app.atlas import AtlasCaller, AtlasTools
+from app.atlas import AtlasCaller, AtlasTools, without_denial
 from app.config import Settings, get_settings
 from app.database import get_session_factory
 from app.identity import OAuthConfig, OAuthService
@@ -126,9 +126,11 @@ async def run_tool(tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     client_id=token.principal.client_id,
                 )
                 return dict(NO_MCP_ACCESS)
-            return await AtlasTools(_caller(token), policy, db=db).execute(
+            result = await AtlasTools(_caller(token), policy, db=db).execute(
                 tool, arguments
             )
+            # The `denied` payload feeds chat's request-access block only.
+            return without_denial(result)
     except Exception as exc:  # PolicyUnavailableError included: fail closed
         # Not logger.exception: no traceback (its frames could hold request data).
         logger.error("mcp.tool_unavailable", tool=tool, error=type(exc).__name__)

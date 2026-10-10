@@ -11,8 +11,9 @@ The LLM provider (Anthropic or OpenAI) is selected from which API key is
 configured; see Settings.llm_provider.
 
 `blocks` are structured answer parts (see app.agent.blocks): at most one
-clarify block from the `ask_clarification` control tool, plus one artifact
-block per table-shaped atlas tool result.
+clarify block from the `ask_clarification` control tool, one artifact block
+per table-shaped atlas tool result, and one denied block per policy-denied
+resource (the model still sees only the denial's `error`).
 """
 
 from collections.abc import AsyncGenerator
@@ -24,13 +25,18 @@ from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent.blocks import CLARIFY_TOOL, artifact_from_result, build_clarify_block
+from app.agent.blocks import (
+    CLARIFY_TOOL,
+    artifact_from_result,
+    build_clarify_block,
+    denied_from_result,
+)
 from app.agent.guardrails import check_input
 from app.agent.prompts import build_system_prompt
 from app.agent.providers import anthropic_loop, openai_loop
 from app.agent.providers.anthropic_loop import AnthropicClient
 from app.agent.providers.types import Event, ToolLoopRunner, Toolset
-from app.atlas import ATLAS_TOOL_SCHEMAS, AtlasTools
+from app.atlas import ATLAS_TOOL_SCHEMAS, AtlasTools, without_denial
 from app.config import get_settings
 
 logger = structlog.get_logger()
@@ -75,7 +81,20 @@ class _TurnRecorder:
         if artifact is not None:
             self._artifact_seq += 1
             self.blocks.append(artifact)
-        return result
+        self._record_denial(result)
+        # The denial payload is chat-only: the model sees the error alone.
+        return without_denial(result)
+
+    def _record_denial(self, result: dict[str, Any]) -> None:
+        denied = denied_from_result(result)
+        if denied is None:
+            return
+        if any(
+            b["kind"] == "denied" and b["resource"] == denied["resource"]
+            for b in self.blocks
+        ):
+            return
+        self.blocks.append(denied)
 
     def _clarify(self, arguments: dict[str, Any]) -> dict[str, Any]:
         # Control tool: no data access, so not an atlas execution and not audited.

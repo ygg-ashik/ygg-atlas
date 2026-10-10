@@ -3,10 +3,14 @@
 - clarify: the agent asks the user to choose instead of guessing (guardrail #1).
 - artifact: a table built deterministically from an audited atlas tool result
   (guardrail #2: numbers come from tool output, never from LLM prose).
+- denied: a policy denial of one exact resource, so the UI can offer a
+  prefilled access request. Resource path and label only, never numbers.
 """
 
 from collections.abc import Callable
 from typing import Any
+
+from app.atlas import DENIED_KEY
 
 MAX_CLARIFY_OPTIONS = 4
 
@@ -167,3 +171,19 @@ def artifact_from_result(tool: str, result: dict[str, Any], seq: int) -> Block |
     if body is None:
         return None
     return {"kind": "artifact", **body, "provenance": provenance}
+
+
+def denied_from_result(result: dict[str, Any]) -> Block | None:
+    """A `denied` block from a policy-denial tool result, else None.
+
+    Shape is the frontend `DeniedBlock` contract: {kind, resource, label}.
+    """
+    payload = result.get(DENIED_KEY)
+    if not isinstance(payload, dict):
+        return None
+    resource, label = payload.get("resource"), payload.get("label")
+    if not (isinstance(resource, str) and isinstance(label, str)):
+        return None
+    if not (resource and label):
+        return None
+    return {"kind": "denied", "resource": resource, "label": label}

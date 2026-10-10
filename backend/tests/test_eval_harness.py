@@ -194,3 +194,12 @@ def test_non_mapping_attributes_names_the_golden(attributes: object) -> None:
     golden = {"id": "g-3", "attributes": attributes}
     with pytest.raises(ValueError, match=r"golden 'g-3': attributes must be a mapping"):
         harness._attributes(_user(), golden)
+
+
+def test_check_denied_block_needs_a_denied_block() -> None:
+    golden = {"expect_denied_block": True}
+    denied = {"kind": "denied", "resource": "demo/checkout/checkout_funnel"}
+    assert not harness._check_denied_block(golden, harness.Turn(blocks=[denied]))
+    assert harness._check_denied_block(golden, harness.Turn(answer="No access."))
+    assert not harness._check_denied_block({}, harness.Turn())
+    assert harness._check_denied_block in harness._CHECKS

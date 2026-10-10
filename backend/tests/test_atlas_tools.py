@@ -3,8 +3,9 @@ from uuid import uuid4
 
 from sqlmodel import col, select
 
+from app.atlas import AtlasCaller, AtlasTools, without_denial
 from app.models.audit import AtlasAuditLog
-from tests.fakes import make_tools
+from tests.fakes import StaticPolicy, make_tools
 
 
 def _range(days: int) -> tuple[str, str]:
@@ -197,3 +198,74 @@ async def test_every_execution_is_audited(db):
     assert {r.success for r in rows} == {True, False}
     assert all(r.tool == "query_metric" for r in rows)
     assert {r.decision for r in rows} == {"allow"}  # an unknown id is not a denial
+
+
+class _UnreachablePolicy(StaticPolicy):
+    """A policy whose evaluation fails: the "couldn't be checked" path."""
+
+    def allows(self, resource: str) -> bool:
+        raise RuntimeError("policy store unreachable")
+
+
+async def test_denial_carries_a_denied_payload(db):
+    tools = make_tools(db=db, allowed=("demo/order/*",))
+    start, end = _range(7)
+    result = await tools.execute(
+        "funnel_analyze",
+        {"funnel_id": "checkout_funnel", "start_date": start, "end_date": end},
+    )
+    assert result["denied"] == {
+        "resource": "demo/checkout/checkout_funnel",
+        "label": "Checkout funnel",
+    }
+    assert "isn't available to you" in result["error"]
+    assert set(result) == {"error", "denied"}
+
+
+async def test_policy_failure_has_no_denied_key(db):
+    tools = AtlasTools(
+        AtlasCaller(user_id=uuid4(), auth_method="test"), _UnreachablePolicy(), db=db
+    )
+    start, end = _range(7)
+    result = await tools.execute(
+        "query_metric", {"metric_id": "revenue", "start_date": start, "end_date": end}
+    )
+    assert "couldn't be checked" in result["error"]
+    assert "denied" not in result
+
+
+async def test_other_failures_have_no_denied_key(db):
+    tools = make_tools(db=db)
+    result = await tools.execute("query_metric", {"metric_id": "nope"})
+    assert "denied" not in result
+
+
+async def test_denied_payload_holds_no_numbers(db):
+    tools = make_tools(db=db, allowed=())
+    start, end = _range(7)
+    result = await tools.execute(
+        "query_metric", {"metric_id": "revenue", "start_date": start, "end_date": end}
+    )
+    denied = result["denied"]
+    assert set(denied) == {"resource", "label"}
+    assert all(isinstance(v, str) for v in denied.values())
+    assert not any(ch.isdigit() for v in denied.values() for ch in v)
+
+
+async def test_a_scope_that_fails_to_compile_has_no_denied_key(db):
+    # Allowed, but the row scope grants nothing here: not a request-access case.
+    tools = make_tools(db=db, row_scopes=(("demo/order/*", ()),))
+    start, end = _range(7)
+    result = await tools.execute(
+        "query_metric", {"metric_id": "revenue", "start_date": start, "end_date": end}
+    )
+    assert "error" in result
+    assert "denied" not in result
+
+
+def test_without_denial_strips_only_the_denial_payload():
+    denied = {"resource": "demo/order/revenue", "label": "Total revenue"}
+    result = {"error": "no", "denied": denied}
+    assert without_denial(result) == {"error": "no"}
+    assert result["denied"] == denied  # the input is not mutated
+    assert without_denial({"value": 1.0}) == {"value": 1.0}
