@@ -1,5 +1,5 @@
-"""Startup for access: mirror the capability catalog, create the bootstrap
-admins, and invalidate cached policies."""
+"""Startup for access: mirror the capability catalog and the declared scope
+dimensions, create the bootstrap admins, and invalidate cached policies."""
 
 from collections.abc import Iterable
 from typing import Final
@@ -20,6 +20,19 @@ logger = structlog.get_logger()
 STARTUP_LOCK_KEY: Final = 7_402_311
 ADMIN_ROLE: Final = "admin"
 VIA_BOOTSTRAP: Final = "bootstrap"
+DESCRIPTION_LIMIT: Final = 200  # scope_dimensions.description
+
+
+async def _startup_lock(db: AsyncSession) -> None:
+    if db.get_bind().dialect.name == "postgresql":
+        # Two processes starting together would otherwise race on the same
+        # mirror rows and one would lose with an IntegrityError. The lock is
+        # transaction-scoped: it serializes concurrent starts and is released
+        # automatically at commit. SQLite has no concurrent writers to race (it
+        # serializes writes at the database level), so no lock is needed there.
+        await db.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"), {"key": STARTUP_LOCK_KEY}
+        )
 
 
 async def prepare_access(
@@ -27,16 +40,7 @@ async def prepare_access(
 ) -> None:
     """One transaction: catalog sync, bootstrap admins, version bump."""
     repo = AccessRepository(db)
-    if db.get_bind().dialect.name == "postgresql":
-        # Two processes starting together would otherwise both try to insert the
-        # same capability rows (or bootstrap admins) and one loses with an
-        # IntegrityError. The lock is transaction-scoped: it serializes
-        # concurrent starts and is released automatically at commit. SQLite has
-        # no concurrent writers to race (it serializes writes at the database
-        # level), so no lock is needed there.
-        await db.execute(
-            text("SELECT pg_advisory_xact_lock(:key)"), {"key": STARTUP_LOCK_KEY}
-        )
+    await _startup_lock(db)
     await repo.ensure_policy_state()
     await repo.sync_capabilities(CAPABILITIES)
     await _bootstrap_admins(repo, bootstrap_admins)
@@ -76,6 +80,30 @@ async def _bootstrap_admins(repo: AccessRepository, emails: Iterable[str]) -> No
                 role=user.role,
                 kind=str(user.kind),
             )
+
+
+async def sync_scope_dimensions(
+    db: AsyncSession, rows: Iterable[tuple[str, str, str, str | None, str]]
+) -> None:
+    """Mirror the enabled plugins' declared scope dimensions (D3.6).
+
+    `rows` are `(source, entity, dimension, self_attribute, description)`, as
+    `Registry.scope_catalog()` yields them. One transaction, replacing the
+    mirror wholesale. Never bumps the policy version (C8): call it before
+    `prepare_access`, whose bump invalidates any policy evaluated against the
+    old mirror.
+    """
+    try:
+        await _startup_lock(db)
+        changed = await AccessRepository(db).replace_scope_dimensions(
+            (source, entity, dimension, self_attribute, description[:DESCRIPTION_LIMIT])
+            for source, entity, dimension, self_attribute, description in rows
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    logger.info("access.scope_dimensions_synced", changed=changed)
 
 
 def _bootstrap_change(user: User) -> RbacChange:

@@ -9,7 +9,12 @@ from app.config import Settings
 @pytest.fixture(autouse=True)
 def _no_ambient_env(monkeypatch: pytest.MonkeyPatch) -> None:
     # conftest exports test-suite env vars; these tests check the bare defaults.
-    for name in ("ENVIRONMENT", "AUTH_DISABLED", "FIREBASE_PROJECT_ID"):
+    for name in (
+        "ENVIRONMENT",
+        "AUTH_DISABLED",
+        "FIREBASE_PROJECT_ID",
+        "ATLAS_PSEUDONYM_KEY",
+    ):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -56,3 +61,14 @@ def test_bootstrap_admins_are_normalised() -> None:
 
 def test_session_max_age_defaults_to_24_hours() -> None:
     assert Settings.model_validate({"environment": "test"}).session_max_age_hours == 24
+
+
+def test_pseudonym_key_defaults_to_empty() -> None:
+    # Empty degrades pseudonymised labels to suppressed (fail closed).
+    assert Settings.model_validate({"environment": "test"}).atlas_pseudonym_key == ""
+
+
+def test_pseudonym_key_reads_its_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATLAS_PSEUDONYM_KEY", "k" * 64)
+    settings = Settings.model_validate({"environment": "test"})
+    assert settings.atlas_pseudonym_key == "k" * 64

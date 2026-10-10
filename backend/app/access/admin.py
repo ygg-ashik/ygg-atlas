@@ -11,11 +11,12 @@ A failed write rolls the session back, which expires loaded objects; reload
 them before reuse.
 """
 
-from collections.abc import AsyncGenerator
+import re
+from collections.abc import AsyncGenerator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Literal, Self
+from typing import Any, Final, Literal, Self
 from uuid import UUID
 
 import structlog
@@ -27,6 +28,7 @@ from app.access.catalog import (
     ADMIN_GROUPS,
     ADMIN_USERS,
     CAPABILITIES,
+    CLEARANCES,
     ROLES,
     role_capabilities,
 )
@@ -38,18 +40,40 @@ from app.access.errors import (
 )
 from app.access.evaluator import restricts, with_ancestors
 from app.access.facts import (
+    BUILTIN_ATTRIBUTES,
     DEFAULT_TENANT,
+    EFFECT_ALLOW,
     EFFECT_DENY,
     KIND_CAPABILITY,
     KIND_CLEARANCE,
+    KIND_RESOURCE,
+    MASK_MODES,
+    MASKABLE_LABEL_CLASSES,
+    MAX_ATTRIBUTE_VALUE,
+    MAX_BUCKET_SIZE,
+    SELF_TOKEN,
     STANDING_MANAGER,
     STANDING_MEMBER,
     SUBJECT_GROUP,
     SUBJECT_USER,
     as_utc,
+    is_well_formed_scope,
 )
-from app.access.models import Grant, Group, GroupMember, RbacChange
-from app.access.patterns import InvalidPatternError, validate_pattern
+from app.access.models import (
+    Grant,
+    Group,
+    GroupMember,
+    LabelClassSetting,
+    RbacChange,
+    ScopeDimension,
+    UserAttribute,
+)
+from app.access.patterns import (
+    MAX_SEGMENTS,
+    InvalidPatternError,
+    matches,
+    validate_pattern,
+)
 from app.access.policy import Policy
 from app.access.repository import AccessRepository
 from app.access.schemas import (
@@ -153,11 +177,7 @@ def _validated_target(payload: GrantCreate, now: datetime) -> str:
         msg = "Direct user grants need a reason."
         raise InvalidChangeError(msg)
     if payload.target_kind == KIND_CLEARANCE:
-        msg = (
-            "Field clearances arrive with row and field controls; "
-            "they can't be granted yet."
-        )
-        raise InvalidChangeError(msg)
+        return _clearance_target(payload)
     if payload.target_kind == KIND_CAPABILITY:
         return _capability_target(payload)
     try:
@@ -175,6 +195,17 @@ def _capability_target(payload: GrantCreate) -> str:
         raise InvalidChangeError(msg)
     if payload.target not in CAPABILITIES:
         msg = f"Unknown capability '{payload.target}'."
+        raise InvalidChangeError(msg)
+    return payload.target
+
+
+def _clearance_target(payload: GrantCreate) -> str:
+    """A field clearance (spec §5.6): a known code, for a group or a user."""
+    if payload.target not in CLEARANCES:
+        msg = (
+            f"Unknown clearance '{payload.target}'. "
+            f"Clearances: {', '.join(CLEARANCES)}."
+        )
         raise InvalidChangeError(msg)
     return payload.target
 
@@ -235,6 +266,107 @@ def _apply_user_update(
     return before, after
 
 
+_ATTRIBUTE_KEY: Final = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+_MASK_SUPPRESS: Final = "suppress"  # the mode with no stored row (C17)
+
+
+def _check_scope_shape(payload: GrantCreate) -> None:
+    """Row scopes ride on resource allows only (spec §15), and never in a
+    shape the evaluator would treat as malformed (D3.3): storing one would
+    deny everything to everyone the grant applies to."""
+    if payload.row_scope is None:
+        return
+    if payload.effect != EFFECT_ALLOW:
+        msg = (
+            "A deny can't carry a row scope: deny the whole resource, or "
+            "narrow an allow instead."
+        )
+        raise InvalidChangeError(msg)
+    if payload.target_kind != KIND_RESOURCE:
+        msg = "Only data grants can carry a row scope."
+        raise InvalidChangeError(msg)
+    if not is_well_formed_scope(payload.row_scope):
+        msg = "That row scope is not valid."
+        raise InvalidChangeError(msg)
+
+
+def _require_clearance(actor: Actor, clearance: str) -> None:
+    """C10 (the D10 analogue): granting a clearance, or lifting a clearance
+    deny, widens access, so an API actor must hold that clearance; the
+    trusted CLI (policy None) is exempt."""
+    if actor.policy is not None and not actor.policy.has_clearance(clearance):
+        msg = (
+            f"You can only grant or lift the '{clearance}' clearance if you "
+            "hold it yourself."
+        )
+        raise AccessDeniedError(msg)
+
+
+def _covers_entity(pattern: str, source: str, entity: str) -> bool:
+    """True if `pattern` reaches anything in `source/entity`; an item pattern
+    (`demo/order/revenue`, `demo/*/revenue`) is judged by its entity part."""
+    segments = pattern.split("/")
+    if len(segments) == MAX_SEGMENTS:
+        pattern = "/".join(segments[:2])
+    return matches(pattern, f"{source}/{entity}")
+
+
+def _check_attribute_key(key: str) -> None:
+    if key in BUILTIN_ATTRIBUTES:
+        msg = (
+            f"'{key}' is built in: it always comes from the user's account "
+            "and can't be set."
+        )
+        raise InvalidChangeError(msg)
+    if not _ATTRIBUTE_KEY.fullmatch(key):
+        msg = (
+            f"'{key}' is not an attribute key: use up to 64 lowercase letters, "
+            "digits and underscores, starting with a letter."
+        )
+        raise InvalidChangeError(msg)
+
+
+def _is_live(expires_at: datetime | None, now: datetime) -> bool:
+    expiry = as_utc(expires_at)
+    return expiry is None or expiry > now
+
+
+def _not_self_attribute(actor: Actor, user: User) -> None:
+    """Attributes feed `$self` row scopes, so they are permissions (D3.5)."""
+    if actor.user_id is not None and actor.user_id == user.id:
+        msg = "You can't change your own attributes. Ask another admin."
+        raise ConflictError(msg)
+
+
+def _attribute_snapshot(row: UserAttribute | None) -> dict[str, Any] | None:
+    return None if row is None else {"key": row.key, "value": row.value}
+
+
+def _check_label_class(label_class: str, mode: str, bucket_size: int | None) -> None:
+    if label_class not in MASKABLE_LABEL_CLASSES:
+        msg = (
+            f"'{label_class}' labels can't be set: only "
+            f"{' and '.join(MASKABLE_LABEL_CLASSES)} are masked."
+        )
+        raise InvalidChangeError(msg)
+    if mode not in MASK_MODES:
+        msg = f"'{mode}' is not a mask mode. Modes: {', '.join(MASK_MODES)}."
+        raise InvalidChangeError(msg)
+    if bucket_size is not None and not 1 <= bucket_size <= MAX_BUCKET_SIZE:
+        msg = f"The bucket size must be between 1 and {MAX_BUCKET_SIZE}."
+        raise InvalidChangeError(msg)
+
+
+def _label_class_snapshot(row: LabelClassSetting | None) -> dict[str, Any] | None:
+    if row is None:
+        return None
+    return {
+        "label_class": row.label_class,
+        "mode": row.mode,
+        "bucket_size": row.bucket_size,
+    }
+
+
 class AccessAdmin:
     def __init__(
         self,
@@ -287,6 +419,10 @@ class AccessAdmin:
                 group.description = payload.description
             if "parent_id" in payload.model_fields_set:
                 await self._check_parent(actor, group.id, payload.parent_id)
+                if payload.parent_id != group.parent_id:
+                    await self._check_move_clearances(
+                        actor, group.parent_id, payload.parent_id
+                    )
                 group.parent_id = payload.parent_id
             after = _snapshot(group)
             if before == after:
@@ -341,6 +477,10 @@ class AccessAdmin:
                 member is not None and member.standing == STANDING_MANAGER
             ):
                 actor.require(ADMIN_GROUPS)
+            if member is None:
+                # Joining inherits the lineage's clearance allows (C10).
+                lineage = await self._lineage(actor, group.id)
+                await self._require_clearances(actor, lineage, EFFECT_ALLOW)
             before = _snapshot(member)
             if member is None:
                 member = GroupMember(
@@ -375,6 +515,9 @@ class AccessAdmin:
                 # Membership carries the group's and its ancestors' grants;
                 # removal lifts their denies, which widens access (D10).
                 actor.require(ADMIN_GROUPS)
+            # Leaving lifts the lineage's clearance denies (C10).
+            lineage = await self._lineage(actor, group.id)
+            await self._require_clearances(actor, lineage, EFFECT_DENY)
             before = _snapshot(member)
             await self._repo.delete(member)
             target = ("group_member", f"{group.id}:{user_id}")
@@ -397,11 +540,16 @@ class AccessAdmin:
             raise AccessDeniedError(msg)
         now = _utcnow()
         target = _validated_target(payload, now)
+        _check_scope_shape(payload)
         if payload.target_kind == KIND_CAPABILITY:
             # D10: no self-grants; only capabilities you hold.
             actor.require(target)
+        if payload.target_kind == KIND_CLEARANCE and payload.effect == EFFECT_ALLOW:
+            _require_clearance(actor, target)  # C10
         async with self._write(actor):
             await self._subject(actor, payload.subject_type, payload.subject_id)
+            if payload.row_scope is not None:
+                await self._check_scope(target, payload.row_scope)
             subject = (payload.subject_type, payload.subject_id)
             existing = await self._repo.find_grant(
                 subject, payload.effect, payload.target_kind, target
@@ -425,6 +573,7 @@ class AccessAdmin:
                 reason=payload.reason.strip(),
                 expires_at=payload.expires_at,
                 created_by=actor.user_id,
+                row_scope=payload.row_scope,
             )
             self._repo.add(grant)
             await self._commit(
@@ -461,6 +610,8 @@ class AccessAdmin:
             if grant.effect == EFFECT_DENY and grant.target_kind == KIND_CAPABILITY:
                 # D10: revoking a deny widens access; only lift one you hold.
                 actor.require(grant.target)
+            if grant.effect == EFFECT_DENY and grant.target_kind == KIND_CLEARANCE:
+                _require_clearance(actor, grant.target)  # C10
             actor.require(_grant_capability(grant.subject_type))
             before = _snapshot(grant)
             await self._repo.delete(grant)
@@ -534,6 +685,194 @@ class AccessAdmin:
             logger.exception("access.revoke_failed", user_id=str(user.id))
         else:
             logger.info("access.sessions_revoked", user_id=str(user.id))
+
+    # ---- user attributes (D3.5) -----------------------------------------
+
+    async def list_attributes(self, actor: Actor, user_id: UUID) -> list[UserAttribute]:
+        actor.require(ADMIN_USERS)
+        user = await self._user(actor, user_id)
+        return await self._repo.list_attributes(user.id)
+
+    async def set_attribute(
+        self, actor: Actor, user_id: UUID, key: str, value: str
+    ) -> UserAttribute:
+        """Set one attribute; `$self` in a row scope resolves to it."""
+        actor.require(ADMIN_USERS)  # before any lookup: no probing for user ids
+        _check_attribute_key(key)
+        value = value.strip()
+        if not 1 <= len(value) <= MAX_ATTRIBUTE_VALUE:
+            msg = f"An attribute value is 1 to {MAX_ATTRIBUTE_VALUE} characters."
+            raise InvalidChangeError(msg)
+        async with self._write(actor):
+            user = await self._user(actor, user_id)
+            _not_self_attribute(actor, user)
+            row = await self._repo.attribute(user.id, key)
+            before = _attribute_snapshot(row)
+            if row is not None and row.value == value:
+                await self._repo.commit()  # release the lock; nothing changed
+                return row
+            if row is None:
+                row = UserAttribute(user_id=user.id, key=key, value=value)
+            row.value = value
+            row.set_by = actor.user_id
+            row.set_at = _utcnow()
+            self._repo.add(row)
+            await self._commit(
+                _change(
+                    actor,
+                    "attribute.set",
+                    ("user_attribute", f"{user.id}:{key}"),
+                    before,
+                    _attribute_snapshot(row),
+                )
+            )
+        return row
+
+    async def delete_attribute(self, actor: Actor, user_id: UUID, key: str) -> None:
+        actor.require(ADMIN_USERS)
+        _check_attribute_key(key)
+        async with self._write(actor):
+            user = await self._user(actor, user_id)
+            _not_self_attribute(actor, user)
+            row = await self._repo.attribute(user.id, key)
+            if row is None:
+                msg = f"That user has no attribute '{key}'."
+                raise NotFoundError(msg)
+            before = _attribute_snapshot(row)
+            await self._repo.delete(row)
+            await self._commit(
+                _change(
+                    actor,
+                    "attribute.delete",
+                    ("user_attribute", f"{user.id}:{key}"),
+                    before,
+                    None,
+                )
+            )
+
+    # ---- label classes (D3.9) ---------------------------------------------
+
+    async def list_label_classes(self, actor: Actor) -> list[LabelClassSetting]:
+        """Both maskable classes (C12); an unset one shows as `suppress`, which
+        is what the atlas does without a row (fail closed)."""
+        actor.require(ADMIN_GROUPS)
+        stored = {row.label_class: row for row in await self._repo.list_label_classes()}
+        return [
+            stored.get(name) or LabelClassSetting(label_class=name, mode=_MASK_SUPPRESS)
+            for name in MASKABLE_LABEL_CLASSES
+        ]
+
+    async def set_label_class(
+        self,
+        actor: Actor,
+        label_class: str,
+        mode: str,
+        bucket_size: int | None = None,
+    ) -> LabelClassSetting:
+        """How a label class shows to callers without its clearance.
+        An omitted `bucket_size` keeps the stored one."""
+        actor.require(ADMIN_GROUPS)
+        _check_label_class(label_class, mode, bucket_size)
+        async with self._write(actor):
+            row = await self._repo.label_class(label_class)
+            before = _label_class_snapshot(row)
+            if row is None:
+                row = LabelClassSetting(label_class=label_class, mode=mode)
+            row.mode = mode
+            if bucket_size is not None:
+                row.bucket_size = bucket_size
+            after = _label_class_snapshot(row)
+            if before == after:
+                await self._repo.commit()  # release the lock; nothing changed
+                return row
+            row.updated_at = _utcnow()
+            self._repo.add(row)
+            await self._commit(
+                _change(
+                    actor,
+                    "label_class.update",
+                    ("label_class", label_class),
+                    before,
+                    after,
+                )
+            )
+        return row
+
+    # ---- scope dimensions (D3.6) ------------------------------------------
+
+    async def list_scope_dimensions(self, actor: Actor) -> list[ScopeDimension]:
+        """The dimensions enabled plugins declare, for building scoped grants."""
+        actor.require_any(ADMIN_GROUPS, ADMIN_USERS)
+        return await self._repo.scope_dimensions()
+
+    async def _check_scope(
+        self, pattern: str, scope: Mapping[str, Sequence[str]]
+    ) -> None:
+        """D3.6: every dimension is declared by at least one entity the pattern
+        covers (for a one-entity pattern: by that entity), and `$self` only on
+        a dimension that declares it. The mirror holds enabled plugins only, so
+        a scope on a disabled plugin's data is rejected (fail closed)."""
+        declared = {
+            row.dimension
+            for row in await self._repo.scope_dimensions()
+            if _covers_entity(pattern, row.source, row.entity)
+        }
+        if not declared:
+            msg = (
+                f"Nothing under '{pattern}' can be row-scoped: its data declares "
+                "no scope dimensions, or its data source isn't enabled."
+            )
+            raise InvalidChangeError(msg)
+        unknown = sorted(set(scope) - declared)
+        if unknown:
+            msg = (
+                f"The data under '{pattern}' can't be scoped by "
+                f"{', '.join(unknown)}. It can be scoped by "
+                f"{', '.join(sorted(declared))}."
+            )
+            raise InvalidChangeError(msg)
+        self_attributes = await self._repo.self_attributes()
+        for dimension in sorted(scope):
+            if SELF_TOKEN in scope[dimension] and dimension not in self_attributes:
+                msg = (
+                    f"'{dimension}' has no {SELF_TOKEN}: list the values to "
+                    "match instead."
+                )
+                raise InvalidChangeError(msg)
+
+    async def _lineage(self, actor: Actor, group_id: UUID | None) -> frozenset[UUID]:
+        if group_id is None:
+            return frozenset()
+        groups = await self._repo.tenant_groups(actor.tenant)
+        return with_ancestors((group_id,), groups)
+
+    async def _check_move_clearances(
+        self, actor: Actor, old_parent: UUID | None, new_parent: UUID | None
+    ) -> None:
+        """Re-parenting a group gains the new ancestors' clearance allows and
+        lifts the old ancestors' clearance denies for all its members (C10)."""
+        old = await self._lineage(actor, old_parent)
+        new = await self._lineage(actor, new_parent)
+        await self._require_clearances(actor, new - old, EFFECT_ALLOW)
+        await self._require_clearances(actor, old - new, EFFECT_DENY)
+
+    async def _require_clearances(
+        self, actor: Actor, group_ids: frozenset[UUID], effect: str
+    ) -> None:
+        """`_require_clearance` for every live clearance grant with `effect`
+        on `group_ids`; the CLI (no policy) is exempt."""
+        if actor.policy is None or not group_ids:
+            return
+        now = _utcnow()
+        codes = {
+            grant.target
+            for grant in await self._repo.group_grants(group_ids)
+            if grant.target_kind == KIND_CLEARANCE
+            and grant.effect == effect
+            and _is_live(grant.expires_at, now)
+        }
+        for code in sorted(codes):
+            _require_clearance(actor, code)
 
     # ---- helpers ------------------------------------------------------------
 

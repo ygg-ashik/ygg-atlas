@@ -107,6 +107,28 @@ async def create_group(
 - Pyright runs in `standard` mode on `app`, `tests` and `scripts`. New self-contained modules are
   added to `[tool.pyright].strict`.
 
+### 2.5 Row scopes and label masking (auth phase 3)
+
+The atlas answers "which rows?" and "which labels may be shown?" on every execution, without ever
+importing `app.access`. It asks the `ResourcePolicy` protocol (`app/atlas/policy.py`) for
+`row_scope(resource)`, `has_clearance(code)` and `mask_mode(label_class)`; `access` resolves `$self`
+and clearances and hands over concrete values only.
+
+| Concern | Where it happens (and nowhere else) |
+|---|---|
+| Row scopes | `app/atlas/scope.py` (pure). `{{scope}}` compiles to `AND TRUE` or numbered bound `IN` lists, `AND ((col IN (:scope_0_0, ...)) OR (...))`. Column text comes only from linted YAML; values are always bind parameters. Caps: 100 values per dimension, 50 alternatives, 1000 binds per predicate. A value set that is a bare string or holds duplicates is rejected. An empty scope, an over-cap scope, or one naming only undeclared dimensions **fails closed** (denied, and hidden from discovery). |
+| Registry lint | `app/atlas/registry.py`: in an entity with `scope_dimensions`, every metric, breakdown, funnel-step and freshness query contains `{{scope}}` at the top level of its `WHERE` clause, followed only by `AND`, a later clause or the end, with no comments, set operations, top-level `OR` or `BETWEEN`, prefixed or dollar-quoted strings, backslashes or `;` in the query (`scope_placement_error`; `AND (...)` binds tighter than `OR` and looser than `IS`/`=`); any other `{{...}}` is rejected; one `self` attribute per dimension registry-wide; every breakdown declares `breakdown_label_class`; dimension names match `^[a-z][a-z0-9_]{0,63}$`; no query may name a bind `:scope_*` (reserved for compiled scopes, checked again at compile time). The registry raises while it is built at startup, so a violation stops the backend from starting. |
+| Label masking | `app/atlas/masking.py` (pure), applied once inside `AtlasTools`, so chat, insights, MCP and evals all inherit it. Modes: pseudonymise (HMAC with `ATLAS_PSEUDONYM_KEY`), suppress, bucket. A missing setting, unknown mode or empty or blank key degrades to suppress. |
+| Dimension mirror | At startup `access.sync_scope_dimensions` copies `Registry.scope_catalog()` into the `scope_dimensions` table (before `prepare_access`), so `access` validates scoped grants and resolves `$self` without importing `atlas`. |
+| Provenance and audit | Provenance carries `scope` (dimension names, never values) and `masking`; `atlas_audit_log.scope` / `.masking` keep the concrete compiled alternatives and row counts. |
+
+`app.atlas` reads `app.config` for the pseudonym key only (platform import, allowed by the layers
+contract). Pyright checks `scope.py` and `masking.py` in strict mode.
+
+**Result caching rule (D3.12).** There is no result cache today. Any future cache of atlas results
+MUST key on `(user_id, policy_version, sha256(compiled scope + clearances + label modes))`; a key
+without the policy inputs would serve one user's rows or unmasked labels to another.
+
 ## 3. Frontend (`frontend/src`)
 
 ### 3.1 Layers

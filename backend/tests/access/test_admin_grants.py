@@ -87,7 +87,10 @@ async def test_a_group_grant_reaches_members_on_their_next_request(db) -> None:
     ("changes", "message"),
     [
         ({"target": "demo order"}, "not a resource pattern"),
-        ({"target_kind": "clearance", "target": "fields:people_names"}, "clearances"),
+        (
+            {"target_kind": "clearance", "target": "fields:salaries"},
+            "Unknown clearance",
+        ),
         ({"target_kind": "capability", "target": "mcp:use"}, "Groups grant data"),
         ({"expires_at": datetime(2020, 1, 1, tzinfo=UTC)}, "future"),
     ],

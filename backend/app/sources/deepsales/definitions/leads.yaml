@@ -8,7 +8,13 @@ fields:
   stage: new | contacted | qualified | won | lost
   channel: Marketing channel (registrations, chat, helpdesk, upn, call_center, ...)
   recommended_team: direct | platform (from firmographic scoring)
-freshness_query: SELECT MAX(last_activity_at) AS freshest FROM leads
+scope_dimensions:
+  owner:
+    column: owner_email
+    self: csm_email
+    description: Sales owner of the lead ($self = the user's csm_email)
+freshness_query: >
+  SELECT MAX(last_activity_at) AS freshest FROM leads WHERE TRUE {{scope}}
 metrics:
   - id: ds_leads_created
     name: Leads created
@@ -16,10 +22,11 @@ metrics:
     unit: leads
     query: >
       SELECT COUNT(*) AS value FROM leads
-      WHERE created_at >= :start AND created_at <= :end
+      WHERE created_at >= :start AND created_at <= :end {{scope}}
+    breakdown_label_class: category
     breakdown_query: >
       SELECT COALESCE(channel, 'unknown') AS label, COUNT(*) AS value FROM leads
-      WHERE created_at >= :start AND created_at <= :end
+      WHERE created_at >= :start AND created_at <= :end {{scope}}
       GROUP BY 1 ORDER BY value DESC LIMIT :limit
 funnels:
   - id: ds_lead_funnel
@@ -34,21 +41,22 @@ funnels:
         name: Created
         query: >
           SELECT COUNT(*) AS value FROM leads
-          WHERE created_at >= :start AND created_at <= :end
+          WHERE created_at >= :start AND created_at <= :end {{scope}}
       - id: contacted
         name: Contacted
         query: >
           SELECT COUNT(*) AS value FROM leads
           WHERE created_at >= :start AND created_at <= :end
-            AND stage IN ('contacted', 'qualified', 'won')
+            AND stage IN ('contacted', 'qualified', 'won') {{scope}}
       - id: qualified
         name: Qualified
         query: >
           SELECT COUNT(*) AS value FROM leads
           WHERE created_at >= :start AND created_at <= :end
-            AND stage IN ('qualified', 'won')
+            AND stage IN ('qualified', 'won') {{scope}}
       - id: won
         name: Won
         query: >
           SELECT COUNT(*) AS value FROM leads
           WHERE created_at >= :start AND created_at <= :end AND stage = 'won'
+            {{scope}}

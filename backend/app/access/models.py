@@ -1,4 +1,5 @@
-"""Access-control tables (spec §7). Row scopes and clearances arrive in phase 3."""
+"""Access-control tables (spec §7): groups, grants (with row scopes), user
+attributes for `$self`, label-class mask settings and the scope-dimension mirror."""
 
 from datetime import UTC, datetime
 from typing import Any
@@ -97,6 +98,8 @@ class Grant(SQLModel, table=True):
     created_at: datetime = Field(
         default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True)
     )
+    # None = all rows; else {dimension: [values]} (spec §5.5). Kept last (K2).
+    row_scope: dict[str, list[str]] | None = Field(default=None, sa_column=Column(JSON))
 
 
 class RbacChange(SQLModel, table=True):
@@ -115,6 +118,53 @@ class RbacChange(SQLModel, table=True):
     after: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
     at: datetime = Field(
         default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True), index=True
+    )
+
+
+class UserAttribute(SQLModel, table=True):
+    """Admin-set attribute that `$self` in a row scope resolves to (D3.5)."""
+
+    __tablename__ = "user_attributes"  # pyright: ignore[reportAssignmentType]  # sqlmodel types it as declared_attr
+
+    user_id: UUID = Field(foreign_key="users.id", primary_key=True)
+    key: str = Field(primary_key=True, max_length=64)
+    value: str = Field(max_length=200)
+    set_by: UUID | None = Field(default=None, foreign_key="users.id")
+    set_at: datetime = Field(default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True))
+
+
+class LabelClassSetting(SQLModel, table=True):
+    """How a breakdown label class is shown without its clearance (spec §5.6)."""
+
+    __tablename__ = "label_class_settings"  # pyright: ignore[reportAssignmentType]  # sqlmodel types it as declared_attr
+    __table_args__ = (
+        CheckConstraint(
+            "mode IN ('pseudonymise', 'suppress', 'bucket')",
+            name="ck_label_class_settings_mode",
+        ),
+        CheckConstraint("bucket_size > 0", name="ck_label_class_settings_bucket_size"),
+    )
+
+    label_class: str = Field(primary_key=True, max_length=32)
+    mode: str = Field(max_length=16)
+    bucket_size: int = Field(default=5, sa_column_kwargs={"server_default": "5"})
+    updated_at: datetime = Field(
+        default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True)
+    )
+
+
+class ScopeDimension(SQLModel, table=True):
+    """Mirror of the scope dimensions plugins declare, synced at startup (D3.6)."""
+
+    __tablename__ = "scope_dimensions"  # pyright: ignore[reportAssignmentType]  # sqlmodel types it as declared_attr
+
+    source: str = Field(primary_key=True, max_length=64)
+    entity: str = Field(primary_key=True, max_length=64)
+    dimension: str = Field(primary_key=True, max_length=64)
+    self_attribute: str | None = Field(default=None, max_length=64)
+    description: str = Field(default="", max_length=200)
+    synced_at: datetime = Field(
+        default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True)
     )
 
 
