@@ -78,6 +78,7 @@ _STATUS_SETS: Final[Mapping[str, tuple[str, ...]]] = {DECIDED: (APPROVED, DECLIN
 
 KIND_GROUP: Final = "group"
 KIND_ROLE: Final = "role"
+_ITEM_SEGMENTS: Final = 3  # source/entity/item: the only requestable resource
 
 NO_SUCH_REQUEST: Final = "No such request."
 ALREADY_DECIDED: Final = "This request was already decided."
@@ -171,6 +172,11 @@ class AccessRequests(AccessAdmin):
             ):
                 raise AccessDeniedError(NOT_ACTIVE)
             target = await self._valid_target(user, payload.kind, payload.target)
+            if payload.kind == KIND_RESOURCE and policy.allows(target):
+                # Already allowed (maybe row-scoped): an unscoped direct grant
+                # would silently lift the scope, so there is nothing to request.
+                msg = f"You can already see {target}."
+                raise InvalidChangeError(msg)
             if await self._repo.count_pending(user.id) >= MAX_PENDING:
                 msg = (
                     f"You have {MAX_PENDING} pending requests; cancel one or wait "
@@ -369,7 +375,9 @@ class AccessRequests(AccessAdmin):
                 msg = f"You already have the {user.role} role; ask for a higher one."
                 raise InvalidChangeError(msg)
             return target
-        if not is_resource_path(target):
+        # One exact item only: an entity or source path could never be approved
+        # (grants on those need a '/*' pattern, which would widen the request).
+        if not is_resource_path(target) or len(target.split("/")) != _ITEM_SEGMENTS:
             msg = (
                 f"'{target}' is not a resource path like demo/order/revenue; "
                 "request one exact resource."
@@ -465,6 +473,21 @@ class AccessRequests(AccessAdmin):
                 actor, request.user_id, UserUpdate(role=request.target)
             )
             return change
+        return await self._stage_resource(actor, request, expires_at, now)
+
+    async def _stage_resource(
+        self,
+        actor: Actor,
+        request: AccessRequest,
+        expires_at: datetime | None,
+        now: datetime,
+    ) -> RbacChange | None:
+        """Stage the exact resource grant; None when the requester can already
+        see it. Allowed since the request was made (possibly row-scoped) makes
+        the approval a no-op: an unscoped grant would silently lift the scope."""
+        requester = await self._access.policy_for_user(request.user_id)
+        if requester.allows(request.target):
+            return None
         existing = await self._repo.find_grant(
             (SUBJECT_USER, request.user_id), EFFECT_ALLOW, KIND_RESOURCE, request.target
         )

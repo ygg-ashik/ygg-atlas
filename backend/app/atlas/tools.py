@@ -400,7 +400,9 @@ class AtlasTools:
         except Exception:
             logger.exception("atlas.policy_error", resource=resource)
             reason = POLICY_FAILED
-        return AtlasAccessDeniedError(label, reason, resource=resource)
+        # A crashed policy check offers no "request access" path (B7).
+        denied = None if reason == POLICY_FAILED else resource
+        return AtlasAccessDeniedError(label, reason, resource=denied)
 
     def _hidden(
         self, resource: str, label: str, entity: EntityDef | None

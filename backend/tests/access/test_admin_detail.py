@@ -62,7 +62,7 @@ async def test_user_detail_lists_groups_direct_grants_and_pending_count(db) -> N
     grant = await add_grant(db, sara, "demo/*")
     await add_grant(db, growth, "demo/order/*")  # a group grant: not direct
     await _ask(db, sara, "role", "analyst")
-    await _ask(db, sara, "resource", "demo/order/revenue")
+    await _ask(db, sara, "resource", "deepsales/ds_task/ds_open_tasks")
 
     detail = await admin_for(db).user_detail(actor, sara.id)
 

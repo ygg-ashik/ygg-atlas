@@ -234,6 +234,26 @@ async def test_policy_failure_has_no_denied_key(db):
     assert "denied" not in result
 
 
+class _ReasonCrashPolicy(StaticPolicy):
+    """Denies everything, then crashes while explaining why."""
+
+    def deny_reason(self, resource: str) -> str:
+        raise RuntimeError("policy store down")
+
+
+async def test_a_crashed_deny_reason_offers_no_request_path(db):
+    tools = AtlasTools(
+        AtlasCaller(user_id=uuid4(), auth_method="test"),
+        _ReasonCrashPolicy(allowed=()),
+        db=db,
+    )
+    start, end = _range(7)
+    result = await tools.execute(
+        "query_metric", {"metric_id": "revenue", "start_date": start, "end_date": end}
+    )
+    assert "denied" not in result
+
+
 async def test_other_failures_have_no_denied_key(db):
     tools = make_tools(db=db)
     result = await tools.execute("query_metric", {"metric_id": "nope"})
