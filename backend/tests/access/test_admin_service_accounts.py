@@ -45,7 +45,7 @@ async def test_admin_creates_a_service_account(db) -> None:
     assert user.owner_user_id == actor.user_id
     assert user.tenant == actor.tenant
     assert await policy_version(db) == version + 1
-    change = (await admin.list_changes(actor))[0]
+    change = (await admin.list_changes(actor)).items[0]
     assert change.action == "service_account.create"
     assert (change.object_type, change.object_id) == ("user", str(user.id))
     assert change.before is None
@@ -108,7 +108,7 @@ async def test_cli_actor_may_create_one(db) -> None:
 
     assert user.owner_user_id is None
     assert user.role == "admin"
-    change = (await admin.list_changes(Actor.cli()))[0]
+    change = (await admin.list_changes(Actor.cli())).items[0]
     assert (change.action, change.via, change.actor_user_id) == (
         "service_account.create",
         "cli",

@@ -3,10 +3,14 @@
 - clarify: the agent asks the user to choose instead of guessing (guardrail #1).
 - artifact: a table built deterministically from an audited atlas tool result
   (guardrail #2: numbers come from tool output, never from LLM prose).
+- denied: a policy denial of one exact resource, so the UI can offer a
+  prefilled access request. Resource path and label only, never numbers.
 """
 
 from collections.abc import Callable
 from typing import Any
+
+from app.atlas import DENIED_KEY
 
 MAX_CLARIFY_OPTIONS = 4
 
@@ -94,9 +98,15 @@ def _first_provenance(result: dict[str, Any]) -> dict[str, Any] | None:
     return prov[0] if prov else None
 
 
+_MASKING_KEYS = ("suppressed_rows", "others_covers")
+
+
 def _breakdown(result: dict[str, Any], seq: int) -> Block | None:
     rows = [[r.get("label"), r.get("value")] for r in result.get("rows", [])]
-    if not rows:
+    # Masking facts (D3.8), only when present. A fully suppressed breakdown
+    # still yields a row-less artifact so the UI can say how many rows were hidden.
+    masking = {k: result[k] for k in _MASKING_KEYS if result.get(k) is not None}
+    if not rows and "suppressed_rows" not in masking:
         return None
     return {
         "id": f"metric_breakdown:{result.get('metric_id')}:{seq}",
@@ -105,6 +115,7 @@ def _breakdown(result: dict[str, Any], seq: int) -> Block | None:
         "unit": result.get("unit") or "",
         "columns": ["Label", "Value"],
         "rows": rows,
+        **masking,
     }
 
 
@@ -160,3 +171,19 @@ def artifact_from_result(tool: str, result: dict[str, Any], seq: int) -> Block |
     if body is None:
         return None
     return {"kind": "artifact", **body, "provenance": provenance}
+
+
+def denied_from_result(result: dict[str, Any]) -> Block | None:
+    """A `denied` block from a policy-denial tool result, else None.
+
+    Shape is the frontend `DeniedBlock` contract: {kind, resource, label}.
+    """
+    payload = result.get(DENIED_KEY)
+    if not isinstance(payload, dict):
+        return None
+    resource, label = payload.get("resource"), payload.get("label")
+    if not (isinstance(resource, str) and isinstance(label, str)):
+        return None
+    if not (resource and label):
+        return None
+    return {"kind": "denied", "resource": resource, "label": label}

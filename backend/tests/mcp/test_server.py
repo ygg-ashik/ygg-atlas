@@ -263,6 +263,29 @@ async def test_run_tool_runs_as_the_principal_with_its_grants(
     assert "revenue" in {m["id"] for m in result["sources"][0]["metrics"]}
 
 
+async def test_a_policy_denial_is_unchanged_over_mcp(
+    db: AsyncSession, signed_in: SignedIn
+) -> None:
+    """The chat-only `denied` block never reaches an MCP client."""
+    analyst = await _user(db)
+    signed_in.append(await _token(db, analyst))
+    await add_grant(db, analyst, "demo/order/*")
+
+    result = await mcp_server.run_tool(
+        "funnel_analyze",
+        {
+            "funnel_id": "checkout_funnel",
+            "start_date": "2026-01-01",
+            "end_date": "2026-01-07",
+        },
+    )
+
+    assert result == {
+        "error": "Checkout funnel isn't available to you. "
+        "Ask an atlas admin if you need it."
+    }
+
+
 async def _boom_policy(*_args: object) -> None:
     raise PolicyUnavailableError("policy store at 10.0.0.5 unreachable")
 

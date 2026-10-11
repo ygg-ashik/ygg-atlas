@@ -11,7 +11,7 @@ from app.access.errors import (
     NotFoundError,
 )
 from app.access.repository import AccessRepository
-from app.access.schemas import GroupCreate, UserUpdate
+from app.access.schemas import GroupCreate, UserQuery, UserUpdate
 from app.access.service import AccessService
 from app.identity.models import User
 from app.identity.tokens import VerifiedToken
@@ -66,7 +66,7 @@ async def test_a_role_change_is_audited_and_takes_effect(db) -> None:
         sara.id
     )
     assert policy.has("mcp:use")
-    change = (await admin.list_changes(actor))[0]
+    change = (await admin.list_changes(actor)).items[0]
     assert (change.action, change.before, change.after) == (
         "user.role",
         {"role": "viewer"},
@@ -164,7 +164,7 @@ async def test_a_no_op_update_writes_no_change_and_leaves_the_version_unchanged(
 
     assert user.role == "viewer"
     assert await policy_version(db) == before_version
-    assert await admin_for(db).list_changes(actor) == []
+    assert (await admin_for(db).list_changes(actor)).items == []
 
 
 async def test_changing_both_fields_writes_one_change(db) -> None:
@@ -175,7 +175,7 @@ async def test_changing_both_fields_writes_one_change(db) -> None:
         actor, sara.id, UserUpdate(role="analyst", status="disabled")
     )
 
-    changes = await admin_for(db).list_changes(actor)
+    changes = (await admin_for(db).list_changes(actor)).items
     assert len(changes) == 1
     assert changes[0].action == "user.update"
     assert changes[0].before == {"role": "viewer", "status": "active"}
@@ -185,7 +185,7 @@ async def test_changing_both_fields_writes_one_change(db) -> None:
 async def test_user_search_is_case_insensitive(db) -> None:
     actor = await actor_with(db)
     await make_user(db, "sara.ali@yougotagift.com")
-    users = await admin_for(db).list_users(actor, "SARA")
+    users = (await admin_for(db).list_users(actor, UserQuery(q="SARA"))).items
     assert [u.email for u in users] == ["sara.ali@yougotagift.com"]
 
 
@@ -197,13 +197,13 @@ async def test_list_users_excludes_other_tenants_and_matches_display_name(db) ->
     db.add(other_tenant)
     await db.commit()
 
-    by_name = await admin_for(db).list_users(actor, "Diaz")
+    by_name = (await admin_for(db).list_users(actor, UserQuery(q="Diaz"))).items
     assert [u.email for u in by_name] == ["nina@yougotagift.com"]
 
-    wildcard = await admin_for(db).list_users(actor, "%")
+    wildcard = (await admin_for(db).list_users(actor, UserQuery(q="%"))).items
     assert wildcard == []
 
-    all_users = await admin_for(db).list_users(actor)
+    all_users = (await admin_for(db).list_users(actor, UserQuery())).items
     assert "nina@acme.example" not in [u.email for u in all_users]
 
 
@@ -227,7 +227,7 @@ async def test_the_change_log_needs_admin_audit_and_is_newest_first(db) -> None:
     await admin.create_group(actor, GroupCreate(name="first"))
     await admin.create_group(await fresh(db, actor), GroupCreate(name="second"))
 
-    changes = await admin.list_changes(actor)
+    changes = (await admin.list_changes(actor)).items
 
     assert len(changes) == 2
     assert changes[0].at >= changes[1].at
@@ -244,7 +244,7 @@ async def test_changes_in_another_tenant_are_not_listed(db) -> None:
     await admin_for(db).create_group(other_actor, GroupCreate(name="acme-group"))
 
     actor = await actor_with(db)
-    changes = await admin_for(db).list_changes(actor)
+    changes = (await admin_for(db).list_changes(actor)).items
 
     assert changes == []
 

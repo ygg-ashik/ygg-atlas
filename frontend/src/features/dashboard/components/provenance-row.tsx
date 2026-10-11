@@ -1,6 +1,7 @@
 import type { Provenance } from '@/api/chat';
 import { freshnessLabel, isStale } from '@/lib/freshness';
-import { cn } from '@/ui';
+import { policyLabels } from '@/lib/provenance-policy';
+import { cn, Tag } from '@/ui';
 
 /** Provenance chip (guardrail 2): source plus data age; amber once the source is past its SLA. */
 export function SourceChip({ provenance }: { provenance: Provenance }) {
@@ -22,5 +23,17 @@ export function SourceChip({ provenance }: { provenance: Provenance }) {
       {source}
       {freshness && ` · ${freshnessLabel(freshness)}`}
     </span>
+  );
+}
+
+/** The source chip followed by any scope and masking chips (DESIGN.md › Policy chips). */
+export function ProvenanceRow({ provenance }: { provenance: Provenance }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <SourceChip provenance={provenance} />
+      {policyLabels([provenance]).map((label) => (
+        <Tag key={label}>{label}</Tag>
+      ))}
+    </div>
   );
 }

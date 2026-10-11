@@ -368,7 +368,7 @@ API routes use `require_capability(...)` dependencies built on the same Policy.
 | `api_tokens` | id, user_id, kind (oauth_access, oauth_refresh, pat, service), token_hash unique, prefix, name, scope_narrowing jsonb null, client_id null, family_id null, expires_at, last_used_at, revoked_at |
 | `oauth_clients` | client_id, name, redirect_uris, registered_at, revoked_at |
 | `oauth_codes` | code_hash, client_id, user_id, code_challenge, redirect_uri, resource, expires_at (60 s), used_at |
-| `access_requests` | id, user_id, kind (group, role), target, note, status, decided_by, decided_at |
+| `access_requests` | id, tenant, user_id, kind (group, role, resource), target, note, status (pending, approved, declined, cancelled), decided_by, decided_at, decision_note, created_at; one pending request per (user_id, kind, target) |
 | `rbac_changes` | id, actor_user_id, action, object_type, object_id, before jsonb, after jsonb, at — append-only |
 | `policy_state` | single row: policy_version bigint, incremented on every RBAC write |
 
@@ -493,6 +493,25 @@ Each phase ships independently, gated by tests and evals.
 
 Until phase 5, administration happens through the admin API (and the bootstrap admins).
 
+**Phase 5 notes (access requests).**
+
+1. `kind=resource` is an accepted addition to the request kinds (group, role). Approving one creates
+   exactly the requested resource path as a direct user `allow` grant, with the reason
+   "Access request <id>: <note>" and a 90-day default expiry the approver may change or remove; the
+   approver can't widen the path (wider access goes through the grant editor). If the user already
+   holds an identical but expired grant, the approval is refused (409) until that grant is revoked.
+2. Lifecycle: `pending → approved | declined | cancelled`. Only active users ask; the requester may
+   cancel while pending; nobody decides their own request. `admin:users` decides role and resource
+   requests, `admin:groups` decides every group request, and a group's managers decide group
+   requests for the groups they manage (including subgroups). A request outside the caller's scope
+   reads as not found.
+3. Create, cancel and decline change no access, so they write no `rbac_changes` row and do not bump
+   `policy_version`. An approval is one transaction under the admin write lock: the access change
+   (`member.put`, `user.role` or `grant.create`, with the usual D8/D10 checks) and a
+   `request.approve` row commit with one version bump. An approval whose access is already held
+   (already a member, role already at or above, an identical live grant) writes only
+   `request.approve`, so it never demotes. Approving for a requester whose account has since been
+   disabled is refused (409), checked under the lock.
 ### Phase 4 deltas (MCP authentication, as built)
 
 Phase 4 follows §4.1, §4.3 and §11.5 with these recorded changes (plan

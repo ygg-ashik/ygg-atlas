@@ -138,6 +138,14 @@ def _check_artifact(golden: Golden, turn: Turn) -> str:
     return ""
 
 
+def _check_denied_block(golden: Golden, turn: Turn) -> str:
+    if golden.get("expect_denied_block") and not any(
+        b.get("kind") == "denied" for b in turn.blocks
+    ):
+        return "expected a denied block (request-access path), got none"
+    return ""
+
+
 def _check_none(golden: Golden, turn: Turn) -> str:
     """None of `expect_none` may appear in anything the user sees: the answer,
     its blocks (artifact rows included) and its provenance (case-insensitive)."""
@@ -162,6 +170,7 @@ _CHECKS: list[Callable[[Golden, Turn], str]] = [
     _check_no_numbers,
     _check_clarify,
     _check_artifact,
+    _check_denied_block,
     _check_none,
 ]
 

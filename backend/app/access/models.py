@@ -2,7 +2,7 @@
 attributes for `$self`, label-class mask settings and the scope-dimension mirror."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Final
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -11,11 +11,14 @@ from sqlalchemy import (
     BigInteger,
     CheckConstraint,
     Column,
+    Index,
     UniqueConstraint,
+    text,
 )
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, SQLModel, col
 
 from app.access.facts import DEFAULT_TENANT, STANDING_MEMBER
+from app.models.audit import AtlasAuditLog
 
 
 def _utcnow() -> datetime:
@@ -181,3 +184,64 @@ class PolicyState(SQLModel, table=True):
     updated_at: datetime = Field(
         default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True)
     )
+
+
+REQUEST_KINDS: Final = ("group", "role", "resource")
+REQUEST_STATUSES: Final = ("pending", "approved", "declined", "cancelled")
+_PENDING = "status = 'pending'"
+
+
+class AccessRequest(SQLModel, table=True):
+    """A user's ask for a group, a role or an exact resource (spec §3.2 step 4).
+
+    At most one pending request per (user_id, kind, target): a partial unique index.
+    """
+
+    __tablename__ = "access_requests"  # pyright: ignore[reportAssignmentType]  # sqlmodel types it as declared_attr
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('group', 'role', 'resource')", name="ck_access_requests_kind"
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'declined', 'cancelled')",
+            name="ck_access_requests_status",
+        ),
+        Index(
+            "uq_access_requests_one_pending",
+            "user_id",
+            "kind",
+            "target",
+            unique=True,
+            sqlite_where=text(_PENDING),
+            postgresql_where=text(_PENDING),
+        ),
+        Index(
+            "ix_access_requests_tenant_status_created", "tenant", "status", "created_at"
+        ),
+    )
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    tenant: str = Field(default=DEFAULT_TENANT, max_length=64)
+    user_id: UUID = Field(foreign_key="users.id", index=True)
+    kind: str = Field(max_length=16)
+    target: str = Field(max_length=200)
+    note: str = Field(max_length=500)
+    status: str = Field(default="pending", max_length=16)
+    decided_by: UUID | None = Field(default=None, foreign_key="users.id")
+    decided_at: datetime | None = Field(default=None, sa_type=TIMESTAMP(timezone=True))
+    decision_note: str = Field(default="", max_length=500)
+    created_at: datetime = Field(
+        default_factory=_utcnow, sa_type=TIMESTAMP(timezone=True)
+    )
+
+
+# Keyset paging and the summary window of the admin decision log (phase 5) read
+# atlas_audit_log by (created_at, id). The index is declared here, not in
+# app/models/audit.py, because that table's module is shared with phases 3 and 4
+# (contracts.md); access owns the only reader that needs it. Migration 0006
+# creates it.
+Index(
+    "ix_atlas_audit_log_created_at_id",
+    col(AtlasAuditLog.created_at),
+    col(AtlasAuditLog.id),
+)

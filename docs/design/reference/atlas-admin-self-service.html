@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Atlas · Admin & self-service (auth phase 5 review)</title>
+<!-- Design-review mockup for auth phase 5 (admin and self-service UI). Built on DESIGN.md
+     "Atlas Hybrid Glass" tokens only; DESIGN.md stays authoritative. Not production code.
+     Content mirrors the real backend: capability catalog (app/access/catalog.py), resource paths
+     (app/access/patterns.py), admin error sentences (app/access/admin.py), plugin definitions. -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300..700&family=Source+Serif+4:opsz,wght@8..60,400..600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═════════ TOKENS · DESIGN.md (light default) ═════════ */
+body{
+  --canvas:#faf9f5;--card:#ffffff;--card-2:#f7f3ec;--ink:#141413;--body:#3d3d3a;--muted:#6c6a64;--muted-2:#8e8b82;
+  --hair:#14141314;--hair-2:#1414130d;--accent:#b45536;--accent-text:#b45536;--accent-soft:#b455361f;--on-accent:#ffffff;
+  --pos:#3f7d4e;--neg:#b4452f;--warn:#b7791f;--scrim:#0000002e;
+  --glass:#ffffff9e;--glass-heavy:#ffffffb8;--glass-edge:#ffffffcc;
+  --glass-shadow:0 1px 1px rgba(0,0,0,.04),0 10px 30px rgba(0,0,0,.08);--glass-spec:inset 0 1px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(0,0,0,.03);
+  --wash:radial-gradient(60% 50% at 15% -10%,rgba(232,165,90,.16),transparent 70%),radial-gradient(50% 40% at 95% 0%,rgba(180,85,54,.10),transparent 70%);
+  --blur:saturate(180%) blur(22px);
+  --sans:Inter,-apple-system,BlinkMacSystemFont,system-ui,sans-serif;--serif:"Source Serif 4",Georgia,serif;--mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  --ease:cubic-bezier(.22,1,.36,1);--sheet:cubic-bezier(.32,.72,0,1);
+}
+body[data-theme=dark]{
+  --canvas:#1a1917;--card:#252320;--card-2:#2b2925;--ink:#f3f0ea;--body:#d6d2ca;--muted:#a09d96;--muted-2:#7d7a73;
+  --hair:#ffffff14;--hair-2:#ffffff0d;--accent-text:#d97a57;--accent-soft:#d97a5733;
+  --pos:#7cc28c;--neg:#e48a72;--warn:#e0a84a;
+  --glass:#28262291;--glass-heavy:#242320b3;--glass-edge:#ffffff1a;
+  --glass-shadow:0 1px 1px rgba(0,0,0,.3),0 12px 36px rgba(0,0,0,.5);--glass-spec:inset 0 1px 0 rgba(255,255,255,.12),inset 0 -1px 0 rgba(0,0,0,.2);
+  --wash:radial-gradient(60% 50% at 15% -10%,rgba(232,165,90,.09),transparent 70%),radial-gradient(50% 40% at 95% 0%,rgba(180,85,54,.07),transparent 70%);
+}
+/* accessibility layers: forced by the dock, or by the OS media queries */
+body.hc{--hair:color-mix(in srgb,var(--ink) 35%,transparent);--hair-2:color-mix(in srgb,var(--ink) 22%,transparent);--muted:var(--body);--muted-2:var(--body)}
+
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{font-family:var(--sans);background:var(--canvas);color:var(--ink);-webkit-font-smoothing:antialiased;font-size:15px;line-height:1.5;transition:background-color .45s var(--ease),color .45s var(--ease)}
+button,input,select,textarea{font:inherit;color:inherit}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}
+.serif{font-family:var(--serif);font-weight:400;letter-spacing:-.01em}
+h1,h2,h3{font-family:var(--serif);font-weight:400;letter-spacing:-.01em;margin:0}
+a{color:var(--accent-text);text-decoration:none;cursor:pointer}a:hover{text-decoration:underline}
+.muted{color:var(--muted)}.cap{font-size:11.5px;color:var(--muted);letter-spacing:.005em}
+
+/* glass: floating chrome only */
+.glass{background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-edge);box-shadow:var(--glass-shadow),var(--glass-spec)}
+.spec::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(180px 100px at var(--x,50%) var(--y,-30%),rgba(255,255,255,.55),transparent 65%);mix-blend-mode:soft-light}
+body.rt .glass,body.hc .glass{background:var(--card);backdrop-filter:none;-webkit-backdrop-filter:none}
+body.rt .spec::after,body.hc .spec::after{display:none}
+body.hc .glass{border:1px solid var(--ink)}
+body.rt .edge-top,body.hc .edge-top{display:none}
+
+/* solid surfaces */
+.card{background:var(--card);border-radius:18px;box-shadow:0 0 0 1px var(--hair-2),0 1px 2px rgba(0,0,0,.04)}
+body.hc .card{box-shadow:0 0 0 1px var(--hair)}
+.pad{padding:16px 18px}
+
+/* buttons */
+.btn{border:0;border-radius:99px;padding:8px 16px;background:var(--accent);color:var(--on-accent);font-size:13px;font-weight:500;cursor:pointer;transition:transform .1s ease-out,filter .2s,opacity .2s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{filter:brightness(1.06)}.btn:active{transform:scale(.96)}.btn[disabled]{opacity:.45;cursor:not-allowed;transform:none;filter:none}
+.pill{border:1px solid var(--hair);background:var(--card);color:var(--body);padding:7px 13px;border-radius:99px;font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:transform .1s ease-out,background .2s,border-color .2s,color .2s}
+.pill:hover{border-color:var(--accent-text);color:var(--ink)}.pill:active{transform:scale(.96)}
+.pill.sel{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.pill.sm{padding:4px 10px;font-size:12px}
+.pill[disabled]{opacity:.45;cursor:not-allowed;transform:none}.pill[disabled]:hover{border-color:var(--hair);color:var(--body)}
+.ibtn{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;border:0;background:transparent;color:var(--ink);cursor:pointer;transition:transform .1s ease-out,background .2s;font-size:16px;flex-shrink:0}
+.ibtn:hover{background:var(--hair)}.ibtn:active{transform:scale(.92)}
+:focus-visible{outline:none;box-shadow:0 0 0 4px var(--accent-soft)!important}
+.link{background:none;border:0;padding:0;color:var(--accent-text);cursor:pointer;font-size:13px;font-weight:500}
+
+/* status: always dot + text, never colour alone */
+.st{--c:var(--muted);display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:2px 9px 2px 8px;border-radius:99px;color:var(--c);background:color-mix(in srgb,var(--c) 11%,transparent);white-space:nowrap;line-height:1.5}
+.st i{width:6px;height:6px;border-radius:50%;background:var(--c);flex-shrink:0}
+.st.pos{--c:var(--pos)}.st.neg{--c:var(--neg)}.st.warn{--c:var(--warn)}.st.acc{--c:var(--accent-text)}.st.mute{--c:var(--muted)}
+.st.deny i{border-radius:1px;transform:rotate(45deg);width:6px;height:6px}
+.role{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:2px 10px;border-radius:99px;border:1px solid var(--hair);background:var(--card-2);color:var(--ink);white-space:nowrap}
+.role b{width:6px;height:6px;border-radius:2px;background:var(--accent);transform:rotate(45deg);display:inline-block}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted);padding:2px 9px;border-radius:99px;background:var(--card-2);border:1px solid var(--hair-2);white-space:nowrap}
+.tag.mono{font-size:11px}
+.prov{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);padding:3px 10px;border-radius:99px;background:var(--card-2);border:1px solid var(--hair-2);white-space:nowrap}
+.fresh{width:6px;height:6px;border-radius:50%;background:var(--pos)}
+.badge{min-width:20px;height:20px;padding:0 6px;border-radius:99px;background:var(--accent);color:var(--on-accent);font-size:11px;font-weight:600;display:inline-grid;place-items:center;font-variant-numeric:tabular-nums;margin-left:auto}
+.av{width:30px;height:30px;border-radius:50%;background:var(--accent-soft);color:var(--accent-text);display:grid;place-items:center;font-size:11px;font-weight:600;flex-shrink:0;letter-spacing:.02em}
+.av.lg{width:48px;height:48px;font-size:16px}
+.av.svc{background:var(--card-2);color:var(--muted);border-radius:10px}
+
+/* ═════════ ORIGIN OVERLAY ═════════ */
+body.show-o [data-o]{outline:1.5px dashed var(--oc);outline-offset:3px}
+body.show-o [data-o]:not(.pos){position:relative}
+body.show-o [data-o]::before{content:attr(data-o-label);position:absolute;top:-10px;left:10px;z-index:40;font:600 9.5px/1 var(--sans);letter-spacing:.05em;text-transform:uppercase;color:#fff;background:var(--oc);padding:3px 6px;border-radius:5px;white-space:nowrap;pointer-events:none}
+body.show-o .side[data-o]::before{top:6px;left:auto;right:10px}
+[data-o=apple]{--oc:#2f6fdb}[data-o=claude]{--oc:#c2552f}[data-o=codex]{--oc:#3a3a3c}[data-o=atlas]{--oc:#7d4cdb}
+
+/* ═════════ FRAME (width simulation) + SHELL ═════════ */
+#frame{height:100vh;position:relative;margin:0 auto;background:var(--wash),var(--canvas);transition:max-width .45s var(--sheet)}
+body.sim{background:var(--card-2)}
+body.sim #frame{box-shadow:0 0 0 1px var(--hair),0 20px 60px rgba(0,0,0,.10)}
+.simlabel{position:absolute;top:-1px;right:24px;z-index:50;font:500 10.5px/1 var(--mono);color:var(--muted);background:var(--card);padding:4px 8px;border-radius:0 0 6px 6px;box-shadow:0 0 0 1px var(--hair);display:none}
+body.sim .simlabel{display:block}
+.app{display:flex;height:100%;padding:10px;gap:10px;position:relative;overflow:hidden}
+.side{width:236px;flex-shrink:0;border-radius:22px;padding:14px 10px;display:flex;flex-direction:column;gap:2px;position:relative;background:var(--glass-heavy);overflow-y:auto;transition:transform .5s var(--sheet)}
+body.rt .side,body.hc .side{background:var(--card)}
+.brand{font-family:var(--serif);font-size:21px;padding:4px 10px 12px;display:flex;align-items:center;gap:9px}.brand i{width:10px;height:10px;border-radius:3px;background:var(--accent);transform:rotate(45deg)}
+.nav{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:12px;color:var(--body);font-size:14px;cursor:pointer;transition:background .2s,transform .1s ease-out;border:0;background:transparent;width:100%;text-align:left}
+.nav .ic{width:18px;display:grid;place-items:center;color:var(--muted)}
+.nav:hover{background:var(--hair-2)}.nav:active{transform:scale(.97)}
+.nav.on{background:var(--card);color:var(--ink);box-shadow:0 0 0 1px var(--hair-2),0 1px 3px rgba(0,0,0,.06)}.nav.on .ic{color:var(--accent-text)}
+.sec{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-2);padding:14px 10px 5px;display:flex;align-items:center;gap:6px}
+.me{margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px;border-radius:14px}
+.me .nm{font-size:13px;color:var(--ink);font-weight:500;line-height:1.2}.me .em{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px}
+.main{flex:1;position:relative;overflow:hidden;border-radius:22px;min-width:0}
+.scroller{position:absolute;inset:0;overflow-y:auto}
+.topbar{position:absolute;top:10px;left:14px;right:14px;height:52px;border-radius:26px;z-index:10;display:flex;align-items:center;gap:8px;padding:0 8px 0 18px}
+.topbar .t{font-family:var(--serif);font-size:19px;letter-spacing:-.005em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:8px;min-width:0}
+.topbar .t .crumb{color:var(--muted);cursor:pointer}.topbar .t .crumb:hover{color:var(--ink)}
+.topbar .route{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46%}
+.menubtn{display:none}
+.edge-top{position:absolute;top:0;left:0;right:0;height:80px;z-index:5;pointer-events:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);mask-image:linear-gradient(#000 30%,transparent);-webkit-mask-image:linear-gradient(#000 30%,transparent)}
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:30;opacity:0;pointer-events:none;transition:opacity .3s var(--ease)}.scrim.on{opacity:1;pointer-events:auto}
+
+/* responsive (driven by the dock's width control, defaults to the real window) */
+body.w-narrow .side{position:absolute;z-index:35;top:10px;bottom:10px;left:10px;transform:translateX(calc(-100% - 24px))}
+body.w-narrow.drawer .side{transform:none}
+body.w-narrow .menubtn{display:grid}
+body.w-narrow .route{display:none}
+body.w-narrow .srch{margin-left:auto}
+body.w-mid .hide-mid,body.w-narrow .hide-mid,body.w-narrow .hide-narrow{display:none}
+
+/* ═════════ PAGE ═════════ */
+.page{max-width:var(--w,1080px);margin:0 auto;padding:84px 28px 140px}
+.enter{animation:enter .45s var(--ease)}@keyframes enter{from{opacity:0;transform:translateY(6px)}}
+.hello{font-size:32px;line-height:1.15;margin:6px 0 4px}
+.sub{color:var(--muted);margin:0 0 20px;max-width:640px}
+.head-row{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.head-row .sub{margin:0}
+.head-row>div:first-child{flex:1;min-width:min(100%,320px)}
+.sh{font-size:19px;line-height:1.3;margin:26px 0 10px;display:flex;align-items:center;gap:10px}
+.sh .cap{font-family:var(--sans);margin-left:auto}
+.stack{display:grid;gap:12px}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.spacer{flex:1}
+
+/* inset list (Apple grouped) */
+.list{background:var(--card);border-radius:16px;box-shadow:0 0 0 1px var(--hair-2);overflow:hidden}
+body.hc .list{box-shadow:0 0 0 1px var(--hair)}
+.li{padding:12px 16px;border-bottom:1px solid var(--hair-2);display:flex;align-items:center;gap:12px;min-height:52px}
+.li:last-child{border-bottom:0}
+.li .grow{flex:1;min-width:0}
+.li .t1{font-size:14.5px;font-weight:500;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.li .t2{font-size:12.5px;color:var(--muted);margin-top:1px}
+.li.click{cursor:pointer;transition:background .2s}.li.click:hover{background:var(--hair-2)}
+.li.sel{background:var(--accent-soft)}
+.radio{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--hair);flex-shrink:0;display:grid;place-items:center;transition:border-color .2s}
+.li.sel .radio,.radio.on{border-color:var(--accent)}.li.sel .radio::after,.radio.on::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
+
+/* data table on a solid card */
+.tw{overflow-x:auto;border-radius:18px}
+table.dt{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+.dt th{font-weight:500;color:var(--muted);font-size:12px;text-align:left;padding:12px 12px 8px;border-bottom:1px solid var(--hair);white-space:nowrap}
+.dt td{padding:11px 12px;border-bottom:1px solid var(--hair-2);vertical-align:middle;color:var(--body)}
+.dt tr:last-child td{border-bottom:0}
+.dt td.num{white-space:nowrap}
+.dt th:first-child,.dt td:first-child{padding-left:18px}.dt th:last-child,.dt td:last-child{padding-right:18px}
+.dt tbody tr.click{cursor:pointer;transition:background .2s}.dt tbody tr.click:hover{background:var(--hair-2)}
+.dt .r{text-align:right}.dt .who{display:flex;align-items:center;gap:10px}.dt .who b{font-weight:500;color:var(--ink);display:block;font-size:13.5px}.dt .who span{font-size:12px;color:var(--muted)}
+.dt tr.open td{background:var(--card-2)}
+.dt td.xp{padding:0 18px 14px;background:var(--card-2)}
+body.w-narrow table.dt{min-width:760px}
+
+/* filter bar */
+.filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.search{position:relative;flex:1;min-width:220px;max-width:360px}
+.search input{padding-left:34px}.search .ic{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px;pointer-events:none}
+
+/* fields */
+.field{display:grid;gap:6px}
+.field>label,.lbl{font-size:13px;font-weight:500;color:var(--ink)}
+.field .hint{font-size:12px;color:var(--muted)}
+.inp,.dd{width:100%;background:var(--card);border:1px solid var(--hair);border-radius:12px;padding:9px 12px;font-size:14px;color:var(--ink);transition:border-color .2s,box-shadow .2s;outline:none}
+.dd{appearance:none;-webkit-appearance:none;padding-right:30px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 15px) 52%,calc(100% - 10px) 52%;background-size:5px 5px;background-repeat:no-repeat;cursor:pointer;width:auto}
+.inp:focus,.dd:focus{border-color:var(--accent-text);box-shadow:0 0 0 4px var(--accent-soft)}
+.inp.mono{font-family:var(--mono);font-size:13px}
+.inp[disabled],.dd[disabled]{opacity:.55;cursor:not-allowed;background-color:var(--card-2)}
+textarea.inp{resize:vertical;min-height:84px;line-height:1.5}
+.inp.bad{border-color:var(--neg)}
+.err{font-size:12.5px;color:var(--neg);display:flex;gap:6px;align-items:center}
+.err::before{content:"!";width:15px;height:15px;border-radius:50%;background:var(--neg);color:var(--card);font-size:10px;font-weight:700;display:grid;place-items:center;flex-shrink:0}
+.ok-line{font-size:12.5px;color:var(--pos);display:flex;gap:6px;align-items:center}
+
+/* segmented control (kind pills, tabs) */
+.seg{display:inline-flex;gap:2px;padding:3px;border-radius:99px;background:var(--card-2);box-shadow:inset 0 0 0 1px var(--hair-2);flex-wrap:wrap}
+.seg button{border:0;background:transparent;padding:6px 14px;border-radius:99px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;transition:background .25s var(--ease),color .2s,transform .1s ease-out;display:inline-flex;gap:6px;align-items:center}
+.seg button:active{transform:scale(.96)}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:0 0 0 1px var(--hair-2),0 1px 3px rgba(0,0,0,.08)}
+.seg .n{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* review card (Codex) + diff */
+.review{padding:14px 16px;border-radius:18px;background:var(--card);box-shadow:0 0 0 1px var(--hair),0 6px 20px rgba(0,0,0,.06);margin:10px 0;animation:enter .4s var(--ease)}
+.review .rh{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin-bottom:8px}
+.review .rh b{color:var(--ink);font-weight:500}
+.review .rf{display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap}
+.diff{font-family:var(--mono);font-size:12px;border-radius:8px;background:var(--card-2);padding:8px 10px;line-height:1.8;overflow-x:auto;white-space:pre}
+.diff .a{color:var(--pos)}.diff .rm{color:var(--neg);text-decoration:line-through;text-decoration-thickness:1px}.diff .c{color:var(--muted)}
+.diff .a::before{content:"+ "}.diff .rm::before{content:"− ";display:inline-block;text-decoration:none}.diff .c::before{content:"  "}
+.morph{position:relative;display:inline-grid;place-items:center}.morph>*{grid-area:1/1;transition:opacity .3s var(--ease),transform .3s var(--ease),filter .3s var(--ease)}
+.morph .b{opacity:0;transform:scale(.5);filter:blur(3px)}.morph.done .a{opacity:0;transform:scale(.5);filter:blur(3px)}.morph.done .b{opacity:1;transform:none;filter:none}
+
+/* notices */
+.notice{display:flex;gap:12px;padding:14px 16px;border-radius:18px;align-items:flex-start;background:var(--card);box-shadow:0 0 0 1px var(--hair)}
+.notice .ni{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;background:var(--hair);color:var(--ink)}
+.notice .nt{font-weight:600;margin-bottom:2px;color:var(--ink)}
+.notice .nb{font-size:14px;color:var(--body);line-height:1.55}
+.notice.warn{background:color-mix(in srgb,var(--warn) 9%,var(--card));box-shadow:0 0 0 1px color-mix(in srgb,var(--warn) 28%,transparent)}.notice.warn .ni{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.notice .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+
+/* empty state */
+.empty{text-align:center;padding:44px 24px 40px}
+.empty .ei{width:52px;height:52px;border-radius:50%;margin:0 auto 14px;background:var(--accent-soft);color:var(--accent-text);display:grid;place-items:center}
+.empty h3{font-size:23px;line-height:1.25;margin-bottom:6px}
+.empty p{color:var(--muted);margin:0 auto 18px;max-width:440px;font-size:14.5px}
+.empty .row{justify-content:center}
+
+/* skeletons */
+.sk{--sk:color-mix(in srgb,var(--ink) 7%,var(--card));background:linear-gradient(90deg,var(--sk) 0%,color-mix(in srgb,var(--sk) 35%,var(--card)) 50%,var(--sk) 100%);background-size:200% 100%;animation:skel 1.4s linear infinite;border-radius:8px;height:12px}
+@keyframes skel{from{background-position:150% 0}to{background-position:-50% 0}}
+.sk.h{height:30px;width:40%;border-radius:10px}.sk.c{width:30px;height:30px;border-radius:50%;flex-shrink:0}
+
+/* capabilities */
+.caps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 18px}
+.capr{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--hair-2)}
+.capr .ck{width:18px;height:18px;border-radius:6px;background:color-mix(in srgb,var(--pos) 14%,transparent);color:var(--pos);display:grid;place-items:center;font-size:11px;flex-shrink:0;margin-top:1px}
+.capr .ck.no{background:var(--card-2);color:var(--muted-2)}
+.capr .cd{font-size:12.5px;color:var(--muted)}
+body.w-narrow .caps{grid-template-columns:1fr}
+
+/* tree list */
+.tree{padding:8px}
+.tn{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:12px;cursor:pointer;font-size:13.5px;color:var(--body);transition:background .2s,transform .1s ease-out;position:relative}
+.tn:hover{background:var(--hair-2)}.tn:active{transform:scale(.98)}
+.tn.on{background:var(--accent-soft);color:var(--ink)}
+.tn .cnt{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.tn .tw-ic{color:var(--muted-2);width:12px;text-align:center;font-size:11px}
+.tn.lock{cursor:default;opacity:.55}.tn.lock:hover{background:transparent}
+.ctree .tn{cursor:default}.ctree .tn:hover{background:transparent}.ctree .tn:active{transform:none}
+.ctree .tn .lab{color:var(--muted);font-size:12.5px}
+.ctree .src{font-weight:600;color:var(--ink)}
+.guide{border-left:1px solid var(--hair);margin-left:16px;padding-left:4px}
+
+/* groups split */
+.gsplit{display:grid;grid-template-columns:270px minmax(0,1fr);gap:12px;align-items:start}
+body.w-mid .gsplit{grid-template-columns:220px minmax(0,1fr)}
+body.w-narrow .gsplit{grid-template-columns:1fr}
+
+/* disabled-future block */
+.future{position:relative;border-radius:14px;border:1px dashed var(--hair);padding:12px 14px;background:var(--card-2)}
+.future .fz{opacity:.45;pointer-events:none;filter:grayscale(.4)}
+.future .fl{font-size:12px;color:var(--muted);margin-top:8px;display:flex;align-items:center;gap:6px}
+
+/* picker popover (glass chrome over a solid card) */
+.picker{position:absolute;left:0;right:0;top:calc(100% + 6px);border-radius:22px;padding:8px;z-index:20;transform-origin:30% -10px;animation:mat .35s var(--ease)}
+@keyframes mat{from{opacity:0;transform:scale(.94);filter:blur(6px)}}
+.pk{padding:8px 10px;border-radius:12px;display:flex;gap:10px;align-items:center;cursor:pointer;font-size:13.5px}
+.pk:hover,.pk.on{background:var(--accent-soft)}.pk .mono{margin-left:auto;color:var(--muted);font-size:11px}
+.pk .kd{font-size:11px;color:var(--muted);width:46px}
+
+/* token reveal */
+.secret{display:flex;align-items:center;gap:10px;padding:10px 10px 10px 14px;border-radius:12px;background:var(--card-2);box-shadow:inset 0 0 0 1px var(--hair)}
+.secret code{font-family:var(--mono);font-size:13px;color:var(--ink);flex:1;word-break:break-all}
+
+/* dialog (solid panel + scrim) */
+.dialog{position:absolute;left:50%;top:14%;width:min(480px,calc(100% - 40px));transform:translateX(-50%);z-index:32;background:var(--card);border-radius:22px;padding:22px 22px 18px;box-shadow:0 0 0 1px var(--hair),0 20px 60px rgba(0,0,0,.14);animation:dlg .4s var(--ease)}
+@keyframes dlg{from{opacity:0;transform:translateX(-50%) scale(.96);filter:blur(6px)}}
+.dialog h3{font-size:23px;margin-bottom:4px}
+
+/* toasts */
+.toasts{position:absolute;bottom:22px;right:22px;width:360px;max-width:calc(100% - 44px);z-index:40;display:grid;gap:8px}
+.toast{border-radius:16px;padding:12px 14px;font-size:13px;display:flex;gap:10px;align-items:center;animation:tin .4s var(--ease);color:var(--ink)}
+@keyframes tin{from{opacity:0;transform:translateY(16px) scale(.96);filter:blur(4px)}}
+.toast .ti{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;flex-shrink:0;background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn);font-weight:700}
+
+/* chat (screen 5) */
+.chat{max-width:740px;margin:0 auto;padding:88px 24px 200px}
+.u{display:flex;justify-content:flex-end;margin:6px 0 20px}.u div{background:var(--card-2);padding:10px 15px;border-radius:16px 16px 6px 16px;max-width:80%;line-height:1.5}
+.ans{line-height:1.65;color:var(--body);font-size:15.5px}.ans p{margin:0 0 12px}.ans strong{color:var(--ink)}
+.plan{border-radius:16px;padding:10px 14px;margin-bottom:14px;background:var(--card);box-shadow:0 0 0 1px var(--hair-2);font-size:13px;color:var(--muted);display:flex;gap:8px;align-items:center}
+.composer{position:absolute;left:0;right:0;bottom:16px;z-index:10;display:flex;justify-content:center;padding:0 24px;pointer-events:none}
+.composer>div{pointer-events:auto;width:100%;max-width:740px;border-radius:26px;padding:12px 12px 10px 18px;position:relative}
+.composer textarea{width:100%;border:0;outline:0;resize:none;background:transparent;font-size:15.5px;height:26px}
+.composer textarea::placeholder{color:var(--muted-2)}
+.send{margin-left:auto;width:36px;height:36px;border-radius:50%;border:0;background:var(--accent);color:#fff;display:grid;place-items:center}
+
+/* audit bars */
+.bars{display:grid;gap:10px}
+.bar-row{display:grid;grid-template-columns:76px 1fr;gap:12px;align-items:center;font-size:12.5px}
+.bar-row .d{color:var(--muted);font-variant-numeric:tabular-nums}
+.bar-track{display:grid;gap:3px}
+.bar{display:flex;align-items:center;gap:8px}
+.bar i{display:block;height:10px;border-radius:4px;background:var(--accent-text);transform-origin:left;animation:grow .8s var(--ease) both}
+.bar.dn i{opacity:.45;background-image:repeating-linear-gradient(135deg,transparent 0 3px,rgba(255,255,255,.35) 3px 5px)}
+.bar span{font-size:11.5px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+@keyframes grow{from{transform:scaleX(0)}}
+.legend-i{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.legend-i i{width:14px;height:10px;border-radius:3px;background:var(--accent-text)}
+.legend-i.dn i{opacity:.45;background-image:repeating-linear-gradient(135deg,transparent 0 3px,rgba(255,255,255,.35) 3px 5px)}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:12px}
+body.w-narrow .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+.kpi{padding:14px 16px}.kpi .l{font-size:12.5px;color:var(--muted)}.kpi .v{font-size:27px;font-weight:600;letter-spacing:-.025em;line-height:1.1;margin:6px 0 8px;font-variant-numeric:tabular-nums;color:var(--ink)}
+.split2{display:grid;grid-template-columns:1.6fr 1fr;gap:12px}
+body.w-narrow .split2{grid-template-columns:1fr}
+.reason-r{display:grid;grid-template-columns:1fr auto;gap:4px 10px;padding:9px 0;border-bottom:1px solid var(--hair-2);font-size:13px}
+.reason-r:last-child{border:0}
+.reason-r .rb{grid-column:1/-1;height:6px;border-radius:3px;background:var(--accent-soft);overflow:hidden}.reason-r .rb i{display:block;height:100%;background:var(--accent-text);animation:grow .8s var(--ease) both;transform-origin:left}
+
+/* guard page */
+.guard{max-width:560px;margin:0 auto;padding:18vh 24px 80px}
+.guard .notice{padding:22px 22px 20px}
+.guard h2{font-size:23px;line-height:1.25;margin:2px 0 6px}
+
+/* ═════════ REVIEW DOCK (not part of the design) ═════════ */
+.dock{position:fixed;left:18px;bottom:18px;z-index:60;width:236px;max-height:calc(100vh - 36px);overflow-y:auto;border-radius:18px;padding:10px 11px;font-size:12px;display:grid;gap:5px}
+.dock .lbl{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.dock .title{display:flex;align-items:center;gap:6px;font-family:var(--serif);font-size:15px;color:var(--ink);text-transform:none;letter-spacing:0}
+.dock .title i{width:8px;height:8px;border-radius:2px;background:var(--accent);transform:rotate(45deg)}
+.dock .modes{display:grid;grid-template-columns:1fr 1fr;gap:3px}
+.dock .mode{text-align:left;font-size:11.5px;border:0;background:transparent;color:var(--ink);padding:4px 7px;border-radius:9px;cursor:pointer;line-height:1.3}.dock .mode:hover{background:var(--hair-2)}.dock .mode.on{background:var(--accent);color:var(--on-accent)}
+.dock .layers{display:flex;flex-wrap:wrap;gap:4px}
+.dock .lay{font-size:11.5px;border:1px solid var(--hair);background:transparent;color:var(--muted);padding:3px 8px;border-radius:99px;cursor:pointer}.dock .lay.on{color:var(--ink);border-color:var(--ink)}
+.dock select{font-size:12px;width:100%;padding:3px 6px;border-radius:9px;border:1px solid var(--hair);background:var(--card);color:var(--ink)}
+.dock .two{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.dock .two>div{display:grid;gap:3px}
+.legend{display:flex;flex-wrap:wrap;gap:4px}.legend span{font:600 9.5px/1 var(--sans);letter-spacing:.05em;text-transform:uppercase;color:#fff;padding:3px 6px;border-radius:5px}
+.dock .min{position:absolute;top:8px;right:8px;border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:14px;width:24px;height:24px;border-radius:50%}
+.dock.collapsed{width:auto}.dock.collapsed>*:not(.min):not(.title){display:none!important}.dock.collapsed .title{padding-right:26px}
+
+/* reduced motion: instant swaps */
+body.rm *,body.rm *::before,body.rm *::after{animation-duration:1ms!important;animation-iteration-count:1!important;transition-duration:1ms!important}
+body.rm .morph *{filter:none!important}
+</style>
+</head>
+<body data-theme="light">
+
+<div id="frame">
+  <div class="simlabel" id="simlabel"></div>
+  <div class="app" id="app">
+    <aside class="side glass spec pos" id="side" data-o="apple" data-o-label="Apple · floating glass sidebar"></aside>
+    <main class="main">
+      <div class="edge-top pos" data-o="apple" data-o-label="Apple · scroll-edge blur"></div>
+      <div class="topbar glass spec pos" id="topbar" data-o="apple" data-o-label="Apple · floating glass toolbar"></div>
+      <div class="scroller" id="sc"><div id="stage"></div></div>
+      <div id="composerHost"></div>
+      <div class="toasts" id="toasts"></div>
+    </main>
+    <div class="scrim" id="scrim"></div>
+    <div id="dialogHost"></div>
+  </div>
+</div>
+
+<!-- REVIEW DOCK -->
+<div class="dock glass" id="dock">
+  <button class="min" id="dmin" aria-label="Collapse dock">–</button>
+  <div class="lbl title"><i></i>Phase 5 review</div>
+  <div class="lbl">Screen</div>
+  <select id="dScreen"></select>
+  <div id="dCaseWrap" style="display:grid;gap:3px"><div class="lbl">Case</div><select id="dCase"></select></div>
+  <div class="lbl">Persona</div>
+  <div class="modes" id="dPersona"></div>
+  <div class="two">
+    <div><div class="lbl">State</div><select id="dState">
+      <option value="populated">Populated</option><option value="empty">Empty</option><option value="loading">Loading</option>
+      <option value="error">Error + retry</option><option value="denied">Denied (guard)</option><option value="stale">Stale actor 409</option></select></div>
+    <div><div class="lbl">Phase-4 flag</div><select id="dP4">
+      <option value="off">Disabled</option><option value="empty">Enabled · empty</option><option value="populated" selected>Populated</option></select></div>
+  </div>
+  <div class="two">
+    <div><div class="lbl">Width</div><select id="dWidth">
+      <option value="auto">Auto</option><option value="wide">≥ 1200</option><option value="mid">1000–1199</option><option value="narrow">&lt; 1000 · drawer</option></select></div>
+    <div><div class="lbl">Theme</div><select id="dTheme"><option value="light">Light</option><option value="dark">Dark</option></select></div>
+  </div>
+  <div class="lbl">Reduce · overlay</div>
+  <div class="layers" id="dA11y">
+    <button class="lay" data-a="rm" title="Reduced motion: instant swaps">Motion</button><button class="lay" data-a="rt" title="Reduced transparency: glass renders solid">Transparency</button><button class="lay" data-a="hc" title="High contrast">Contrast</button><button class="lay" id="dOrg">⌗ Origins</button>
+  </div>
+  <div class="legend"><span style="background:#2f6fdb">Apple</span><span style="background:#c2552f">Claude</span><span style="background:#3a3a3c">Codex</span><span style="background:#7d4cdb">Atlas</span></div>
+</div>
+
+<script>
+(function(){
+"use strict";
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];const B=document.body;
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ═════════ DATA (mirrors the real backend) ═════════ */
+const TODAY='2026-10-09',PLUS90='2027-01-07';
+const CAPS={'chat:use':'Use the atlas web chat and dashboard','mcp:use':'Connect MCP clients such as Claude Code, claude.ai or Claude Desktop','tokens:create':'Create personal access tokens','export:data':'Export results as files','sandbox:run':'Run analyses in the sandbox','alerts:manage':'Create and manage alerts','schedules:manage':'Create and manage schedules','analyses:save':'Save analyses for reuse','admin:users':'Manage users, roles, status and direct grants','admin:groups':'Manage groups, members and group grants','admin:audit':'Read the audit and access-change logs','admin:tokens':"Manage everyone's tokens",'admin:clients':'Manage connected OAuth clients'};
+const ROLES=['viewer','analyst','builder','admin'];
+const ADDS={viewer:['chat:use'],analyst:['mcp:use','tokens:create','export:data','sandbox:run'],builder:['alerts:manage','schedules:manage','analyses:save'],admin:['admin:users','admin:groups','admin:audit','admin:tokens','admin:clients']};
+const roleCaps=r=>ROLES.slice(0,ROLES.indexOf(r)+1).flatMap(x=>ADDS[x]);
+
+const CATALOG=[
+ {src:'demo',name:'Demo commerce',ents:[
+  {id:'order',name:'Orders',items:[['revenue','Total revenue'],['orders_count','Paid orders'],['aov','Average order value'],['refund_amount','Refunded amount'],['b2b_revenue','Corporate (B2B) revenue']]},
+  {id:'customer',name:'Customers',items:[['customers_total','Total customers'],['new_customers','New customers'],['new_corporate_customers','New corporate customers']]},
+  {id:'checkout',name:'Checkout journey',items:[['checkout_funnel','Checkout funnel']]}]},
+ {src:'deepsales',name:'DeepSales',ents:[
+  {id:'ds_account',name:'Portfolio accounts',items:[['ds_total_accounts','Analyzed portfolio accounts'],['ds_at_risk_accounts','At-risk accounts'],['ds_portfolio_revenue_ytd','Portfolio revenue YTD'],['ds_avg_order_value','Portfolio average order value']]},
+  {id:'ds_lead',name:'Sales leads',items:[['ds_leads_created','Leads created'],['ds_lead_funnel','Lead pipeline funnel']]},
+  {id:'ds_revenue',name:'Corporate revenue (monthly)',items:[['ds_revenue_aed','Corporate revenue (AED)'],['ds_transactions','Corporate transactions']]},
+  {id:'ds_task',name:'CSM tasks',items:[['ds_open_tasks','Open tasks'],['ds_overdue_tasks','Overdue open tasks']]}]}];
+const LABEL={};CATALOG.forEach(s=>{LABEL[s.src+'/*']=s.name+' · everything';s.ents.forEach(e=>{LABEL[s.src+'/'+e.id+'/*']=e.name+' · all';e.items.forEach(([i,n])=>LABEL[s.src+'/'+e.id+'/'+i]=n)})});LABEL['*']='Everything';
+const lab=p=>LABEL[p]||'';
+
+const U0=[
+ ['ashik','Ashik Babu','admin','active','human','just now','2026-09-23','ashik@yougotagift.com'],
+ ['rania','Rania Aziz','analyst','active','human','09 Oct 09:12','2026-09-24'],
+ ['omar','Omar Khalil','viewer','active','human','09 Oct 09:47','2026-09-24'],
+ ['sara','Sara Mansour','viewer','active','human','09 Oct 08:52','2026-10-08'],
+ ['karim','Karim Nasser','analyst','active','human','09 Oct 07:55','2026-09-25'],
+ ['dana','Dana Youssef','viewer','active','human','08 Oct 14:06','2026-09-29'],
+ ['mira','Mira Saleh','builder','active','human','08 Oct 18:40','2026-09-24'],
+ ['yousef','Yousef Darwish','analyst','active','human','06 Oct 11:15','2026-09-24'],
+ ['lina','Lina Haddad','viewer','active','human','09 Oct 09:30','2026-10-09'],
+ ['nour','Nour Al-Amin','viewer','active','human','05 Oct 16:44','2026-09-30'],
+ ['hassan','Hassan Farouk','analyst','disabled','human','21 Aug 10:03','2026-09-24'],
+ ['svc','MCP shared identity','analyst','active','service','09 Oct 09:40','2026-09-23','svc-mcp@yougotagift.com'],
+ ['tariq','Tariq Odeh','viewer','active','human','02 Oct 12:10','2026-09-26'],
+ ['reem','Reem Kassab','analyst','active','human','30 Sep 15:22','2026-09-24'],
+ ['faisal','Faisal Rahman','viewer','active','human','never','2026-10-06'],
+ ['huda','Huda Al-Mansoori','builder','active','human','29 Sep 09:01','2026-09-24']];
+const USERS={};const UORDER=[];
+U0.forEach(([id,name,role,status,kind,last,created,email])=>{USERS[id]={id,name,role,status,kind,last,created,email:email||name.toLowerCase().replace(/[^a-z ]/g,'').replace(' ','.').replace(/ /g,'')+'@yougotagift.com'};UORDER.push(id)});
+const short=e=>e.split('@')[0]+'@';
+
+const G=(id,effect,target,reason,exp,by)=>({id,effect,target,reason:reason||'',exp:exp||'',by:by||'Ashik Babu'});
+const GROUPS=[
+ {id:'atlas-admins',parent:null,desc:'Atlas operators. Holds the catch-all grant.',members:[['ashik','member']],grants:[G('a01f3c','allow','*','Operators see everything')]},
+ {id:'leadership',parent:null,desc:'Exec team: company-wide commerce and corporate sales.',members:[['mira','manager'],['huda','member']],grants:[G('5d2a81','allow','demo/*'),G('5d2a90','allow','deepsales/*')]},
+ {id:'marketing',parent:null,desc:'Growth and brand marketing: orders and customer metrics.',members:[['rania','manager'],['omar','member'],['nour','member'],['dana','member'],['tariq','member']],grants:[G('4c2e91','allow','demo/order/*','Campaign and revenue reporting'),G('4c2ea7','allow','demo/customer/*'),G('9b07e3','deny','demo/order/refund_amount','Refund data stays with risk-ops')]},
+ {id:'marketing-paid',parent:'marketing',desc:'Paid acquisition. Adds the checkout journey on top of marketing.',members:[['yousef','manager'],['karim','member']],grants:[G('61f0d4','allow','demo/checkout/*','Paid funnel optimisation')]},
+ {id:'csm',parent:null,desc:'Customer success: portfolio accounts and CSM tasks.',members:[['reem','manager'],['hassan','member']],grants:[G('2a77c0','allow','deepsales/ds_account/*'),G('2a77c8','allow','deepsales/ds_task/*')]},
+ {id:'risk-ops',parent:null,desc:'Refunds, chargebacks and fraud review.',members:[],grants:[G('3e1f52','allow','demo/order/*','Refund and chargeback review')]},
+ {id:'engineering',parent:null,desc:'Platform and data engineering.',members:[['ashik','manager'],['karim','member'],['svc','member']],grants:[G('8d4b16','allow','demo/*','Platform QA on demo data','2026-12-31')]}];
+const GBY=Object.fromEntries(GROUPS.map(g=>[g.id,g]));
+const USERGRANTS={omar:[G('c5e019','allow','deepsales/ds_revenue/*','Q4 corporate revenue planning','2026-12-31')],karim:[G('c61d77','allow','demo/checkout/checkout_funnel','Funnel QA for the paid team','2026-11-30')],hassan:[G('c4a2b0','deny','*','Offboarding; access paused until HR confirms')]};
+const groupsOf=uid=>GROUPS.filter(g=>g.members.some(m=>m[0]===uid)).map(g=>({g:g.id,standing:g.members.find(m=>m[0]===uid)[1]}));
+const ancestors=gid=>{const out=[];let g=GBY[gid];while(g){out.push(g.id);g=g.parent?GBY[g.parent]:null}return out};
+const subtree=gid=>[gid,...GROUPS.filter(g=>g.parent===gid).flatMap(g=>subtree(g.id))];
+const managersOf=gid=>{const out=[];ancestors(gid).forEach(a=>GBY[a].members.filter(m=>m[1]==='manager').forEach(m=>out.push({u:m[0],via:a})));return out};
+
+function matches(p,path){if(p==='*')return true;const ps=p.split('/'),xs=path.split('/');
+  if(ps[ps.length-1]==='*'){const pre=ps.slice(0,-1);if(xs.length<pre.length)return false;return pre.every((s,i)=>s==='*'||s===xs[i])}
+  return ps.length===xs.length&&ps.every((s,i)=>s==='*'||s===xs[i])}
+function rulesFor(uid){const rules=[];const seen=new Set();
+  groupsOf(uid).forEach(({g})=>ancestors(g).forEach(a=>{if(seen.has(a))return;seen.add(a);GBY[a].grants.forEach(gr=>rules.push({...gr,origin:'group:'+a}))}));
+  (USERGRANTS[uid]||[]).forEach(gr=>rules.push({...gr,origin:'user'}));
+  if(USERS[uid]&&USERS[uid].status!=='active')return [];return rules}
+function decide(uid,path){const rules=rulesFor(uid);const d=rules.find(r=>r.effect==='deny'&&matches(r.target,path));if(d)return{allowed:false,rule:d,reason:`denied by grant ${d.id} (${d.origin})`};
+  const a=rules.find(r=>r.effect==='allow'&&matches(r.target,path));if(a)return{allowed:true,rule:a,reason:`allowed by grant ${a.id} (${a.origin})`};return{allowed:false,rule:null,reason:'no grant allows it'}}
+
+const PERSONAS={newViewer:{u:'lina',label:'New viewer · no data'},viewer:{u:'omar',label:'Viewer · with data'},manager:{u:'rania',label:'Group manager'},admin:{u:'ashik',label:'Admin'}};
+
+let REQS=[
+ {id:'r-7f1c',u:'omar',kind:'resource',target:'demo/checkout/checkout_funnel',note:'Reviewing checkout drop-off for the Q4 redesign.',at:'09 Oct 09:46',status:'pending'},
+ {id:'r-7f21',u:'sara',kind:'group',target:'csm',note:'Joining the CSM team on Monday; I need portfolio accounts for onboarding.',at:'09 Oct 08:52',status:'pending'},
+ {id:'r-7e90',u:'karim',kind:'role',target:'builder',from:'analyst',note:'I want to save the weekly ROAS analysis and schedule it for Mondays.',at:'08 Oct 17:30',status:'pending'},
+ {id:'r-7e55',u:'dana',kind:'group',target:'marketing-paid',note:'Running paid social for Q4 and need the checkout journey.',at:'08 Oct 14:05',status:'pending'},
+ {id:'r-7e31',u:'rania',kind:'group',target:'marketing-paid',note:"Covering Yousef's paid campaigns while he's on leave.",at:'08 Oct 11:20',status:'pending'},
+ {id:'r-7d02',u:'ashik',kind:'group',target:'risk-ops',note:'Auditing the refund grant before Q4 close.',at:'07 Oct 10:00',status:'pending'},
+ {id:'r-7a10',u:'omar',kind:'role',target:'analyst',from:'viewer',note:'I want to use Atlas from Claude Code.',at:'30 Sep 10:12',status:'declined',by:'Ashik Babu',dAt:'30 Sep 15:40',dNote:'MCP sign-in for analysts lands with phase 4. Ask again once it is enabled.'},
+ {id:'r-79c4',u:'omar',kind:'group',target:'marketing',note:'New on the growth team.',at:'24 Sep 09:05',status:'approved',by:'Rania Aziz',dAt:'24 Sep 09:31',dNote:'Welcome aboard.'},
+ {id:'r-79b2',u:'omar',kind:'group',target:'csm',note:'Looking at account churn.',at:'24 Sep 09:02',status:'cancelled',by:'you',dAt:'24 Sep 09:04'},
+ {id:'r-7c88',u:'nour',kind:'group',target:'marketing',note:'Brand campaigns reporting.',at:'30 Sep 08:10',status:'approved',by:'Rania Aziz',dAt:'30 Sep 08:42',dNote:''},
+ {id:'r-7b51',u:'yousef',kind:'role',target:'analyst',from:'viewer',note:'Need MCP for the paid-media notebook.',at:'05 Oct 12:00',status:'approved',by:'Ashik Babu',dAt:'06 Oct 09:15',dNote:'Approved for the paid-media notebook.'},
+ {id:'r-7b20',u:'tariq',kind:'group',target:'marketing-paid',note:'Helping on paid search.',at:'01 Oct 16:30',status:'declined',by:'Yousef Darwish',dAt:'02 Oct 10:00',dNote:'Paid search moved to the agency; no access needed.'}];
+
+const TOKENS={omar:[],rania:[['Claude Code · laptop','atl_pat_3f9a','2026-09-30','2026-12-29','2 h ago'],['CI evals runner','atl_pat_b71c','2026-08-14','2026-11-12','yesterday'],['Old notebook','atl_pat_09de','2026-06-02','2026-08-31','02 Aug']],
+ ashik:[['Claude Code · laptop','atl_pat_5e2d','2026-09-23','2026-12-22','12 min ago'],['Eval harness','atl_pat_a804','2026-09-28','2026-12-27','09 Oct 08:00']],
+ karim:[['Claude Code · laptop','atl_pat_77c1','2026-10-01','2026-12-30','09 Oct 07:55'],['ROAS notebook','atl_pat_e0b3','2026-10-02','2027-01-01','08 Oct 18:22']]};
+const APPS=[['Claude Code','oc_8f3a1c','09 Oct 09:40','2026-09-30'],['claude.ai','oc_21d9e7','08 Oct 16:02','2026-10-02'],['Claude Desktop','oc_5b6e04','05 Oct 11:30','2026-10-05']];
+
+const CHANGES=[
+ {t:'09 Oct 09:41',actor:'Ashik Babu',act:'grant.create',obj:'group:marketing-paid',diff:[['c','subject   group:marketing-paid'],['a','effect    allow'],['a','target    demo/checkout/*'],['a','expires   —'],['a','reason    Paid funnel optimisation']]},
+ {t:'09 Oct 09:12',actor:'Rania Aziz',act:'member.put',obj:'nour.alamin@ → marketing',diff:[['c','group     marketing'],['rm','standing  —'],['a','standing  member']]},
+ {t:'08 Oct 17:05',actor:'Ashik Babu',act:'request.approve',obj:'r-7b51 · yousef.darwish@',diff:[['c','request   r-7b51  role viewer → analyst'],['rm','status    pending'],['a','status    approved'],['a','note      Approved for the paid-media notebook.']]},
+ {t:'06 Oct 09:15',actor:'Ashik Babu',act:'user.role',obj:'yousef.darwish@',diff:[['rm','role      viewer'],['a','role      analyst'],['c','via       request r-7b51']]},
+ {t:'04 Oct 15:30',actor:'Ashik Babu',act:'user.status',obj:'hassan.farouk@',diff:[['rm','status    active'],['a','status    disabled']]},
+ {t:'04 Oct 15:29',actor:'Ashik Babu',act:'grant.revoke',obj:'user:hassan.farouk@',diff:[['rm','allow     deepsales/*   (reason: CSM pilot)']]},
+ {t:'02 Oct 10:00',actor:'Yousef Darwish',act:'member.remove',obj:'tariq.odeh@ ← marketing-paid',diff:[['rm','standing  member'],['a','standing  —']]},
+ {t:'23 Sep 07:00',actor:'CLI · operator',act:'group.create',obj:'marketing-paid',diff:[['a','name      marketing-paid'],['a','parent    marketing']]}];
+const DECISIONS=[
+ ['09:47','Omar Khalil','chat','query_metric','demo/checkout/checkout_funnel','deny','no grant allows it',38],
+ ['09:46','Omar Khalil','chat','query_metric','demo/order/revenue','allow','',412],
+ ['09:40','MCP shared identity','mcp','query_metric','demo/order/refund_amount','deny','denied by grant 9b07e3 (group:marketing)',21],
+ ['09:38','Karim Nasser','mcp','metric_breakdown','demo/order/orders_count','allow','',655],
+ ['09:31','Dana Youssef','chat','funnel_analyze','demo/checkout/checkout_funnel','deny','no grant allows it',34],
+ ['09:30','Lina Haddad','chat','list_metrics','—','allow','',19],
+ ['09:12','Rania Aziz','chat','compare_periods','demo/order/aov','allow','',731],
+ ['08:58','Sara Mansour','chat','describe_entity','deepsales/ds_account','deny','no grant allows it',27],
+ ['08:41','Mira Saleh','chat','query_metric','deepsales/ds_revenue/ds_revenue_aed','allow','',388]];
+const DAYS=[['Fri 09 Oct',412,18],['Thu 08 Oct',536,22],['Wed 07 Oct',488,9],['Tue 06 Oct',451,14],['Mon 05 Oct',503,11],['Sun 04 Oct',214,15],['Sat 03 Oct',200,8]];
+
+/* ═════════ STATE ═════════ */
+const SCREENS=[
+ ['account','1 · My access'],['newRequest','2 · New request'],['myRequests','3 · My requests'],['tokens','4 · Tokens & connected apps'],['chat','5 · Denied in chat → request'],
+ ['users','6 · Admin users'],['userDetail','7 · User detail'],['effective','8 · Effective-access preview'],['groups','9 · Groups'],['adminRequests','10 · Access requests queue'],['audit','11 · Audit'],['guard','12 · Route-guard denied page']];
+const CASES={
+ account:[['default','As persona'],['first','First sign-in (lands here)']],
+ newRequest:[['resource','Resource · prefilled from chat'],['group','Kind: group'],['role','Kind: role'],['invalid','Validation error (note missing)'],['sent','Submitted → Sent']],
+ tokens:[['list','List'],['dialog','New token dialog'],['reveal','Token reveal (shown once)'],['revoke','Revoke app → review card']],
+ users:[['list','List'],['filtered','Filtered: role analyst'],['nomatch','Empty match'],['more','After "Load more"']],
+ userDetail:[['groups','Omar · Groups tab'],['role','Role change → review card'],['grants','Direct grants tab'],['tokens','Karim · Revoke all → review'],['requests','Requests tab'],['self','Yourself · self-edit disabled']],
+ effective:[['deny','Probe → deny (no grant)'],['allow','Probe → allow + deciding grant'],['denyrule','Probe → deny by a grant']],
+ groups:[['marketing','marketing (members + grants)'],['editor','Add grant · catalog picker'],['deny','Grant editor · deny confirm'],['review','Grant → review card'],['refused','Delete refused'],['remove','Remove member → review']],
+ adminRequests:[['pending','Pending'],['approve','Approve resource → review + expiry'],['approveRole','Approve role → review'],['decline','Decline with note'],['decided','Decided']],
+ audit:[['changes','Changes'],['expanded','Changes · row expanded'],['decisions','Decisions'],['denyonly','Decisions · deny only'],['summary','Summary']],
+ guard:[['users','/admin/users as viewer'],['audit','/admin/audit as manager']]};
+
+const S={screen:'account',persona:'viewer',state:'populated',p4:'populated',width:'auto',theme:'light',cs:{}};
+let U={};
+function resetU(){U={reqKind:'resource',reqPick:'marketing-paid',reqNote:'',reqErr:false,reqSent:false,reqGroup:'csm',reqRole:'analyst',
+  udUser:'omar',udTab:'groups',udRole:null,probe:'demo/checkout/checkout_funnel',
+  gSel:'marketing',editor:null,refused:false,
+  rqTab:'pending',rqOpen:null,auditTab:'changes',auditOpen:null,denyOnly:false,
+  uq:'',uRole:'',uStatus:'',uKind:'',uMore:false,dialog:null,copied:false,tokName:'',
+  rv:null,cancelled:{},decided:{}}}
+resetU();
+
+/* ═════════ HELPERS ═════════ */
+const me=()=>USERS[PERSONAS[S.persona].u];
+const myCaps=()=>roleCaps(me().role);
+const has=c=>myCaps().includes(c);
+const managed=()=>groupsOf(me().id).filter(x=>x.standing==='manager').flatMap(x=>subtree(x.g));
+const isManager=()=>S.persona==='manager';
+const ini=n=>n.split(/[\s-]+/).filter(Boolean).map(s=>s[0]).join('').slice(0,2).toUpperCase();
+const av=(u,lg)=>`<span class="av${lg?' lg':''}${u.kind==='service'?' svc':''}">${u.kind==='service'?'⌁':ini(u.name)}</span>`;
+const st=(k,t,extra='')=>`<span class="st ${k} ${extra}" data-o="atlas" data-o-label="Atlas · status = dot + text"><i></i>${t}</span>`;
+const stPlain=(k,t,extra='')=>`<span class="st ${k} ${extra}"><i></i>${t}</span>`;
+const eff=e=>e==='allow'?stPlain('pos','allow'):stPlain('neg','deny','deny');
+const role=r=>`<span class="role"><b></b>${r}</span>`;
+const standing=s=>s==='manager'?stPlain('acc','manager'):stPlain('mute','member');
+const reqSt=s=>({pending:stPlain('warn','pending'),approved:stPlain('pos','approved'),declined:stPlain('neg','declined'),cancelled:stPlain('mute','cancelled')})[s];
+const mono=t=>`<span class="mono">${esc(t)}</span>`;
+const prov=t=>`<span class="prov" data-o="atlas" data-o-label="Atlas · provenance"><span class="fresh"></span>${t}</span>`;
+const LOCK=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`;
+const KEY=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg>`;
+const INBOX=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1 3h6l1-3h5"/></svg>`;
+const SEARCH=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4-4"/></svg>`;
+const kindTag=k=>`<span class="tag">${k}</span>`;
+const target=r=>r.kind==='role'?`${r.from} → ${r.target}`:r.target;
+
+/* review card: every access-widening or destructive write */
+function review(slot,spec){U.rv={slot,...spec,status:'open'};render()}
+function rvSlot(slot){const r=U.rv;if(!r||r.slot!==slot)return'';
+  const lines=r.lines.map(([k,t])=>`<span class="${k}">${esc(t)}</span>`).join('\n');
+  const done=r.status==='applied',fail=r.status==='409';
+  return `<div class="review" data-o="codex" data-o-label="Codex · review diff before apply">
+    <div class="rh">◇ <b>${r.title||'Proposed change'}</b> · ${done?'applied':'needs your approval'}</div>
+    ${r.pre||''}<div class="diff">${lines}</div>${r.post||''}
+    ${fail?`<div class="err" style="margin-top:10px">Access changed while this request was running; nothing was written. Retry to apply against the current access.</div>`:''}
+    <div class="rf">
+      <button class="btn" data-act="rv-apply" ${done?'disabled':''}><span class="morph ${done?'done':''}" ${r.animate?'data-anim':''}><span class="a">${fail?'Retry':(r.approve||'Apply')}</span><span class="b">✓ ${r.doneLabel||'Applied'}</span></span></button>
+      ${done?`<span class="cap">Recorded as ${mono(r.audit||'change')} in the audit log</span>`:`<button class="pill" data-act="rv-dismiss">Dismiss</button><span class="cap" style="margin-left:auto">Recorded as ${mono(r.audit||'change')}</span>`}
+    </div></div>`}
+
+function toast(msg,kind='ok',action){const z=$('#toasts');const t=document.createElement('div');t.className='toast glass pos';t.dataset.o='apple';t.dataset.oLabel=kind==='409'?'Atlas · stale-actor 409 (Apple toast)':'Apple · toast';
+  t.innerHTML=kind==='409'?`<span class="ti">!</span><span style="flex:1">${msg}</span>${action?`<button class="pill sm" data-act="${action}">Retry</button>`:''}`:`<span class="ti" style="background:color-mix(in srgb,var(--pos) 16%,transparent);color:var(--pos)">✓</span><span>${msg}</span>`;
+  z.appendChild(t);if(kind!=='409'||!action)setTimeout(()=>{t.style.transition='opacity .3s,transform .3s';t.style.opacity=0;t.style.transform='translateY(8px)';setTimeout(()=>t.remove(),320)},3400);
+  while(z.children.length>3)z.firstChild.remove()}
+
+/* ═════════ SKELETON / ERROR / EMPTY / GUARD ═════════ */
+function skeleton(kind){const line=(w,h)=>`<div class="sk" style="width:${w};${h?'height:'+h+'px':''}"></div>`;
+  const rows=n=>Array.from({length:n},(_,i)=>`<div class="li" style="gap:14px"><div class="sk c"></div><div style="flex:1;display:grid;gap:7px">${line(30+((i*17)%35)+'%')}${line(18+((i*11)%25)+'%','9')}</div>${line('64px','18')}</div>`).join('');
+  const head=`<div style="display:grid;gap:10px;margin:6px 0 24px">${line('260px','30')}${line('420px')}</div>`;
+  let body;
+  if(kind==='table')body=`<div class="card" style="padding:14px 18px"><div style="display:flex;gap:10px;margin-bottom:14px">${line('30%','32')}${line('90px','32')}${line('90px','32')}</div>${rows(7).replace(/class="li"/g,'class="li" style="padding-left:0;padding-right:0"')}</div>`;
+  else if(kind==='split')body=`<div class="gsplit"><div class="card" style="padding:14px;display:grid;gap:12px">${Array.from({length:7},(_,i)=>line((50+i*7%40)+'%','14')).join('')}</div><div class="stack"><div class="card pad" style="display:grid;gap:10px">${line('40%','24')}${line('70%')}</div><div class="list">${rows(4)}</div></div></div>`;
+  else if(kind==='chat')body=`<div class="card pad" style="display:grid;gap:10px">${line('50%')}${line('90%')}${line('70%')}</div>`;
+  else body=`<div class="card pad" style="display:grid;gap:12px;margin-bottom:14px"><div class="row">${'<div class="sk c" style="width:48px;height:48px"></div>'}<div style="flex:1;display:grid;gap:8px">${line('40%','16')}${line('25%')}</div></div>${line('100%','1')}${line('80%')}${line('65%')}</div><div class="list">${rows(4)}</div>`;
+  return `<div data-o="apple" data-o-label="Apple · skeleton (shape of what's coming)" aria-busy="true">${head}${body}</div>`}
+function errorBlock(what){return `<div class="notice" data-o="atlas" data-o-label="Atlas · error stated as fact + next step" style="margin-bottom:14px">
+  <div class="ni">!</div><div style="flex:1"><div class="nt">Couldn't load ${what}</div>
+  <div class="nb">The access service didn't answer in time (<span class="mono">503</span>). Nothing changed; your last view is still accurate.</div></div>
+  <button class="pill" data-act="retry"><span class="morph" id="retryM"><span class="a">↻ Retry</span><span class="b">Loading…</span></span></button></div>`}
+function emptyBlock(icon,title,text,actions=''){return `<div class="card empty" data-o="claude" data-o-label="Claude · editorial empty state"><div class="ei">${icon}</div><h3>${title}</h3><p>${text}</p><div class="row">${actions}</div></div>`}
+function guard(cap,route){const u=me();return `<div class="guard enter"><div class="notice" data-o="atlas" data-o-label="Atlas · route guard = notice-denied, full page">
+  <div class="ni">${LOCK}</div><div style="flex:1">
+  <h2>This area needs ${mono(cap)}</h2>
+  <div class="nb">Access comes from your sign-in, not from the page you open. Your role (<b>${u.role}</b>) doesn't include ${mono(cap)}, so ${mono(route)} stays closed. Nothing you type can widen it.</div>
+  <div class="chips">${prov('scope · from your Google sign-in')}${prov('role · '+u.role)}</div>
+  <div class="row" style="margin-top:16px"><button class="btn" data-go="account">Go to My access</button><button class="pill" data-go="newRequest" data-kind="role">Request access</button></div>
+  </div></div></div>`}
+
+/* ═════════ SHELL ═════════ */
+const IC={chat:'<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',metrics:'<path d="M4 19V5M9 19V9M14 19v-6M19 19V7"/>',account:'<path d="M12 3l7 3v5c0 4.4-3 8.3-7 10-4-1.7-7-5.6-7-10V6z"/><path d="M9 12l2 2 4-4"/>',myRequests:'<path d="M7 7h11l-3-3M17 17H6l3 3"/>',tokens:'<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/>',users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>',groups:'<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/><path d="M6.5 10v4a3 3 0 0 0 3 3H14"/>',adminRequests:'<path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1 3h6l1-3h5"/>',audit:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',app:'<path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/>'};
+const icon=k=>`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k]||''}</svg>`;
+function navItems(){const items=[['chat','','Ask Atlas'],['metrics','','Metrics']];
+  const acct=[['account','','My access'],['myRequests','','My requests'],['tokens','','Tokens & apps']];
+  const admin=[];const p=S.persona;
+  if(p==='admin')admin.push(['users','','Users']);
+  if(p==='admin'||p==='manager')admin.push(['groups','','Groups'],['adminRequests','','Access requests']);
+  if(p==='admin')admin.push(['audit','','Audit']);
+  return{items,acct,admin}}
+function pendingCount(){return actionableReqs().length}
+function renderSide(){const {items,acct,admin}=navItems();const cur=S.screen==='newRequest'?'myRequests':(S.screen==='userDetail'||S.screen==='effective')?'users':S.screen;
+  const n=([k,ic,t],badge)=>`<button class="nav ${cur===k?'on':''}" data-go="${k==='metrics'?'':k}"><span class="ic">${icon(k)}</span>${t}${badge?`<span class="badge" data-o="atlas" data-o-label="Atlas · pending-approval badge">${badge}</span>`:''}</button>`;
+  const u=me();
+  $('#side').innerHTML=`<div class="brand"><i aria-hidden="true"></i>Atlas</div>${items.map(i=>n(i)).join('')}
+   <div class="sec">Account</div>${acct.map(i=>n(i)).join('')}
+   ${admin.length?`<div class="sec" data-o="atlas" data-o-label="Atlas · admin section (manager/admin only)">Admin</div>${admin.map(i=>n(i,i[0]==='adminRequests'&&S.state!=='empty'?pendingCount():0)).join('')}`:''}
+   <div class="me">${av(u)}<div style="min-width:0"><div class="nm">${u.name}</div><div class="em">${u.email}</div></div><span style="margin-left:auto">${role(u.role)}</span></div>`}
+function renderTop(title,route,crumb){$('#topbar').innerHTML=`<button class="ibtn menubtn" data-act="drawer" aria-label="Open navigation">☰</button>
+  <div class="t">${crumb?`<span class="crumb" data-go="${crumb[0]}">${crumb[1]}</span><span class="muted">›</span>`:''}<span>${title}</span></div>
+  <span class="route">${esc(route)}</span><button class="ibtn srch" title="Search ⌘K" aria-label="Search">⌕</button>`}
+
+/* ═════════ SCREENS ═════════ */
+const VIEW={};
+
+/* 1 · My access */
+VIEW.account={title:'My access',route:'/account',w:760,sk:'list',what:'your access',render(){
+  const u=me();const first=S.cs.account==='first';const rules=rulesFor(u.id);const empty=S.state==='empty'||S.persona==='newViewer'||first;
+  const caps=myCaps();const next=ROLES[ROLES.indexOf(u.role)+1];
+  const grps=empty?[]:groupsOf(u.id);
+  let h=`<div class="head-row"><div><h1 class="hello" data-o="claude" data-o-label="Claude · serif title">${first?'Welcome to Atlas, '+u.name.split(' ')[0]:'My access'}</h1>
+    <p class="sub">${first?'This is where your access lives. You can ask Atlas questions as soon as a group or grant covers the data.':'What Atlas lets you do and see, and where each permission comes from.'}</p></div>
+    <button class="btn" data-go="newRequest" data-kind="group">＋ Request access</button></div>`;
+  if(empty)h+=`<div style="margin-bottom:14px">${emptyBlock(LOCK.replace(/14/g,'20'),'No data access yet',`You're signed in as <b>${u.email}</b>, but no group or grant covers any data yet, so the chat can't answer metric questions. Ask for the group your team uses; its managers see the request.`,`<button class="btn" data-go="newRequest" data-kind="group">Request access</button><button class="pill" data-go="newRequest" data-kind="group">Browse groups</button>`)}</div>`;
+  h+=`<div class="card pad" style="padding:18px 20px" data-o="apple" data-o-label="Apple · solid summary card">
+    <div class="row" style="gap:14px">${av(u,1)}<div style="flex:1;min-width:0"><div class="serif" style="font-size:19px">${u.name}</div><div class="muted" style="font-size:13px">${u.email}</div></div>
+    <div style="text-align:right">${role(u.role)}<div class="cap" style="margin-top:4px">Role · set by an admin</div></div></div>
+    <div class="lbl" style="margin:18px 0 4px;display:flex;align-items:center">Capabilities <span class="cap" style="margin-left:8px;font-weight:400">${caps.length} from role ${u.role}</span></div>
+    <div class="caps">${caps.map(c=>`<div class="capr"><span class="ck">✓</span><div><span class="mono" style="color:var(--ink)" data-o="codex" data-o-label="Codex · mono id">${c}</span><div class="cd">${CAPS[c]}</div></div></div>`).join('')}
+    ${next?ADDS[next].slice(0,2).map(c=>`<div class="capr" style="opacity:.75"><span class="ck no">·</span><div><span class="mono">${c}</span><div class="cd">Comes with ${next}. <a data-go="newRequest" data-kind="role">Request ${next}</a></div></div></div>`).join(''):''}</div>
+    <div class="lbl" style="margin:18px 0 8px">Groups</div>
+    ${grps.length?`<div class="row" style="gap:8px">${grps.map(x=>`<span class="tag" style="padding:4px 6px 4px 10px;gap:8px;font-size:12.5px;color:var(--ink)"><span class="mono">${x.g}</span>${standing(x.standing)}</span>`).join('')}</div>`:`<div class="muted" style="font-size:13.5px">None yet. Groups decide what data you can see.</div>`}
+  </div>`;
+  h+=`<h2 class="sh">What I can see <span class="cap">${empty?'0':rules.length} rules · deny wins over allow</span></h2>`;
+  if(empty)h+=`<div class="list"><div class="li"><div class="grow"><div class="t2" style="font-size:13.5px">Nothing yet. When a request is approved, the grant shows up here with where it came from.</div></div></div></div>`;
+  else h+=`<div class="list" data-o="apple" data-o-label="Apple · inset grouped list">${rules.map(r=>`<div class="li">${eff(r.effect)}<div class="grow"><div class="t1"><span class="mono" style="font-size:12.5px">${esc(r.target)}</span></div><div class="t2">${lab(r.target)||'—'}${r.reason?' · '+esc(r.reason):''}</div></div>
+     <div style="text-align:right;display:grid;gap:3px;justify-items:end"><span class="tag mono" data-o="atlas" data-o-label="Atlas · origin of every rule">${r.origin}</span>${r.exp?`<span class="cap num">until ${r.exp}</span>`:''}</div></div>`).join('')}</div>`;
+  return h}};
+
+/* 2 · New request */
+VIEW.newRequest={title:'New request',route:'/account/requests/new?resource=demo/checkout/checkout_funnel&label=Checkout%20funnel',crumb:['account','My access'],w:760,sk:'list',what:'the request form',render(){
+  const u=me();const k=U.reqKind;
+  const kinds=[['group','Group'],['role','Role'],['resource','Resource']];
+  let body='';
+  if(k==='resource'){const holders=['marketing-paid','leadership','engineering'];
+    body=`<div class="field"><label>Resource</label><input class="inp mono" value="demo/checkout/checkout_funnel" readonly aria-readonly="true">
+      <div class="hint">Checkout funnel · Checkout journey · <span class="mono">demo</span> · prefilled from your chat</div></div>
+     <div class="field" style="margin-top:18px"><label>Who can approve it</label><div class="hint" style="margin-top:-2px">These groups already hold it. Pick one and its managers decide; or ask for a direct grant.</div>
+     <div class="list" style="margin-top:4px" data-o="apple" data-o-label="Apple · selectable inset rows">${holders.map(g=>{const ms=managersOf(g);return `<div class="li click ${U.reqPick===g?'sel':''}" data-act="pick" data-v="${g}"><span class="radio"></span><div class="grow"><div class="t1"><span class="mono">${g}</span><span class="cap">${GBY[g].grants.map(x=>x.target).join(', ')}</span></div><div class="t2">${GBY[g].desc}</div>
+        <div class="t2" style="margin-top:4px;color:var(--body)">Decided by ${ms.map(m=>`<b style="font-weight:500">${USERS[m.u].name}</b>${m.via!==g?` <span class="cap">(manages ${m.via})</span>`:''}`).join(' or ')}</div></div></div>`}).join('')}
+       <div class="li click ${U.reqPick==='direct'?'sel':''}" data-act="pick" data-v="direct"><span class="radio"></span><div class="grow"><div class="t1">Direct grant for me only</div><div class="t2">Decided by an admin. Direct grants usually expire after 90 days.</div></div></div></div></div>`}
+  else if(k==='group'){const mine=groupsOf(u.id).map(x=>x.g);const opts=GROUPS.filter(g=>g.id!=='atlas-admins'&&!mine.includes(g.id));
+    body=`<div class="field"><label>Group</label><div class="list" data-o="apple" data-o-label="Apple · selectable inset rows">${opts.map(g=>{const ms=managersOf(g.id);return `<div class="li click ${U.reqGroup===g.id?'sel':''}" data-act="pickg" data-v="${g.id}"><span class="radio"></span><div class="grow"><div class="t1"><span class="mono">${g.id}</span>${g.parent?`<span class="cap">in ${g.parent}</span>`:''}</div><div class="t2">${g.desc}</div><div class="t2" style="color:var(--body);margin-top:3px">${ms.length?'Decided by '+ms.map(m=>USERS[m.u].name).join(' or '):'No managers · an admin decides'}</div></div><span class="cap mono">${g.grants.length} grants</span></div>`}).join('')}</div></div>`}
+  else {body=`<div class="field"><label>Role</label><div class="hint" style="margin-top:-2px">Role requests are decided by an admin. Your role today is <b>${u.role}</b>.</div><div class="list">${ROLES.map(r=>{const cur=r===u.role,below=ROLES.indexOf(r)<=ROLES.indexOf(u.role);return `<div class="li ${below?'':'click'} ${U.reqRole===r&&!below?'sel':''}" ${below?'style="opacity:.55"':`data-act="pickr" data-v="${r}"`}><span class="radio"></span><div class="grow"><div class="t1">${role(r)}${cur?'<span class="cap">current</span>':''}</div><div class="t2">Adds ${ADDS[r].map(c=>`<span class="mono">${c}</span>`).join(', ')}</div></div></div>`}).join('')}</div></div>`}
+  const sent=U.reqSent,bad=U.reqErr;
+  const who=k==='resource'?(U.reqPick==='direct'?'an admin':managersOf(U.reqPick).map(m=>USERS[m.u].name).join(' and ')):k==='group'?(managersOf(U.reqGroup).map(m=>USERS[m.u].name).join(' and ')||'an admin'):'an admin';
+  return `<div class="head-row"><div><h1 class="hello">Request access</h1><p class="sub">Requests go to the people who can decide them. You'll see the answer under My requests.</p></div></div>
+   <div class="card" style="padding:20px 22px" data-o="apple" data-o-label="Apple · form on a solid card">
+    <div class="lbl" style="margin-bottom:8px">What do you need?</div>
+    <div class="seg" style="margin-bottom:20px" data-o="apple" data-o-label="Apple · segmented kind pills">${kinds.map(([v,t])=>`<button class="${k===v?'on':''}" data-act="kind" data-v="${v}" ${sent?'disabled':''}>${t}</button>`).join('')}</div>
+    ${body}
+    <div class="field" style="margin-top:18px"><label for="note">Why do you need it? <span class="cap">required</span></label>
+     <textarea class="inp ${bad?'bad':''}" id="note" placeholder="e.g. Reviewing checkout drop-off for the Q4 redesign" ${sent?'disabled':''}>${esc(U.reqNote)}</textarea>
+     <div id="noteErr">${bad?`<div class="err">Add a short note so ${esc(who)} can decide.</div>`:''}</div></div>
+    <div class="row" style="margin-top:18px">
+     ${sent?`<span class="ok-line">Sent to ${esc(who)}. <a data-go="myRequests">Track it in My requests →</a></span>`:`<span class="cap">Goes to ${esc(who)}</span>`}
+     <span class="spacer"></span>${sent?'':`<button class="pill" data-go="account">Cancel</button>`}
+     <button class="btn" data-act="submit" ${sent?'disabled':''}><span class="morph ${sent?'done':''}" ${U.animSent?'data-anim':''}><span class="a">Send request</span><span class="b">✓ Sent</span></span></button></div>
+   </div>`}};
+
+/* 3 · My requests */
+VIEW.myRequests={title:'My requests',route:'/account/requests',w:760,sk:'list',what:'your requests',render(){
+  const u=me();const mine=REQS.filter(r=>r.u===u.id);
+  const head=`<div class="head-row"><div><h1 class="hello">My requests</h1><p class="sub">Everything you've asked for, and what was decided.</p></div><button class="btn" data-go="newRequest" data-kind="group">＋ New request</button></div>`;
+  if(S.state==='empty'||!mine.length)return head+emptyBlock(INBOX,'Nothing requested yet','When you ask for a group, a role or a resource, it shows up here with its status and the decision note.',`<button class="btn" data-go="newRequest" data-kind="group">Request access</button>`);
+  return head+`<div class="stack">${mine.map(r=>{const status=U.cancelled[r.id]?'cancelled':r.status;return `<div class="card pad">
+    <div class="row"><div style="flex:1;min-width:0"><div class="row" style="gap:8px">${kindTag(r.kind)}<span class="mono" style="color:var(--ink);font-size:13px">${esc(target(r))}</span>${r.kind==='resource'?`<span class="cap">${lab(r.target)}</span>`:''}</div>
+     <div class="cap num" style="margin-top:4px">Sent ${r.at}</div></div>${reqSt(status)}</div>
+    <div style="margin-top:10px;font-size:14px;color:var(--body)">“${esc(r.note)}”</div>
+    ${status!=='pending'&&r.by?`<div class="diff" style="margin-top:10px;white-space:normal;font-family:var(--sans);font-size:13px;line-height:1.5"><b style="color:var(--ink);font-weight:500">${status==='cancelled'?'You cancelled it':r.by}</b> <span class="cap num">· ${U.cancelled[r.id]?'just now':r.dAt}</span>${r.dNote?`<div style="margin-top:2px">${esc(r.dNote)}</div>`:''}</div>`:''}
+    ${status==='pending'?`<div class="row" style="margin-top:12px"><span class="cap">Waiting on ${r.kind==='role'?'an admin':managersOf(r.kind==='group'?r.target:'marketing-paid').map(m=>USERS[m.u].name).join(' or ')}</span><span class="spacer"></span><button class="pill sm" data-act="cancelReq" data-v="${r.id}">Cancel request</button></div>${rvSlot('cancel-'+r.id)}`:''}
+   </div>`}).join('')}</div>`}};
+
+/* 4 · Tokens & connected apps */
+VIEW.tokens={title:'Tokens & connected apps',route:'/account/tokens',w:760,sk:'table',what:'your tokens',render(){
+  const u=me();const can=has('tokens:create');const toks=(S.state==='empty'?[]:(TOKENS[u.id]||[])).concat(U.newTok?[U.newTok]:[]);
+  let h=`<div class="head-row"><div><h1 class="hello">Tokens & connected apps</h1><p class="sub">Personal tokens and apps that act as you over MCP. Each sees exactly what you see, never more.</p></div>${can?`<button class="btn" data-act="newToken">＋ New token</button>`:''}</div>`;
+  h+=`<h2 class="sh" style="margin-top:4px">Personal access tokens</h2>`;
+  if(!can)h+=`<div class="notice"><div class="ni">${LOCK}</div><div style="flex:1"><div class="nt">Personal tokens need ${mono('tokens:create')}</div><div class="nb">It comes with the <b>analyst</b> role. Your role is ${u.role}.</div></div><button class="pill" data-go="newRequest" data-kind="role">Request analyst</button></div>`;
+  else if(!toks.length)h+=emptyBlock(KEY,'No tokens yet','Create a token for scripts or MCP clients that can\'t sign in with Google. You see it once; Atlas keeps only a hash.',`<button class="btn" data-act="newToken">New token</button>`);
+  else h+=`<div class="card tw" data-o="apple" data-o-label="Apple · data table on a solid card"><table class="dt"><thead><tr><th>Name</th><th>Token</th><th>Created</th><th>Expires</th><th>Last used</th><th></th></tr></thead><tbody>
+    ${toks.map((t,i)=>{const expired=t[3]<TODAY;return `<tr><td style="color:var(--ink);font-weight:500">${esc(t[0])}${t.fresh?' <span class="tag">new</span>':''}</td><td><span class="mono" data-o="codex" data-o-label="Codex · mono prefix">${t[1]}…</span></td><td class="num">${t[2]}</td><td class="num">${expired?`<span title="expired ${t[3]}">${stPlain('mute','expired')}</span>`:t[3]}</td><td class="num">${t[4]}</td><td class="r"><button class="pill sm" data-act="revokeTok" data-v="${i}">Revoke</button></td></tr>`}).join('')}</tbody></table></div>${rvSlot('tok')}`;
+  h+=`<h2 class="sh">Connected apps</h2>`;
+  if(S.p4==='off')h+=`<div class="notice" data-o="atlas" data-o-label="Atlas · phase-4 flag off"><div class="ni">⌁</div><div style="flex:1"><div class="nt">Not enabled for this deployment</div><div class="nb">Apps like Claude Code connect with your Atlas sign-in (OAuth) once MCP sign-in is turned on. Until then, use a personal token.</div></div>${stPlain('mute','off')}</div>`;
+  else if(S.p4==='empty'||S.state==='empty')h+=`<div class="list"><div class="li"><div class="grow"><div class="t1">No connected apps yet</div><div class="t2">Connect Claude Code, claude.ai or Claude Desktop to the Atlas MCP server and approve it with your sign-in. It shows up here, and you can revoke it any time.</div></div></div></div>`;
+  else h+=`<div class="list" data-o="apple" data-o-label="Apple · inset list">${APPS.map((a,i)=>`<div class="li"><span class="av svc">${icon('app')}</span><div class="grow"><div class="t1">${a[0]}<span class="mono cap">${a[1]}</span></div><div class="t2 num">Authorized ${a[3]} · last used ${a[2]} · scope <span class="mono">mcp:use</span></div></div><button class="pill sm" data-act="revokeApp" data-v="${i}">Revoke</button></div>`).join('')}</div>${rvSlot('app')}`;
+  return h}};
+
+/* 5 · Denied in chat */
+VIEW.chat={title:'Checkout funnel question',route:'/ask/t/9c41',w:740,sk:'chat',what:'this conversation',chat:true,render(){
+  return `<div class="u"><div>What's the checkout funnel conversion for September?</div></div>
+  <div class="ans">
+   <div class="plan" data-o="claude" data-o-label="Claude · Worked for Ns (Codex plan collapsed)">▸ Worked for 2s · 2 steps <span class="mono" style="margin-left:auto">search_atlas · funnel_analyze</span></div>
+   <div class="notice" data-o="atlas" data-o-label="Atlas · notice-denied (guardrail #4)" style="margin-bottom:14px"><div class="ni">${LOCK}</div><div style="flex:1">
+    <div class="nt">Checkout funnel isn't available to your access</div>
+    <div class="nb">Access comes from your sign-in, not from the question, so I can't widen it here. It needs ${mono('demo/checkout/checkout_funnel')}; the managers of a group that holds it can approve a request.</div>
+    <div class="chips">${prov('scope · from your Google sign-in')}</div>
+    <div class="row" style="margin-top:12px"><button class="btn" data-go="newRequest" data-kind="resource" data-o="atlas" data-o-label="Atlas · denial → request (prefilled)">Request access</button><span class="cap mono">→ /account/requests/new?resource=…&amp;label=Checkout funnel</span></div></div></div>
+   <p>I can answer these from data you already have:</p>
+   <div class="row" data-o="apple" data-o-label="Apple · in-scope alternative pills"><button class="pill">Revenue</button><button class="pill">Paid orders</button><button class="pill">Average order value</button></div>
+  </div>`}};
+
+/* 6 · Admin users */
+function filteredUsers(){const q=U.uq.trim().toLowerCase();let ids=U.uMore?UORDER:UORDER.slice(0,12);
+  return ids.map(i=>USERS[i]).filter(u=>(!q||u.name.toLowerCase().includes(q)||u.email.includes(q))&&(!U.uRole||u.role===U.uRole)&&(!U.uStatus||u.status===U.uStatus)&&(!U.uKind||u.kind===U.uKind))}
+function usersTable(){const list=S.state==='empty'?[]:filteredUsers();
+  if(!list.length)return emptyBlock(SEARCH,U.uq?`No users match “${esc(U.uq)}”`:'No users match these filters','Try a shorter search, or clear the role, status and kind filters.',`<button class="pill" data-act="clearF">Clear filters</button>`);
+  return `<div class="card tw" data-o="apple" data-o-label="Apple · 1080px data table on a solid card"><table class="dt"><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Status</th><th class="hide-mid">Kind</th><th>Last seen</th><th class="r">Groups</th></tr></thead><tbody>
+   ${list.map(u=>`<tr class="click" data-act="openUser" data-v="${u.id}"><td><div class="who">${av(u)}<span style="color:var(--ink)">${u.email}</span></div></td><td>${u.name}${u.id===me().id?' <span class="tag">you</span>':''}</td><td>${role(u.role)}</td><td>${u.status==='active'?stPlain('pos','active'):stPlain('mute','disabled')}</td><td class="hide-mid">${u.kind==='service'?'<span class="tag">service</span>':'<span class="cap">human</span>'}</td><td class="num">${u.last}</td><td class="r num mono">${groupsOf(u.id).length}</td></tr>`).join('')}
+   </tbody></table></div>
+   <div class="row" style="justify-content:center;margin-top:14px">${U.uMore||U.uq||U.uRole||U.uStatus||U.uKind?`<span class="cap num">Showing ${list.length} of ${UORDER.length}</span>`:`<span class="cap num">Showing 12 of ${UORDER.length}</span><button class="pill" data-act="more" data-o="codex" data-o-label="Codex · cursor paging">Load more</button>`}</div>`}
+VIEW.users={title:'Users',route:'/admin/users',w:1080,sk:'table',what:'users',need:'admin:users',render(){
+  const sel=(id,label,opts,v)=>`<select class="dd" data-f="${id}" aria-label="${label}"><option value="">${label}: any</option>${opts.map(o=>`<option ${v===o?'selected':''} value="${o}">${o}</option>`).join('')}</select>`;
+  return `<div class="head-row"><div><h1 class="hello">Users</h1><p class="sub">Everyone who has signed in, plus service identities. Roles say what people can do; groups say what they can see.</p></div></div>
+   <div class="filters" data-o="apple" data-o-label="Apple · filter bar"><div class="search"><span class="ic">⌕</span><input class="inp" id="uq" placeholder="Search name or email" value="${esc(U.uq)}"></div>
+   ${sel('uRole','Role',ROLES,U.uRole)}${sel('uStatus','Status',['active','disabled'],U.uStatus)}${sel('uKind','Kind',['human','service'],U.uKind)}<span class="spacer"></span><span class="cap num">${UORDER.length} users · 1 service</span></div>
+   <div id="usersTable">${usersTable()}</div>`}};
+
+/* 7 · User detail (+8 effective) */
+function tabs(cur,list,act){return `<div class="seg" data-o="apple" data-o-label="Apple · segmented tabs">${list.map(([v,t,n])=>`<button class="${cur===v?'on':''}" data-act="${act}" data-v="${v}">${t}${n!=null?` <span class="n">${n}</span>`:''}</button>`).join('')}</div>`}
+function effectivePanel(uid){const u=USERS[uid];const d=decide(uid,U.probe.trim()||'—');const caps=roleCaps(u.role);
+  const probeOut=()=>{const p=U.probe.trim();const valid=/^[a-z0-9_]+(\/[a-z0-9_]+){1,2}$/.test(p);if(!valid)return `<div class="err">Enter a resource path like ${mono('demo/order/revenue')}</div>`;
+    const dd=decide(uid,p);return `<div class="row" style="gap:10px">${dd.allowed?st('pos','allow'):st('neg','deny','deny')}<span class="mono" style="color:var(--ink)">${esc(dd.reason)}</span></div>
+     ${dd.rule?`<div class="list" style="margin-top:10px"><div class="li">${eff(dd.rule.effect)}<div class="grow"><div class="t1"><span class="mono">${esc(dd.rule.target)}</span><span class="cap">deciding grant ${dd.rule.id}</span></div><div class="t2">${dd.rule.reason||'No reason recorded'}${dd.rule.exp?' · until '+dd.rule.exp:''}</div></div><span class="tag mono">${dd.rule.origin}</span></div></div>`:`<div class="cap" style="margin-top:8px">No allow matches, so it's denied. Grant it to a group ${u.name.split(' ')[0]} is in, or approve a request.</div>`}`};
+  const tree=CATALOG.map(s=>`<div class="tn"><span class="tw-ic">▾</span><span class="mono src">${s.src}</span><span class="lab">${s.name}</span></div><div class="guide">${s.ents.map(e=>`<div class="tn"><span class="tw-ic">▾</span><span class="mono" style="color:var(--ink)">${e.id}</span><span class="lab">${e.name}</span></div><div class="guide">${e.items.map(([i,n])=>{const p=`${s.src}/${e.id}/${i}`;const dd=decide(uid,p);return `<div class="tn"><span class="mono">${i}</span><span class="lab hide-narrow">${n}</span><span style="margin-left:auto;display:flex;gap:8px;align-items:center">${dd.rule?`<span class="mono cap hide-narrow">${dd.rule.origin}</span>`:'<span class="mono cap hide-narrow">no grant</span>'}${dd.allowed?stPlain('pos','allow'):stPlain('neg','deny','deny')}</span></div>`}).join('')}</div>`).join('')}</div>`).join('');
+  VIEW._probeOut=probeOut;
+  return `<div class="card pad" data-o="atlas" data-o-label="Atlas · effective-access probe">
+    <div class="lbl" style="margin-bottom:8px">Probe a resource</div>
+    <input class="inp mono" id="probe" value="${esc(U.probe)}" spellcheck="false" aria-label="Resource path">
+    <div id="probeOut" style="margin-top:12px">${probeOut()}</div></div>
+   <div class="split2" style="margin-top:12px">
+    <div class="card" style="padding:10px 8px"><div class="lbl" style="padding:6px 12px 4px">Catalog · what ${u.name.split(' ')[0]} can see</div><div class="tree ctree" data-o="apple" data-o-label="Apple · outline tree list">${tree}</div></div>
+    <div class="card pad" style="align-self:start"><div class="lbl" style="margin-bottom:6px">Capabilities</div>${caps.map(c=>`<div class="capr"><span class="ck">✓</span><div><span class="mono" style="color:var(--ink)">${c}</span><div class="cd">from role ${u.role}</div></div></div>`).join('')}
+     <div class="cap" style="margin-top:10px">Groups never grant capabilities; only the role and user overrides do.</div></div></div>`}
+VIEW.userDetail={title:'',route:'/admin/users/',crumb:['users','Users'],w:1080,sk:'list',what:'this user',need:'admin:users',render(){
+  const self=S.cs.userDetail==='self';const uid=self?me().id:U.udUser;const u=USERS[uid];
+  const V=VIEW[S.screen];V.title=u.name;V.route='/admin/users/'+u.id+(S.screen==='effective'?'?tab=effective':'');
+  const grps=groupsOf(uid),dg=USERGRANTS[uid]||[],toks=TOKENS[uid]||[],reqs=REQS.filter(r=>r.u===uid);
+  const roleNow=U.udRoleApplied&&U.udRoleApplied[uid]||u.role;
+  const tab=U.udTab;
+  let panel='';
+  if(tab==='groups')panel=grps.length?`<div class="list">${grps.map(x=>`<div class="li"><div class="grow"><div class="t1"><span class="mono">${x.g}</span>${GBY[x.g].parent?`<span class="cap">in ${GBY[x.g].parent}</span>`:''}</div><div class="t2">${GBY[x.g].desc}</div></div>${standing(x.standing)}<button class="pill sm" data-go="groups" data-g="${x.g}">Open</button></div>`).join('')}</div>`:emptyBlock('⌗','Not in any group','Groups decide what data people see.','');
+  else if(tab==='grants')panel=`<div class="row" style="margin-bottom:10px"><span class="cap">Direct grants apply to this user only. Each needs a reason.</span><span class="spacer"></span><button class="pill" ${self?'disabled title="You can\'t grant access to yourself"':''}>＋ Add grant</button></div>`+(dg.length?`<div class="card tw"><table class="dt"><thead><tr><th>Effect</th><th>Pattern</th><th>Origin</th><th>Expires</th><th>Reason</th><th></th></tr></thead><tbody>${dg.map(g=>`<tr><td>${eff(g.effect)}</td><td><span class="mono" style="color:var(--ink)">${g.target}</span><div class="cap">${lab(g.target)}</div></td><td><span class="tag mono">user</span></td><td class="num">${g.exp||'<span class="cap">never</span>'}</td><td>${esc(g.reason)}</td><td class="r"><button class="pill sm" data-act="revokeGrant" data-v="${g.id}" data-u="${uid}">Revoke</button></td></tr>`).join('')}</tbody></table></div>${rvSlot('ugrant')}`:emptyBlock('◇','No direct grants','Everything this user sees comes from their groups.',''));
+  else if(tab==='effective')panel=effectivePanel(uid);
+  else if(tab==='tokens')panel=`<div class="row" style="margin-bottom:10px"><span class="cap">${toks.length} active tokens · connected apps are listed under the user's own page</span><span class="spacer"></span><button class="pill" data-act="revokeAll" data-u="${uid}" ${toks.length?'':'disabled'}>Revoke all</button></div>${rvSlot('revokeAll')}`+(toks.length?`<div class="card tw"><table class="dt"><thead><tr><th>Name</th><th>Token</th><th>Created</th><th>Expires</th><th>Last used</th></tr></thead><tbody>${toks.map(t=>`<tr><td style="color:var(--ink)">${t[0]}</td><td class="mono">${t[1]}…</td><td class="num">${t[2]}</td><td class="num">${t[3]}</td><td class="num">${t[4]}</td></tr>`).join('')}</tbody></table></div>`:emptyBlock(KEY,'No tokens','This user has no personal access tokens.',''));
+  else panel=reqs.length?`<div class="list">${reqs.map(r=>`<div class="li">${kindTag(r.kind)}<div class="grow"><div class="t1"><span class="mono">${esc(target(r))}</span></div><div class="t2">“${esc(r.note)}” · ${r.at}</div></div>${reqSt(r.status)}</div>`).join('')}</div>`:emptyBlock(INBOX,'No requests','This user hasn\'t asked for anything.','');
+  return `<div class="card" style="padding:20px 22px" data-o="apple" data-o-label="Apple · solid header card">
+    <div class="row" style="gap:16px;align-items:flex-start">${av(u,1)}<div style="flex:1;min-width:220px"><h1 class="serif" style="font-size:27px;line-height:1.2">${u.name}${self?' <span class="tag" style="vertical-align:middle">you</span>':''}</h1><div class="muted" style="font-size:13.5px">${u.email}</div>
+     <div class="row" style="gap:6px;margin-top:8px"><span class="tag">${u.kind}</span><span class="tag num">created ${u.created}</span><span class="tag num">last seen ${u.last}</span><span class="tag num">${grps.length} group${grps.length===1?'':'s'}</span></div></div>
+     <div style="display:grid;gap:8px;min-width:260px" data-o="codex" data-o-label="Codex · editor → review before apply">
+      <div class="row" style="gap:8px;flex-wrap:nowrap"><label class="lbl" style="width:52px">Role</label><select class="dd" style="flex:1" data-act-change="role" ${self?'disabled':''}>${ROLES.map(r=>`<option ${r===(U.udRole||roleNow)?'selected':''}>${r}</option>`).join('')}</select></div>
+      <div class="row" style="gap:8px;flex-wrap:nowrap"><label class="lbl" style="width:52px">Status</label><select class="dd" style="flex:1" data-act-change="status" ${self?'disabled':''}><option ${u.status==='active'?'selected':''}>active</option><option ${u.status==='disabled'?'selected':''}>disabled</option></select></div>
+      ${self?`<div class="cap" style="max-width:260px;color:var(--body)">${LOCK.replace(/14/g,'11')} You can't change your own role or status. Ask another admin.</div>`:''}
+     </div></div>${rvSlot('role')}</div>
+   <div style="margin:18px 0 12px">${tabs(tab,[['groups','Groups',grps.length],['grants','Direct grants',dg.length],['effective','Effective access'],['tokens','Tokens',toks.length],['requests','Requests',reqs.length]],'udTab')}</div>
+   <div class="enter" style="animation-duration:.3s">${panel}</div>`}};
+VIEW.effective={...VIEW.userDetail,need:'admin:users'};
+
+/* 9 · Groups */
+function groupTree(){const visible=isManager()?managed():GROUPS.map(g=>g.id);
+  const node=(g,d)=>{const vis=visible.includes(g.id);const kids=GROUPS.filter(x=>x.parent===g.id);
+    return `<div class="tn ${U.gSel===g.id?'on':''} ${vis?'':'lock'}" ${vis?`data-act="gsel" data-v="${g.id}"`:''} style="padding-left:${10+d*18}px"><span class="tw-ic">${kids.length?'▾':'·'}</span><span class="mono" style="font-size:12.5px;color:${vis?'var(--ink)':'var(--muted)'}">${g.id}</span>${vis?'':`<span class="cap">${LOCK.replace(/14/g,'10')}</span>`}<span class="cnt" title="members · grants">${g.members.length} · ${g.grants.length}</span></div>${kids.map(k=>node(k,d+1)).join('')}`};
+  return GROUPS.filter(g=>!g.parent).map(g=>node(g,0)).join('')}
+function grantEditor(g){const E=U.editor;const q=E.q;const pool=Object.keys(LABEL).filter(p=>p!=='*');
+  const hits=pool.filter(p=>!q||p.includes(q.toLowerCase())||LABEL[p].toLowerCase().includes(q.toLowerCase())).slice(0,6);
+  const exp=E.exp;
+  return `<div class="card" style="padding:18px 20px;margin-top:12px;box-shadow:0 0 0 1px var(--hair),0 6px 20px rgba(0,0,0,.06)" data-o="codex" data-o-label="Codex · grant editor (review before apply)">
+   <div class="row"><h3 style="font-size:19px">Add grant</h3><span class="tag mono">subject group:${g.id}</span><span class="spacer"></span><button class="ibtn" data-act="closeEditor" aria-label="Close">✕</button></div>
+   <div class="field" style="margin-top:14px;position:relative"><label>Target</label>
+    <input class="inp mono" id="pickQ" placeholder="Search the catalog: metric, entity or source" value="${esc(E.target||q)}" autocomplete="off">
+    ${E.open?`<div class="picker glass" id="picker" data-o="apple" data-o-label="Apple · cmdk-style catalog picker (glass popover)">${pickerList(hits)}</div>`:''}
+    <div class="hint">${E.target?`${lab(E.target)} · patterns ending in ${mono('/*')} cover everything under them`:'Filled from the plugin registry; only real catalog paths can be granted.'}</div></div>
+   <div class="row" style="margin-top:16px;gap:18px;align-items:flex-start">
+    <div class="field"><label>Effect</label><div class="seg">${['allow','deny'].map(v=>`<button class="${E.effect===v?'on':''}" data-act="effect" data-v="${v}">${v==='allow'?'<i class="st pos" style="padding:0;background:none"><i></i></i>Allow':'<i class="st neg deny" style="padding:0;background:none"><i></i></i>Deny'}</button>`).join('')}</div></div>
+    <div class="field"><label>Expiry</label><div class="row" style="gap:6px"><input class="inp mono" value="${exp}" placeholder="YYYY-MM-DD" style="width:150px" id="expIn" aria-label="Expiry date (UTC)"><button class="pill sm ${exp===PLUS90?'sel':''}" data-act="exp" data-v="${PLUS90}">90 days</button><button class="pill sm ${!exp?'sel':''}" data-act="exp" data-v="">Never</button></div></div></div>
+   ${E.effect==='deny'?`<div class="notice warn" style="margin-top:14px" data-o="atlas" data-o-label="Atlas · deny needs confirmation"><div class="ni">!</div><div style="flex:1"><div class="nt">A deny wins over every allow</div><div class="nb">Everyone in ${mono(g.id)}${subtree(g.id).length>1?' and its subgroups ('+subtree(g.id).slice(1).map(x=>mono(x)).join(', ')+')':''} loses ${mono(E.target||'this target')}, even where another group allows it. Removing a member later lifts it for them.</div>
+     <label class="row" style="margin-top:10px;gap:8px;font-size:13.5px;cursor:pointer"><input type="checkbox" data-act="confirmDeny" ${E.confirm?'checked':''}> I understand this restricts ${g.members.length} members</label></div></div>`:''}
+   <div class="field" style="margin-top:16px"><label>Reason <span class="cap">optional for group grants · shown in the audit log</span></label><input class="inp" id="reasonIn" value="${esc(E.reason)}" placeholder="e.g. Paid funnel optimisation"></div>
+   <div class="row" style="margin-top:16px;gap:12px;align-items:stretch">
+    <div class="future" style="flex:1;min-width:220px" data-o="atlas" data-o-label="Atlas · future control, shown disabled"><div class="lbl" style="margin-bottom:6px">Row scope</div><div class="fz row" style="gap:6px"><span class="tag">country</span><span class="tag">= AE, SA</span><span class="tag">+ dimension</span></div><div class="fl">${LOCK.replace(/14/g,'11')} Arrives with row and field controls</div></div>
+    <div class="future" style="flex:1;min-width:220px"><div class="lbl" style="margin-bottom:6px">Clearance</div><div class="fz row" style="gap:6px"><span class="tag mono">fields:business_names</span><span class="tag mono">fields:people_names</span></div><div class="fl">${LOCK.replace(/14/g,'11')} Arrives with row and field controls</div></div></div>
+   <div class="row" style="margin-top:18px"><span class="cap">Nothing is written until you approve the review.</span><span class="spacer"></span><button class="pill" data-act="closeEditor">Cancel</button>
+    <button class="btn" data-act="reviewGrant" ${!E.target||(E.effect==='deny'&&!E.confirm)?'disabled':''}>Review change</button></div>
+   ${rvSlot('grant')}</div>`}
+function pickerList(hits){return hits.length?hits.map((p,i)=>`<div class="pk ${i===0?'on':''}" data-act="pickT" data-v="${p}"><span class="kd">${p.endsWith('/*')?(p.split('/').length===2?'source':'entity'):'metric'}</span><span>${LABEL[p]}</span><span class="mono">${p}</span></div>`).join(''):`<div class="pk" style="cursor:default;color:var(--muted)">No catalog path matches</div>`}
+VIEW.groups={title:'Groups',route:'/admin/groups',w:1080,sk:'split',what:'groups',need:'admin:groups',render(){
+  const mgr=isManager();const g=GBY[U.gSel];const canGrants=has('admin:groups');const meId=me().id;
+  if(S.state==='empty')return `<div class="head-row"><div><h1 class="hello">Groups</h1></div></div>`+emptyBlock('⌗','No groups yet','Groups hold the data grants; members inherit them. Start with your teams.',`<button class="btn">＋ New group</button>`);
+  const members=g.members.map(([uid,s])=>{const u=USERS[uid];const self=uid===meId;const canRm=!self&&(canGrants||(mgr&&s==='member'&&u.kind!=='service'));
+    return `<div class="li">${av(u)}<div class="grow"><div class="t1">${u.name}${self?'<span class="tag">you</span>':''}${u.status==='disabled'?stPlain('mute','disabled'):''}</div><div class="t2">${u.email}</div></div>${standing(s)}
+     ${self&&mgr?`<span class="cap" style="max-width:170px;text-align:right">Managers can't change their own membership</span>`:canRm?`<button class="pill sm" data-act="rmMember" data-v="${uid}">Remove</button>`:mgr?`<span class="cap">${s==='manager'?'manager · admin only':'service · admin only'}</span>`:''}</div>`}).join('');
+  const grants=g.grants.map(x=>`<div class="li">${eff(x.effect)}<div class="grow"><div class="t1"><span class="mono">${x.target}</span><span class="cap">${lab(x.target)}</span></div><div class="t2">${x.reason||'No reason'} · by ${x.by}${x.exp?' · until '+x.exp:''} · <span class="mono">${x.id}</span></div></div>${canGrants?`<button class="pill sm" data-act="revokeGG" data-v="${x.id}">Revoke</button>`:''}</div>`).join('');
+  const kids=GROUPS.filter(x=>x.parent===g.id);
+  return `<div class="head-row"><div><h1 class="hello">Groups</h1><p class="sub">${mgr?'Groups you manage. You can add and remove plain members; grants are managed by admins.':'Groups hold data grants; members inherit them and everything from parent groups.'}</p></div>${canGrants?'<button class="btn">＋ New group</button>':''}</div>
+   <div class="gsplit">
+    <div class="card" style="padding:6px 0" data-o="apple" data-o-label="Apple · tree list with mono counts"><div class="lbl" style="padding:10px 18px 2px;display:flex">Groups<span class="cap" style="margin-left:auto;font-weight:400">members · grants</span></div><div class="tree">${groupTree()}</div></div>
+    <div class="stack">
+     <div class="card" style="padding:18px 20px"><div class="row" style="align-items:flex-start"><div style="flex:1;min-width:0"><h2 style="font-size:23px" class="mono-h"><span style="font-family:var(--mono);font-size:19px">${g.id}</span></h2><div class="muted" style="font-size:14px;margin-top:2px">${g.desc}</div>
+       <div class="row" style="gap:6px;margin-top:10px"><span class="tag">parent ${g.parent?`<span class="mono">${g.parent}</span>`:'none · top level'}</span>${kids.length?`<span class="tag">subgroups ${kids.map(k=>`<span class="mono">${k.id}</span>`).join(', ')}</span>`:''}<span class="tag num">${g.members.length} members</span><span class="tag num">${g.grants.length} grants</span></div></div>
+       ${canGrants?`<div class="row" style="gap:6px"><button class="pill sm">Edit</button><button class="pill sm" data-act="delGroup">Delete group</button></div>`:''}</div>
+       ${U.refused?`<div class="notice" style="margin-top:14px" data-o="atlas" data-o-label="Atlas · refusal stated as fact"><div class="ni">!</div><div style="flex:1"><div class="nt">Remove the group's subgroups, members and grants first.</div><div class="nb num">${g.id} still has ${kids.length} subgroup${kids.length===1?'':'s'}, ${g.members.length} members and ${g.grants.length} grants. Deleting would silently change what those people can see.</div></div><button class="ibtn" data-act="unrefuse" aria-label="Dismiss">✕</button></div>`:''}
+       ${rvSlot('delGroup')}</div>
+     <div><h2 class="sh" style="margin-top:6px">Members <span class="cap num" style="margin-left:0">${g.members.length} ${g.members.length===1?'member':'members'} · managers decide requests for this subtree</span></h2>
+      ${mgr||canGrants?`<div class="row" style="margin-bottom:10px;gap:8px"><input class="inp" style="flex:1;max-width:340px" placeholder="Add by email, e.g. sara.mansour@yougotagift.com" id="addM"><button class="pill" data-act="addMember">Add member</button></div>`:''}
+      ${rvSlot('member')}
+      ${g.members.length?`<div class="list">${members}</div>`:`<div class="list"><div class="li"><div class="grow"><div class="t2">No members yet.</div></div></div></div>`}</div>
+     <div><h2 class="sh" style="margin-top:12px">Grants <span class="cap num">${g.grants.length} · inherited by ${subtree(g.id).length>1?'this group and '+subtree(g.id).slice(1).join(', '):'members'}</span></h2>
+      ${canGrants?`<div class="row" style="margin-bottom:10px"><button class="pill" data-act="addGrant">＋ Add grant</button></div>`:`<div class="cap" style="margin-bottom:8px">${LOCK.replace(/14/g,'11')} Managing grants needs ${mono('admin:groups')}.</div>`}
+      ${rvSlot('ggrant')}
+      ${g.grants.length?`<div class="list">${grants}</div>`:''}
+      ${U.editor?grantEditor(g):''}</div>
+    </div></div>`}};
+
+/* 10 · Access requests queue */
+function actionableReqs(){const meId=me().id;return REQS.filter(r=>r.status==='pending'&&!U.decided[r.id]&&visibleReq(r)&&r.u!==meId)}
+function visibleReq(r){if(S.persona==='admin')return true;if(isManager())return r.kind==='group'&&managed().includes(r.target);return false}
+function approveSpec(r){const u=USERS[r.u];
+  if(r.kind==='group')return{title:'Approve request '+r.id,lines:[['c',`request ${r.id}  ${u.email}`],['a',`member ${short(u.email)} in ${r.target}`],['c',`inherits ${GBY[r.target].grants.map(g=>g.effect+' '+g.target).join(', ')}`]],audit:'request.approve + member.put'};
+  if(r.kind==='role')return{title:'Approve request '+r.id,lines:[['c',`request ${r.id}  ${u.email}`],['rm',`role ${r.from}`],['a',`role ${r.target}`],['a',`capabilities ${ADDS[r.target].join(', ')}`]],audit:'request.approve + user.role'};
+  const exp=U.rqExp||PLUS90;return{title:'Approve request '+r.id,pre:`<div class="field" style="margin-bottom:10px"><label>Expiry <span class="cap">prefilled at 90 days · resource grants should expire</span></label><div class="row" style="gap:6px"><input class="inp mono" id="rqExp" value="${exp}" style="width:150px" aria-label="Expiry date (UTC)"><button class="pill sm" data-act="rqExp" data-v="${PLUS90}">90 days</button><button class="pill sm" data-act="rqExp" data-v="2026-11-08">30 days</button></div></div>`,
+   lines:[['c',`request ${r.id}  ${u.email}`],['a',`grant allow ${r.target} for ${short(u.email)} until ${exp}`],['a',`reason "${r.note}"`]],audit:'request.approve + grant.create'}}
+VIEW.adminRequests={title:'Access requests',route:'/admin/requests',w:1080,sk:'list',what:'access requests',need:'admin:users',render(){
+  const mgr=isManager();const meId=me().id;const tab=U.rqTab;
+  const pend=actionableReqs();/* same set as the sidebar badge; your own requests live in My requests */
+  const dec=REQS.filter(r=>(r.status!=='pending'||U.decided[r.id])&&visibleReq(r)&&r.status!=='cancelled'||(r.status==='cancelled'&&visibleReq(r)&&r.u!==meId&&r.u!=='omar'));
+  const list=tab==='pending'?(S.state==='empty'?[]:pend):dec;
+  const card=r=>{const u=USERS[r.u];const own=r.u===meId;const d=U.decided[r.id];const open=U.rqOpen&&U.rqOpen.id===r.id?U.rqOpen.mode:null;const status=d?d.status:r.status;
+   return `<div class="card pad"><div class="row" style="align-items:flex-start;gap:12px">${av(u)}<div style="flex:1;min-width:0">
+     <div class="row" style="gap:8px"><b style="font-weight:500;color:var(--ink)">${u.name}</b><span class="cap">${u.email}</span>${own?'<span class="tag">your request</span>':''}</div>
+     <div class="row" style="gap:8px;margin-top:4px">${kindTag(r.kind)}<span class="mono" style="color:var(--ink)">${esc(target(r))}</span>${r.kind==='resource'?`<span class="cap">${lab(r.target)}</span>`:''}<span class="cap num">· ${r.at}</span></div>
+     <div style="margin-top:8px;font-size:14px">“${esc(r.note)}”</div>
+     ${status!=='pending'?`<div class="cap" style="margin-top:8px;color:var(--body)">${d?'You':r.by} · ${d?'just now':r.dAt}${(d?d.note:r.dNote)?' · “'+esc(d?d.note:r.dNote)+'”':''}</div>`:''}</div>
+     <div style="display:grid;justify-items:end;gap:8px">${reqSt(status)}
+     ${status==='pending'&&!own&&!open?`<div class="row" style="gap:6px"><button class="pill sm" data-act="decline" data-v="${r.id}">Decline</button><button class="btn" style="padding:6px 14px" data-act="approve" data-v="${r.id}">Approve</button></div>`:''}
+     ${status==='pending'&&own?`<span class="cap" style="max-width:200px;text-align:right">${r.kind==='role'||S.persona==='admin'?'Another admin decides your own requests':'An admin decides: managers can\'t change their own membership'}</span>`:''}</div></div>
+     ${open==='approve'?rvSlot('rq-'+r.id):''}
+     ${open==='decline'?`<div class="review" data-o="codex" data-o-label="Codex · decline with optional note"><div class="rh">◇ <b>Decline request ${r.id}</b></div><div class="field"><label>Note to ${u.name.split(' ')[0]} <span class="cap">optional</span></label><textarea class="inp" id="declineNote" style="min-height:64px" placeholder="e.g. Paid search moved to the agency; no access needed."></textarea></div><div class="rf"><button class="btn" data-act="declineGo" data-v="${r.id}">Decline request</button><button class="pill" data-act="rqClose">Keep pending</button></div></div>`:''}
+   </div>`};
+  const n=pend.filter(r=>r.u!==meId).length;
+  return `<div class="head-row"><div><h1 class="hello">Access requests</h1><p class="sub">${mgr?'Group requests for marketing and its subgroups. Role and resource requests go to admins.':'Requests from everyone. Approving applies the exact change shown in the review.'}</p></div></div>
+   <div style="margin-bottom:14px">${tabs(tab,[['pending','Pending',S.state==='empty'?0:pend.length],['decided','Decided',dec.length]],'rqTab')}</div>
+   ${list.length?`<div class="stack">${list.map(card).join('')}</div>`:emptyBlock('✓',tab==='pending'?'No pending requests':'Nothing decided yet',tab==='pending'?'You\'re all caught up. New requests show here and as a badge in the sidebar.':'Approved and declined requests show here with their notes.','')}
+   ${tab==='pending'&&n?'':''}`}};
+
+/* 11 · Audit */
+VIEW.audit={title:'Audit',route:'/admin/audit',w:1080,sk:'table',what:'the audit log',need:'admin:audit',render(){
+  const tab=U.auditTab;let body='';
+  if(S.state==='empty')body=emptyBlock('◷','No activity in this range','Access changes and tool decisions from the last 7 days show here.','<button class="pill">Last 30 days</button>');
+  else if(tab==='changes')body=`<div class="card tw" data-o="apple" data-o-label="Apple · data table, expandable rows"><table class="dt"><thead><tr><th style="width:24px"></th><th>Time</th><th>Actor</th><th>Action</th><th>Object</th></tr></thead><tbody>
+    ${CHANGES.map((c,i)=>{const o=U.auditOpen===i;return `<tr class="click ${o?'open':''}" data-act="auditRow" data-v="${i}"><td style="color:var(--muted)">${o?'▾':'▸'}</td><td class="num">${c.t}</td><td>${c.actor}</td><td><span class="mono" style="color:var(--ink)" ${i===0?'data-o="codex" data-o-label="Codex · mono action"':''}>${c.act}</span></td><td>${c.obj.replace(/([a-z.]+@)/,'<span class="mono">$1</span>')}</td></tr>${o?`<tr><td></td><td colspan="4" class="xp" style="padding-left:12px"><div class="diff" data-o="codex" data-o-label="Codex · diff block (before → after)">${c.diff.map(([k,t])=>`<span class="${k}">${esc(t)}</span>`).join('\n')}</div><div class="cap" style="margin-top:6px">rbac_changes · policy_version bumped · ${c.actor==='CLI · operator'?'trusted CLI, no actor policy':'actor policy checked under lock'}</div></td></tr>`:''}`}).join('')}</tbody></table></div>`;
+  else if(tab==='decisions'){const rows=DECISIONS.filter(d=>!U.denyOnly||d[5]==='deny');
+    body=`<div class="filters"><button class="pill ${U.denyOnly?'sel':''}" data-act="denyOnly">${U.denyOnly?'✓ ':''}Deny only</button><span class="cap num">${rows.length} of ${DECISIONS.length} today</span></div>
+    <div class="card tw"><table class="dt"><thead><tr><th>Time</th><th>User</th><th>Surface</th><th>Tool · resource</th><th>Decision</th><th>Deny reason</th><th class="r">Duration</th></tr></thead><tbody>
+    ${rows.map(d=>`<tr><td class="num">${d[0]}</td><td>${d[1]}</td><td><span class="tag">${d[2]}</span></td><td><span class="mono" style="color:var(--ink)">${d[3]}</span><div class="mono cap">${d[4]}</div></td><td>${d[5]==='allow'?stPlain('pos','allow'):stPlain('neg','deny','deny')}</td><td>${d[6]?`<span class="mono">${d[6]}</span>`:'<span class="cap">—</span>'}</td><td class="r num">${d[7]} ms</td></tr>`).join('')}</tbody></table></div>`}
+  else {const max=Math.max(...DAYS.map(d=>d[1]));const ta=DAYS.reduce((s,d)=>s+d[1],0),td=DAYS.reduce((s,d)=>s+d[2],0);
+    body=`<div class="kpis"><div class="card kpi"><div class="l">Tool calls</div><div class="v">${(ta+td).toLocaleString('en-US')}</div>${prov('atlas_audit_log · live')}</div><div class="card kpi"><div class="l">Allowed</div><div class="v">${ta.toLocaleString('en-US')}</div>${prov('atlas_audit_log · live')}</div><div class="card kpi"><div class="l">Denied</div><div class="v">${td}</div>${prov('atlas_audit_log · live')}</div><div class="card kpi"><div class="l">Deny rate</div><div class="v">${(td/(ta+td)*100).toFixed(1)}%</div>${prov('atlas_audit_log · live')}</div></div>
+    <div class="split2"><div class="card pad" data-o="atlas" data-o-label="Atlas · bars carry text labels, never colour alone"><div class="row" style="margin-bottom:12px"><h3 style="font-size:19px">Per day</h3><span class="spacer"></span><span class="legend-i"><i></i>allow</span><span class="legend-i dn"><i></i>deny</span></div>
+     <div class="bars">${DAYS.map((d,i)=>`<div class="bar-row"><span class="d">${d[0]}</span><div class="bar-track"><div class="bar"><i style="width:${d[1]/max*82}%;animation-delay:${i*.06}s"></i><span>${d[1]} allow</span></div><div class="bar dn"><i style="width:${Math.max(1.5,d[2]/max*82)}%;animation-delay:${i*.06+.03}s"></i><span>${d[2]} deny</span></div></div></div>`).join('')}</div></div>
+     <div class="card pad"><h3 style="font-size:19px;margin-bottom:8px">Top deny reasons</h3>
+      ${[['no grant allows it',58],['denied by grant 9b07e3 (group:marketing)',21],['inactive user',11],['missing capability mcp:use',7]].map(([t,n])=>`<div class="reason-r"><span class="mono" style="color:var(--ink)">${t}</span><span class="num">${n}</span><div class="rb"><i style="width:${n/58*100}%"></i></div></div>`).join('')}
+      <div class="cap" style="margin-top:10px">Most denials are people asking about data they haven't requested yet. The chat offers Request access on each one.</div></div></div>`}
+  return `<div class="head-row"><div><h1 class="hello">Audit</h1><p class="sub">Who changed access, and every allow or deny the atlas tools made. Times are UTC.</p></div><button class="pill">Last 7 days ▾</button></div>
+   <div style="margin-bottom:14px">${tabs(tab,[['changes','Changes',CHANGES.length],['decisions','Decisions'],['summary','Summary']],'auditTab')}</div>${body}`}};
+
+/* 12 · Guard (explicit) */
+VIEW.guard={title:'Users',route:'/admin/users',w:760,sk:'list',what:'',render(){return ''}};
+
+/* ═════════ RENDER ═════════ */
+let lastKey='';
+function access(screen){const p=S.persona;
+  if(screen==='guard')return S.cs.guard==='audit'?{cap:'admin:audit',route:'/admin/audit',as:'manager'}:{cap:'admin:users',route:'/admin/users',as:'viewer'};
+  if(['users','userDetail','effective'].includes(screen)&&p!=='admin')return{cap:'admin:users',route:VIEW[screen].route};
+  if(screen==='audit'&&p!=='admin')return{cap:'admin:audit',route:'/admin/audit'};
+  if(screen==='groups'&&p!=='admin'&&p!=='manager')return{cap:'admin:groups',route:'/admin/groups'};
+  if(screen==='adminRequests'&&p!=='admin'&&p!=='manager')return{cap:'admin:users',route:'/admin/requests'};
+  return null}
+function render(){
+  if(S.screen==='guard'){const want=S.cs.guard==='audit'?'manager':'viewer';if(S.persona!==want){S.persona=want;syncDock()}}
+  const V=VIEW[S.screen];const key=S.screen+S.persona+S.state+(S.cs[S.screen]||'');
+  B.classList.toggle('drawer',false);$('#scrim').classList.remove('on');
+  renderSide();
+  const deny=access(S.screen)||(S.state==='denied'?{cap:V.need||(S.screen==='tokens'?'tokens:create':'chat:use'),route:V.route.split('?')[0]}:null);
+  let html;
+  if(deny){renderTop(deny.route==='/admin/users'?'Users':V.title||'Restricted',deny.route);html=guard(deny.cap,deny.route)}
+  else{
+    let inner;
+    if(S.state==='loading')inner=skeleton(V.sk);
+    else if(S.state==='error')inner=errorBlock(V.what)+skeleton(V.sk).replace('aria-busy="true"','aria-busy="false" style="opacity:.35;pointer-events:none"');
+    else inner=V.render();
+    renderTop(V.title,V.route,V.crumb);
+    html=V.chat?`<div class="chat ${key!==lastKey?'enter':''}">${inner}</div>`:`<div class="page ${key!==lastKey?'enter':''}" style="--w:${V.w}px">${inner}</div>`}
+  $('#stage').innerHTML=html;
+  $('#composerHost').innerHTML=V.chat&&!deny?`<div class="composer"><div class="glass spec pos" data-o="apple" data-o-label="Apple · glass composer"><textarea placeholder="Ask Atlas about revenue, campaigns, accounts…"></textarea><div class="row" style="margin-top:6px"><button class="pill sm" style="background:transparent">＋ Source</button><button class="send" aria-label="Send">↑</button></div></div></div>`:'';
+  if(key!==lastKey)$('#sc').scrollTop=0;
+  lastKey=key;
+  $$('.morph[data-anim]').forEach(m=>{m.classList.remove('done');requestAnimationFrame(()=>requestAnimationFrame(()=>m.classList.add('done')))});
+  if(U.rv)U.rv.animate=false;U.animSent=false;
+  bindSpec();
+}
+function bindSpec(){$$('.spec').forEach(g=>{if(g._spec)return;g._spec=1;g.addEventListener('pointermove',e=>{const r=g.getBoundingClientRect();g.style.setProperty('--x',(e.clientX-r.left)+'px');g.style.setProperty('--y',(e.clientY-r.top)+'px')})})}
+
+/* ═════════ CASES (dock) ═════════ */
+function applyCase(){const c=S.cs[S.screen];U.rv=null;U.editor=null;U.refused=false;U.rqOpen=null;
+  switch(S.screen){
+   case 'newRequest':U.reqSent=false;U.reqErr=false;U.reqNote='';U.reqKind=c==='group'||c==='role'?c:'resource';
+     if(c==='invalid')U.reqErr=true;if(c==='sent'){U.reqNote='Reviewing checkout drop-off for the Q4 redesign.';U.reqSent=true}break;
+   case 'tokens':U.dialog=c==='dialog'?'form':c==='reveal'?'reveal':null;if(c==='revoke'&&S.p4==='populated')openAppRevoke(0,true);break;
+   case 'users':U.uq='';U.uRole=c==='filtered'?'analyst':'';U.uStatus='';U.uKind='';U.uMore=c==='more';if(c==='nomatch')U.uq='zainab';break;
+   case 'userDetail':U.udUser=c==='tokens'?'karim':'omar';U.udRole=null;U.udTab=c==='grants'?'grants':c==='tokens'?'tokens':c==='requests'?'requests':'groups';
+     if(c==='role'){U.udRole='analyst';roleReview(USERS.omar,'analyst',true)}if(c==='tokens')revokeAllReview('karim',true);break;
+   case 'effective':U.udUser='omar';U.udTab='effective';U.probe=c==='allow'?'demo/order/revenue':c==='denyrule'?'demo/order/refund_amount':'demo/checkout/checkout_funnel';break;
+   case 'groups':U.gSel='marketing';if(isManager()){}
+     if(c==='editor'||c==='deny'||c==='review')U.editor={q:'checkout',target:c==='editor'?'':'demo/checkout/*',open:c==='editor',effect:c==='deny'?'deny':'allow',confirm:false,exp:c==='deny'?'':PLUS90,reason:c==='deny'?'':'Q4 checkout redesign'};
+     if(c==='review')grantReview(true);if(c==='refused')U.refused=true;if(c==='remove')memberRemove('tariq',true);break;
+   case 'adminRequests':U.rqTab=c==='decided'?'decided':'pending';if(c==='approve')openApprove('r-7f1c',true);if(c==='approveRole')openApprove('r-7e90',true);if(c==='decline')U.rqOpen={id:'r-7e55',mode:'decline'};break;
+   case 'audit':U.auditTab=c==='decisions'||c==='denyonly'?'decisions':c==='summary'?'summary':'changes';U.auditOpen=c==='expanded'?0:null;U.denyOnly=c==='denyonly';break;
+  }
+  if(S.screen==='groups'&&isManager()&&!managed().includes(U.gSel))U.gSel=managed()[0]||'marketing';
+  if(S.screen==='userDetail'&&S.persona!=='admin'){}
+  renderDialog()}
+
+/* ═════════ ACTIONS ═════════ */
+function roleReview(u,to,silent){const from=u.role;const up=ROLES.indexOf(to)>ROLES.indexOf(from);const added=up?ROLES.slice(ROLES.indexOf(from)+1,ROLES.indexOf(to)+1).flatMap(r=>ADDS[r]):[];const lost=!up?ROLES.slice(ROLES.indexOf(to)+1,ROLES.indexOf(from)+1).flatMap(r=>ADDS[r]):[];
+  const spec={title:'Change role · '+u.name,lines:[['c',`user.role  ${u.email}`],['rm',`role ${from}`],['a',`role ${to}`],...(added.length?[['a','capabilities '+added.join(', ')]]:[]),...(lost.length?[['rm','capabilities '+lost.join(', ')]]:[])],audit:'user.role',approve:'Apply role change',apply(){U.udRoleApplied={...(U.udRoleApplied||{}),[u.id]:to}}};
+  if(silent)U.rv={slot:'role',...spec,status:'open'};else review('role',spec)}
+function revokeAllReview(uid,silent){const u=USERS[uid];const t=TOKENS[uid]||[];const spec={title:'Revoke all tokens · '+u.name,lines:[['c',`token.revoke_all  ${u.email}`],...t.map(x=>['rm',`token ${x[1]}…  ${x[0]}`]),['c','connected apps keep working until revoked separately']],audit:'token.revoke',approve:`Revoke ${t.length} tokens`,doneLabel:'Revoked'};
+  if(silent)U.rv={slot:'revokeAll',...spec,status:'open'};else review('revokeAll',spec)}
+function grantReview(silent){const g=GBY[U.gSel],E=U.editor;const spec={title:'Add grant · group:'+g.id,lines:[['c',`grant.create  group:${g.id}`],['a',`grant ${E.effect} ${E.target} for group:${g.id}${E.exp?' until '+E.exp:''}`],...(E.reason?[['a',`reason "${E.reason}"`]]:[]),['c',`reaches ${g.members.length} members${subtree(g.id).length>1?' + '+subtree(g.id).slice(1).join(', '):''}`]],audit:'grant.create',approve:'Apply grant'};
+  if(silent)U.rv={slot:'grant',...spec,status:'open'};else review('grant',spec)}
+function memberRemove(uid,silent){const u=USERS[uid],g=GBY[U.gSel];const spec={title:'Remove member',lines:[['c',`member.remove  ${g.id}`],['rm',`member ${short(u.email)} in ${g.id}`],['rm',`loses ${g.grants.filter(x=>x.effect==='allow').map(x=>x.target).join(', ')}`]],audit:'member.remove',approve:'Remove',doneLabel:'Removed'};
+  if(silent)U.rv={slot:'member',...spec,status:'open'};else review('member',spec)}
+function openAppRevoke(i,silent){const a=APPS[i];const spec={title:'Revoke '+a[0],lines:[['c',`client.revoke  ${a[1]}`],['rm',`connected app ${a[0]} · scope mcp:use`],['c','its refresh tokens stop working immediately']],audit:'client.revoke',approve:'Revoke app',doneLabel:'Revoked'};
+  if(silent)U.rv={slot:'app',...spec,status:'open'};else review('app',spec)}
+function openApprove(id,silent){const r=REQS.find(x=>x.id===id);U.rqOpen={id,mode:'approve'};const spec={...approveSpec(r),approve:'Approve',doneLabel:'Approved',apply(){U.decided[id]={status:'approved',note:''}}};
+  if(silent)U.rv={slot:'rq-'+id,...spec,status:'open'};else review('rq-'+id,spec)}
+
+document.addEventListener('click',e=>{
+  const go=e.target.closest('[data-go]');
+  if(go&&!go.disabled){const s=go.dataset.go;if(!s)return;
+    if(s==='newRequest'){S.screen='newRequest';S.cs.newRequest=go.dataset.kind==='resource'?'resource':go.dataset.kind||'group';applyCase()}
+    else{S.screen=s;if(s==='groups'&&go.dataset.g){U.gSel=go.dataset.g;U.editor=null;U.rv=null}else if(CASES[s]){S.cs[s]=S.cs[s]||CASES[s][0][0];applyCase()}}
+    syncDock();render();return}
+  const a=e.target.closest('[data-act]');if(!a)return;const act=a.dataset.act,v=a.dataset.v;
+  switch(act){
+   case 'drawer':B.classList.add('drawer');$('#scrim').classList.add('on');break;
+   case 'retry':{const m=$('#retryM');m&&m.classList.add('done');setTimeout(()=>{S.state='loading';syncDock();render();setTimeout(()=>{S.state='populated';syncDock();render()},900)},250);break}
+   case 'rv-dismiss':if(U.rv&&U.rv.slot==='role')U.udRole=null;if(U.rv&&U.rv.slot.startsWith('rq-'))U.rqOpen=null;U.rv=null;render();break;
+   case 'rv-apply':{const r=U.rv;if(!r)break;
+     if(S.state==='stale'&&r.status!=='409'){r.status='409';render();toast('Access changed while this request was running; retry.','409','rv-apply');break}
+     $$('.toast').forEach(t=>{if(t.querySelector('[data-act=rv-apply]'))t.remove()});
+     r.status='applied';r.animate=true;r.apply&&r.apply();render();break}
+   case 'kind':U.reqKind=v;U.reqErr=false;render();break;
+   case 'pick':U.reqPick=v;render();break;case 'pickg':U.reqGroup=v;render();break;case 'pickr':U.reqRole=v;render();break;
+   case 'submit':U.reqNote=($('#note')||{}).value||'';if(!U.reqNote.trim()){U.reqErr=true;render();const n=$('#note');n&&n.focus();break}
+     if(S.state==='stale'){toast('Access changed while this request was running; retry.','409','submit');break}
+     U.reqErr=false;U.reqSent=true;U.animSent=true;render();break;
+   case 'cancelReq':review('cancel-'+v,{title:'Cancel request '+v,lines:[['c',`request ${v}`],['rm','status pending'],['a','status cancelled']],audit:'request.cancel',approve:'Cancel request',doneLabel:'Cancelled',apply(){U.cancelled[v]=1}});break;
+   case 'newToken':U.dialog='form';U.tokName='';renderDialog();break;
+   case 'tokCreate':{const n=($('#tokName')||{}).value||'';if(!n.trim()){U.tokErr=true;renderDialog();break}U.tokName=n;U.tokErr=false;U.dialog='reveal';U.copied=false;renderDialog();break}
+   case 'copy':U.copied=true;try{navigator.clipboard&&navigator.clipboard.writeText('atl_pat_4d1e9b0c72a64f1e8b5d3a9e07c2f816').catch(()=>{})}catch(_){}{const m=$('#copyM');m&&m.classList.add('done')}break;
+   case 'tokDone':U.dialog=null;U.newTok=Object.assign([U.tokName||'Eval runner · staging','atl_pat_4d1e','2026-10-09','2027-01-07','never'],{fresh:1});renderDialog();render();toast('Token created · shown once, now hidden');break;
+   case 'closeDialog':U.dialog=null;renderDialog();break;
+   case 'revokeTok':{const t=(TOKENS[me().id]||[])[+v]||U.newTok;review('tok',{title:'Revoke token',lines:[['c','token.revoke'],['rm',`token ${t[1]}…  ${t[0]}`],['c','anything using it gets 401 on the next call']],audit:'token.revoke',approve:'Revoke token',doneLabel:'Revoked'});break}
+   case 'revokeApp':openAppRevoke(+v);break;
+   case 'clearF':U.uq='';U.uRole='';U.uStatus='';U.uKind='';render();break;
+   case 'more':U.uMore=true;render();break;
+   case 'openUser':if(v===me().id){S.screen='userDetail';S.cs.userDetail='self';applyCase()}else{S.screen='userDetail';S.cs.userDetail='groups';applyCase();U.udUser=v}syncDock();render();break;
+   case 'udTab':U.udTab=v;if(U.rv&&!['role'].includes(U.rv.slot))U.rv=null;render();break;
+   case 'revokeAll':revokeAllReview(a.dataset.u);break;
+   case 'revokeGrant':{const g=(USERGRANTS[a.dataset.u]||[]).find(x=>x.id===v);review('ugrant',{title:'Revoke grant '+v,lines:[['c',`grant.revoke  user:${USERS[a.dataset.u].email}`],['rm',`grant ${g.effect} ${g.target}${g.exp?' until '+g.exp:''}`]],audit:'grant.revoke',approve:'Revoke grant',doneLabel:'Revoked'});break}
+   case 'gsel':U.gSel=v;U.editor=null;U.refused=false;U.rv=null;render();break;
+   case 'delGroup':{const g=GBY[U.gSel];if(g.members.length||g.grants.length||GROUPS.some(x=>x.parent===g.id)){U.refused=true;render()}else review('delGroup',{title:'Delete group',lines:[['rm',`group ${g.id}`]],audit:'group.delete',approve:'Delete group',doneLabel:'Deleted'});break}
+   case 'unrefuse':U.refused=false;render();break;
+   case 'addMember':{const em=(($('#addM')||{}).value||'sara.mansour@yougotagift.com').trim()||'sara.mansour@yougotagift.com';review('member',{title:'Add member',lines:[['c',`member.put  ${U.gSel}`],['a',`member ${short(em)} in ${U.gSel}`],['a',`inherits ${GBY[U.gSel].grants.map(x=>x.effect+' '+x.target).join(', ')}`]],audit:'member.put',approve:'Add member',doneLabel:'Added'});break}
+   case 'rmMember':memberRemove(v);break;
+   case 'addGrant':U.editor={q:'',target:'',open:true,effect:'allow',confirm:false,exp:PLUS90,reason:''};U.rv=null;render();setTimeout(()=>{const i=$('#pickQ');i&&i.focus()},30);break;
+   case 'closeEditor':U.editor=null;if(U.rv&&U.rv.slot==='grant')U.rv=null;render();break;
+   case 'pickT':U.editor.target=v;U.editor.q='';U.editor.open=false;render();break;
+   case 'effect':U.editor.effect=v;U.editor.confirm=false;if(U.rv&&U.rv.slot==='grant')U.rv=null;render();break;
+   case 'confirmDeny':U.editor.confirm=a.checked;render();break;
+   case 'exp':U.editor.exp=v;render();break;
+   case 'reviewGrant':U.editor.reason=($('#reasonIn')||{}).value||'';grantReview();break;
+   case 'revokeGG':{const g=GBY[U.gSel].grants.find(x=>x.id===v);review('ggrant',{title:'Revoke grant '+v,lines:[['c',`grant.revoke  group:${U.gSel}`],['rm',`grant ${g.effect} ${g.target}`],['c',g.effect==='deny'?`lifts a restriction for ${GBY[U.gSel].members.length} members`:`removes it for ${GBY[U.gSel].members.length} members`]],audit:'grant.revoke',approve:'Revoke grant',doneLabel:'Revoked'});break}
+   case 'rqTab':U.rqTab=v;U.rqOpen=null;U.rv=null;render();break;
+   case 'approve':U.rqExp=PLUS90;openApprove(v);break;
+   case 'rqExp':U.rqExp=v;{const id=U.rqOpen.id;const keep=U.rv.status;openApprove(id,true);U.rv.status=keep;render()}break;
+   case 'decline':U.rv=null;U.rqOpen={id:v,mode:'decline'};render();break;
+   case 'declineGo':{if(S.state==='stale'){toast('Access changed while this request was running; retry.','409','declineGo');break}const n=($('#declineNote')||{}).value||'';U.decided[v]={status:'declined',note:n};U.rqOpen=null;render();break}
+   case 'rqClose':U.rqOpen=null;render();break;
+   case 'auditTab':U.auditTab=v;render();break;
+   case 'auditRow':U.auditOpen=U.auditOpen===+v?null:+v;render();break;
+   case 'denyOnly':U.denyOnly=!U.denyOnly;render();break;
+  }
+});
+document.addEventListener('change',e=>{const t=e.target;
+  if(t.dataset.f){U[t.dataset.f]=t.value;$('#usersTable').innerHTML=usersTable();return}
+  if(t.dataset.actChange==='role'){const uid=U.udUser;U.udRole=t.value;const cur=(U.udRoleApplied&&U.udRoleApplied[uid])||USERS[uid].role;if(t.value===cur){U.rv=null;render()}else roleReview({...USERS[uid],role:cur},t.value);return}
+  if(t.dataset.actChange==='status'){const u=USERS[U.udUser];review('role',{title:'Change status · '+u.name,lines:[['c',`user.status  ${u.email}`],['rm',`status ${u.status}`],['a',`status ${t.value}`],...(t.value==='disabled'?[['c','signs out everywhere; tokens and apps stop working']]:[])],audit:'user.status',approve:'Apply status'});return}
+  if(t.id==='expIn'&&U.editor){U.editor.exp=t.value.trim();render()}
+  if(t.id==='rqExp'){U.rqExp=t.value;const keep=U.rv.status;openApprove(U.rqOpen.id,true);U.rv.status=keep;render()}
+});
+document.addEventListener('input',e=>{const t=e.target;
+  if(t.id==='uq'){U.uq=t.value;$('#usersTable').innerHTML=usersTable();return}
+  if(t.id==='probe'){U.probe=t.value;const o=$('#probeOut');if(o&&VIEW._probeOut)o.innerHTML=VIEW._probeOut();return}
+  if(t.id==='note'){U.reqNote=t.value;if(U.reqErr&&t.value.trim()){U.reqErr=false;t.classList.remove('bad');$('#noteErr').innerHTML=''}return}
+  if(t.id==='pickQ'&&U.editor){U.editor.q=t.value;U.editor.target='';U.editor.open=true;let p=$('#picker');const pool=Object.keys(LABEL).filter(x=>x!=='*');const q=t.value.toLowerCase();const hits=pool.filter(x=>!q||x.includes(q)||LABEL[x].toLowerCase().includes(q)).slice(0,6);
+    if(!p){t.insertAdjacentHTML('afterend','<div class="picker glass" id="picker" data-o="apple" data-o-label="Apple · cmdk-style catalog picker (glass popover)"></div>');p=$('#picker')}p.innerHTML=pickerList(hits);return}
+  if(t.id==='reasonIn'&&U.editor){U.editor.reason=t.value}
+});
+document.addEventListener('focusin',e=>{if(e.target.id==='pickQ'&&U.editor&&!U.editor.open){U.editor.open=true;const t=e.target;const pool=Object.keys(LABEL).filter(x=>x!=='*');if(!$('#picker')){t.insertAdjacentHTML('afterend',`<div class="picker glass" id="picker" data-o="apple" data-o-label="Apple · cmdk-style catalog picker (glass popover)">${pickerList(pool.filter(x=>x.includes((U.editor.q||'').toLowerCase())).slice(0,6))}</div>`)}}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(U.dialog){U.dialog=null;renderDialog()}else if(B.classList.contains('drawer')){B.classList.remove('drawer');$('#scrim').classList.remove('on')}else if(U.editor&&U.editor.open){U.editor.open=false;const p=$('#picker');p&&p.remove()}}
+  if(e.key==='Enter'&&e.target.id==='pickQ'){const f=$('#picker .pk[data-v]');f&&f.click()}});
+$('#scrim').addEventListener('click',()=>{B.classList.remove('drawer');$('#scrim').classList.remove('on');if(U.dialog){U.dialog=null;renderDialog()}});
+
+/* token dialog: solid panel + scrim; reveal shown once */
+function renderDialog(){const h=$('#dialogHost');if(!U.dialog||S.screen!=='tokens'||!has('tokens:create')){h.innerHTML='';if(!B.classList.contains('drawer'))$('#scrim').classList.remove('on');return}
+  $('#scrim').classList.add('on');
+  if(U.dialog==='form')h.innerHTML=`<div class="dialog" role="dialog" aria-label="New token" data-o="apple" data-o-label="Apple · modal panel over scrim (solid: it's a form)"><h3>New personal token</h3><p class="muted" style="margin:0 0 16px;font-size:14px">It acts as you over MCP and the API, with exactly your access. You'll see it once.</p>
+   <div class="field"><label for="tokName">Name</label><input class="inp ${U.tokErr?'bad':''}" id="tokName" placeholder="e.g. Claude Code · laptop" value="${esc(U.tokName)}">${U.tokErr?'<div class="err">Give it a name you\'ll recognise when revoking it.</div>':''}</div>
+   <div class="field" style="margin-top:14px"><label>Expires</label><div class="seg"><button>30 days</button><button class="on">90 days</button><button>180 days</button></div><div class="hint num">Expires 2027-01-07 · tokens can't outlive your role</div></div>
+   <div class="row" style="margin-top:20px;justify-content:flex-end"><button class="pill" data-act="closeDialog">Cancel</button><button class="btn" data-act="tokCreate">Create token</button></div></div>`;
+  else h.innerHTML=`<div class="dialog" role="dialog" aria-label="Token created" data-o="atlas" data-o-label="Atlas · one-time token reveal"><h3>Copy your token</h3><p class="muted" style="margin:0 0 14px;font-size:14px">${esc(U.tokName||'Eval runner · staging')} · expires 2027-01-07</p>
+   <div class="secret"><code>atl_pat_4d1e9b0c72a64f1e8b5d3a9e07c2f816</code><button class="pill sm" data-act="copy"><span class="morph ${U.copied?'done':''}" id="copyM"><span class="a">Copy</span><span class="b">✓ Copied</span></span></button></div>
+   <div class="notice warn" style="margin-top:14px;padding:12px 14px"><div class="ni" style="width:24px;height:24px;font-size:12px">!</div><div class="nb" style="font-size:13.5px"><b style="color:var(--ink)">Shown once.</b> Atlas stores only a hash, so this is the only time you can copy it. Lost it? Revoke it and create a new one.</div></div>
+   <div class="row" style="margin-top:18px;justify-content:flex-end"><button class="btn" data-act="tokDone">Done</button></div></div>`}
+
+/* ═════════ DOCK ═════════ */
+function syncDock(){$('#dScreen').value=S.screen;const cs=CASES[S.screen];$('#dCaseWrap').style.display=cs?'grid':'none';
+  if(cs){$('#dCase').innerHTML=cs.map(([v,t])=>`<option value="${v}">${t}</option>`).join('');$('#dCase').value=S.cs[S.screen]||cs[0][0]}
+  $$('#dPersona .mode').forEach(b=>b.classList.toggle('on',b.dataset.p===S.persona));$('#dState').value=S.state;$('#dP4').value=S.p4;$('#dWidth').value=S.width;$('#dTheme').value=S.theme}
+$('#dScreen').innerHTML=SCREENS.map(([v,t])=>`<option value="${v}">${t}</option>`).join('');
+$('#dPersona').innerHTML=Object.entries(PERSONAS).map(([k,p])=>`<button class="mode" data-p="${k}">${p.label}</button>`).join('');
+$('#dScreen').addEventListener('change',e=>{S.screen=e.target.value;if(CASES[S.screen])S.cs[S.screen]=CASES[S.screen][0][0];if(S.screen==='effective'){S.cs.effective='deny'}if(['users','userDetail','effective','audit'].includes(S.screen)&&S.persona!=='admin')S.persona='admin';if(['groups','adminRequests'].includes(S.screen)&&!['admin','manager'].includes(S.persona))S.persona='admin';applyCase();syncDock();render()});
+$('#dCase').addEventListener('change',e=>{S.cs[S.screen]=e.target.value;applyCase();render()});
+$$('#dPersona .mode').forEach(b=>b.addEventListener('click',()=>{S.persona=b.dataset.p;if(S.screen==='guard'){S.screen='account'}applyCase();syncDock();render()}));
+$('#dState').addEventListener('change',e=>{S.state=e.target.value;$('#toasts').innerHTML='';render();if(S.state==='stale')staleToast()});
+$('#dP4').addEventListener('change',e=>{S.p4=e.target.value;if(S.screen!=='tokens'){S.screen='tokens';S.cs.tokens='list';applyCase()}syncDock();render()});
+$('#dWidth').addEventListener('change',e=>{S.width=e.target.value;applyWidth()});
+$('#dTheme').addEventListener('change',e=>{S.theme=e.target.value;B.dataset.theme=S.theme});
+$$('#dA11y .lay[data-a]').forEach(b=>b.addEventListener('click',()=>{B.classList.toggle(b.dataset.a);b.classList.toggle('on',B.classList.contains(b.dataset.a))}));
+$('#dOrg').addEventListener('click',e=>{B.classList.toggle('show-o');e.currentTarget.classList.toggle('on')});
+$('#dmin').addEventListener('click',()=>{const d=$('#dock');d.classList.toggle('collapsed');$('#dmin').textContent=d.classList.contains('collapsed')?'+':'–'});
+function staleToast(){toast('Access changed while this request was running; retry.','409','staleRetry')}
+document.addEventListener('click',e=>{if(e.target.closest('[data-act=staleRetry]')){e.target.closest('.toast').remove()}});
+
+function applyWidth(){const W=window.innerWidth;let mode=S.width;if(mode==='auto')mode=W>=1200?'wide':W>=1000?'mid':'narrow';
+  const sim={wide:null,mid:1100,narrow:860}[mode];const forced=S.width!=='auto'&&sim&&sim<W;
+  $('#frame').style.maxWidth=forced?sim+'px':'';B.classList.toggle('sim',!!forced);$('#simlabel').textContent=forced?`simulated ${sim}px · ${mode==='mid'?'1000–1199':'< 1000'}`:'';
+  B.classList.remove('w-wide','w-mid','w-narrow');B.classList.add('w-'+mode);if(mode!=='narrow')B.classList.remove('drawer')}
+window.addEventListener('resize',()=>{if(S.width==='auto')applyWidth()});
+
+/* initial: honour OS preferences, deep-link via #screen=…&persona=… for review links */
+try{if(matchMedia('(prefers-color-scheme: dark)').matches)S.theme='dark';
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches)B.classList.add('rm');
+  if(matchMedia('(prefers-reduced-transparency: reduce)').matches)B.classList.add('rt');
+  if(matchMedia('(prefers-contrast: more)').matches)B.classList.add('hc');}catch(_){}
+try{const q=new URLSearchParams(location.hash.slice(1));
+  ['screen','persona','state','p4','width','theme'].forEach(k=>{if(q.get(k))S[k]=q.get(k)});if(q.get('case'))S.cs[S.screen]=q.get('case');
+  ['rm','rt','hc','show-o'].forEach(c=>{if(q.get(c)==='1')B.classList.add(c)});if(q.get('drawer')==='1')setTimeout(()=>{B.classList.add('drawer');$('#scrim').classList.add('on')},50);if(q.get('dock')==='min'){$('#dock').classList.add('collapsed');$('#dmin').textContent='+'}}catch(_){}
+if(!VIEW[S.screen])S.screen='account';if(!PERSONAS[S.persona])S.persona='viewer';
+B.dataset.theme=S.theme;$$('#dA11y .lay[data-a]').forEach(b=>b.classList.toggle('on',B.classList.contains(b.dataset.a)));$('#dOrg').classList.toggle('on',B.classList.contains('show-o'));
+if(CASES[S.screen]&&!S.cs[S.screen])S.cs[S.screen]=CASES[S.screen][0][0];
+applyWidth();applyCase();syncDock();render();if(S.state==='stale')staleToast();
+try{const q=new URLSearchParams(location.hash.slice(1));const sel=q.get('scroll');if(sel){const el=document.querySelector(sel);if(el){const sc=$('#sc');sc.scrollTop=Math.max(0,el.getBoundingClientRect().top-sc.getBoundingClientRect().top-110)}}}catch(_){}
+})();
+</script>
+</body>
+</html>

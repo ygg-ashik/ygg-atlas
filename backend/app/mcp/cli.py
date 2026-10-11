@@ -36,6 +36,8 @@ from app.access import (
     AccessError,
     Actor,
     PolicyUnavailableError,
+    UserOut,
+    UserQuery,
     get_access_admin,
 )
 from app.config import Settings, get_settings
@@ -52,7 +54,6 @@ from app.identity import (
     OAuthService,
     TokenKind,
     TokenService,
-    User,
     get_token_verifier,
 )
 
@@ -66,10 +67,8 @@ _KINDS: Final[Mapping[str, tuple[TokenKind, ...]]] = {
 _DEFAULT_KINDS: Final = (TokenKind.PAT, TokenKind.SERVICE)
 # api_tokens.revoked_reason is varchar(32); reasons are machine-readable words.
 _REASON: Final = re.compile(r"[a-z][a-z0-9_]{0,31}")
-# list_users matches by substring; an exact email has few supersets.
-_EMAIL_MATCHES: Final = 50
-# Owner emails for list-tokens: the single-tenant MVP has far fewer users.
-_OWNER_LOOKUP: Final = 10_000
+# list_users pages are at most this many rows; the CLI walks every page.
+_USER_PAGE: Final = 200
 
 
 def _out(text: str) -> None:
@@ -107,9 +106,22 @@ class _Context:
     settings: Settings
     actor: Actor
 
-    async def user(self, email: str) -> User:
+    async def users(self, search: str = "") -> list[UserOut]:
+        """Every user matching `search` (substring), walking the keyset pages."""
+        found: list[UserOut] = []
+        cursor: str | None = None
+        while True:
+            page = await self.admin.list_users(
+                self.actor, UserQuery(q=search, cursor=cursor, limit=_USER_PAGE)
+            )
+            found.extend(page.items)
+            if page.next_cursor is None:
+                return found
+            cursor = page.next_cursor
+
+    async def user(self, email: str) -> UserOut:
         wanted = email.strip().casefold()
-        for user in await self.admin.list_users(self.actor, wanted, _EMAIL_MATCHES):
+        for user in await self.users(wanted):
             if user.email.casefold() == wanted:
                 return user
         msg = f"No user {_printable(email)}. They must sign in to atlas once first."
@@ -187,10 +199,7 @@ async def _list_tokens(ctx: _Context, args: argparse.Namespace) -> None:
     owners = (
         {user.id: user.email}
         if user is not None
-        else {
-            u.id: u.email
-            for u in await ctx.admin.list_users(ctx.actor, "", _OWNER_LOOKUP)
-        }
+        else {u.id: u.email for u in await ctx.users()}
     )
     for token in tokens:
         _out(_token_line(token, owners.get(token.user_id, str(token.user_id))))

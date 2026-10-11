@@ -1,5 +1,6 @@
 """Agent loop tests with a fake Anthropic client — no network."""
 
+import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -375,3 +376,68 @@ async def test_guardrail_blocks_by_user_id_across_sessions(db):
     )
     assert events[-1]["type"] == "blocked"
     assert "limit" in events[-1]["reason"].lower()
+
+
+FUNNEL_DENIED = {
+    "kind": "denied",
+    "resource": "demo/checkout/checkout_funnel",
+    "label": "Checkout funnel",
+}
+
+
+def _denied_round() -> FakeResponse:
+    """Two calls to the same denied funnel and one to a denied metric."""
+    week = {"start_date": "2026-01-01", "end_date": "2026-01-07"}
+    funnel = {"funnel_id": "checkout_funnel", **week}
+    return FakeResponse(
+        content=[
+            FakeToolUseBlock(id="f1", name="funnel_analyze", input=funnel),
+            FakeToolUseBlock(id="f2", name="funnel_analyze", input=funnel),
+            FakeToolUseBlock(
+                id="m1",
+                name="query_metric",
+                input={"metric_id": "new_customers", **week},
+            ),
+        ],
+        stop_reason="tool_use",
+    )
+
+
+async def _denied_turn(db) -> tuple[list[dict], FakeAnthropicClient]:
+    session = await _make_session(db)
+    client = FakeAnthropicClient(
+        [_denied_round(), _text("You don't have access to that yet.")]
+    )
+    tools = _tools(db, session, allowed=("demo/order/*",))
+    events = await collect(run_chat_turn(tools, "funnel?", [], db, client=client))
+    return events, client
+
+
+async def test_denied_block_is_appended_once_per_resource(db):
+    events, _ = await _denied_turn(db)
+    denied = [b for b in events[-1]["blocks"] if b["kind"] == "denied"]
+    assert denied == [
+        FUNNEL_DENIED,
+        {
+            "kind": "denied",
+            "resource": "demo/customer/new_customers",
+            "label": "New customers",
+        },
+    ]
+
+
+async def test_denied_block_is_persisted_in_done(db):
+    events, _ = await _denied_turn(db)
+    done = events[-1]
+    assert done["type"] == "done"
+    assert FUNNEL_DENIED in done["blocks"]
+    assert done["provenance"] == []  # a denial carries no numbers
+
+
+async def test_model_prose_unchanged(db):
+    events, client = await _denied_turn(db)
+    assert events[-1]["content"] == "You don't have access to that yet."
+    tool_results = client.messages.calls[1]["messages"][-1]["content"]
+    assert len(tool_results) == 3
+    for tool_result in tool_results:
+        assert set(json.loads(tool_result["content"])) == {"error"}

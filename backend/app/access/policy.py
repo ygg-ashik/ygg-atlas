@@ -7,10 +7,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from types import MappingProxyType
-from typing import Self
+from typing import Final, Self
 from uuid import UUID
 
-from app.access.catalog import ADMIN_GROUPS
+from app.access.catalog import ADMIN_GROUPS, ADMIN_USERS
 from app.access.patterns import matches
 
 NO_GRANT = "no grant allows it"
@@ -146,3 +146,60 @@ class Policy:
         if self.has(ADMIN_GROUPS):
             return True
         return self.active and group_id in self.managed_group_ids
+
+
+# Access-request kinds a decider can cover (models.REQUEST_KINDS mirrors these).
+_REQUEST_GROUP: Final = "group"
+_ROLE_AND_RESOURCE: Final = frozenset({"role", "resource"})
+
+
+@dataclass(frozen=True, slots=True)
+class DecidableScope:
+    """Which access requests one caller may decide (P5-D9).
+
+    `admin:users` decides role and resource requests; `admin:groups` decides
+    every group request; a manager decides group requests for the groups they
+    manage (managed_group_ids already includes subgroups). Nobody decides
+    their own requests. The repository turns the same value into a WHERE
+    clause, so the queue, the decisions and the badge count always agree.
+    """
+
+    user_id: UUID | None  # None: the trusted CLI, which has no requests
+    role_and_resource: bool
+    all_groups: bool
+    group_ids: frozenset[UUID]
+
+    @classmethod
+    def everything(cls) -> Self:
+        """The trusted CLI's scope (decision D5)."""
+        return cls(None, role_and_resource=True, all_groups=True, group_ids=frozenset())
+
+    @property
+    def empty(self) -> bool:
+        return not (self.role_and_resource or self.all_groups or self.group_ids)
+
+    def covers(self, kind: str, target: str, requester_id: UUID) -> bool:
+        if requester_id == self.user_id:
+            return False
+        if kind in _ROLE_AND_RESOURCE:
+            return self.role_and_resource
+        if kind != _REQUEST_GROUP:
+            return False
+        if self.all_groups:
+            return True
+        try:
+            return UUID(target) in self.group_ids
+        except ValueError:
+            return False
+
+
+def decidable_scope(policy: Policy) -> DecidableScope:
+    """The requests `policy`'s user may decide; an inactive policy decides none."""
+    if not policy.active:
+        return DecidableScope(policy.user_id, False, False, frozenset())
+    return DecidableScope(
+        user_id=policy.user_id,
+        role_and_resource=policy.has(ADMIN_USERS),
+        all_groups=policy.has(ADMIN_GROUPS),
+        group_ids=policy.managed_group_ids,
+    )

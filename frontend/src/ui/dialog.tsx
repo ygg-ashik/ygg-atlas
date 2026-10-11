@@ -11,6 +11,9 @@ const DialogPortal = DialogPrimitive.Portal;
 
 const DialogClose = DialogPrimitive.Close;
 
+/* DESIGN.md › dialog: a solid card panel over the scrim, materializing in place.
+ * Used for forms; data and secrets never sit on glass. */
+
 /** Unstyled dialog parts for surfaces that own their position and motion
  * (drawers, side panels): use with `asChild` + `forceMount` and a motion element.
  * They bring no scrim colour, centring, close button or CSS animation. */
@@ -24,7 +27,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      'fixed inset-0 z-50 bg-black/60 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+      'fixed inset-0 z-50 bg-[var(--scrim)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
       className,
     )}
     {...props}
@@ -41,13 +44,13 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-1/2 top-1/2 z-50 grid w-full max-w-md -translate-x-1/2 -translate-y-1/2 gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-lg',
+        'fixed inset-x-0 top-[14%] z-50 mx-auto grid w-[min(480px,calc(100%-40px))] gap-4 rounded-shell bg-card px-[22px] pb-[18px] pt-[22px] text-ink shadow-[0_0_0_1px_hsl(var(--border)),0_20px_60px_rgba(0,0,0,0.14)] outline-none data-[state=open]:animate-materialize-in data-[state=closed]:animate-materialize-out',
         className,
       )}
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-1 focus:ring-ring disabled:pointer-events-none">
+      <DialogPrimitive.Close className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full text-muted-foreground transition-[background-color,transform] duration-200 hover:bg-foreground/5 hover:text-ink focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15 active:scale-[.92]">
         <X className="h-4 w-4" />
         <span className="sr-only">Close</span>
       </DialogPrimitive.Close>
@@ -72,7 +75,7 @@ const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn('text-lg font-semibold leading-none tracking-tight', className)}
+    className={cn('font-serif text-title text-ink', className)}
     {...props}
   />
 ));

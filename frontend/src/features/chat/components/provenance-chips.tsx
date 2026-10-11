@@ -1,7 +1,8 @@
 import type { Provenance } from '@/api/chat';
 import { freshnessLabel, isStale } from '@/lib/freshness';
+import { policyLabels } from '@/lib/provenance-policy';
 import { formatDateTime } from '@/lib/utils';
-import { cn, Popover, PopoverContent, PopoverTrigger } from '@/ui';
+import { cn, Popover, PopoverContent, PopoverTrigger, Tag } from '@/ui';
 
 interface ProvenanceChipsProps {
   provenance: Provenance[];
@@ -66,11 +67,16 @@ export function ProvenanceChips({ provenance }: ProvenanceChipsProps) {
   // Dedupe repeated executions of the same metric against the same source.
   const chips = Array.from(new Map(provenance.map((p) => [chipKey(p), p])).values());
   if (chips.length === 0) return null;
+  // Scope and masking that shaped these numbers, once per answer (DESIGN.md › Policy chips).
+  const policies = policyLabels(chips);
 
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-1.5" aria-label="Data provenance">
       {chips.map((p) => (
         <ProvenanceChip key={chipKey(p)} p={p} />
+      ))}
+      {policies.map((label) => (
+        <Tag key={label}>{label}</Tag>
       ))}
     </div>
   );

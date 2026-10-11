@@ -96,4 +96,6 @@ class InsightsService:
             "unit": result["unit"],
             "rows": result["rows"],
             "provenance": provenance,
+            "suppressed_rows": result.get("suppressed_rows"),
+            "others_covers": result.get("others_covers"),
         }

@@ -1,5 +1,17 @@
 import { api } from './axios-instance';
 
+/** Row scope behind a result: dimension names only, never values (backend D3.11). */
+export interface ProvenanceScope {
+  restricted: boolean;
+  dimensions: string[];
+}
+
+/** Breakdown-label masking applied to a result (backend D3.8). */
+export interface ProvenanceMasking {
+  label_class: string;
+  mode: string;
+}
+
 /** Audit record attached to every metric answer — the atlas guarantee that
  * "every number carries provenance". */
 export interface Provenance {
@@ -9,6 +21,8 @@ export interface Provenance {
   source: string;
   freshness?: string;
   executed_at: string;
+  scope?: ProvenanceScope | null;
+  masking?: ProvenanceMasking | null;
 }
 
 /** Answer blocks: shared contract with backend/app/agent/blocks.py. */
@@ -32,9 +46,23 @@ export interface ArtifactBlock {
   columns: string[];
   rows: (string | number | null)[][];
   provenance: Provenance;
+  /** Breakdown rows hidden by `suppress` masking (rows is then empty). */
+  suppressed_rows?: number;
+  /** What the bucket `Others` row sums, for `bucket` masking. */
+  others_covers?: string;
 }
 
-export type AnswerBlock = ClarifyBlock | ArtifactBlock;
+/** A policy denial for one exact resource (backend B7, `denied_from_result`):
+ * the UI offers a prefilled access request. Never carries numbers. */
+export interface DeniedBlock {
+  kind: 'denied';
+  /** Exact resource path, e.g. `demo/checkout/checkout_funnel`. */
+  resource: string;
+  /** Business label, e.g. "Checkout funnel". */
+  label: string;
+}
+
+export type AnswerBlock = ClarifyBlock | ArtifactBlock | DeniedBlock;
 
 export interface ChatSession {
   id: string;

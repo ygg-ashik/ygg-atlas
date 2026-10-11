@@ -29,6 +29,7 @@ colors:
   glass-heavy: "#ffffffb8"
   glass-edge: "#ffffffcc"
   scrim: "#0000002e"
+  primary-text: "#b45536"
   # Dark
   canvas-dark: "#1a1917"
   card-dark: "#252320"
@@ -47,6 +48,7 @@ colors:
   glass-dark: "#28262291"
   glass-heavy-dark: "#242320b3"
   glass-edge-dark: "#ffffff1a"
+  scrim-dark: "#00000066"
 
 typography:
   display:
@@ -311,6 +313,191 @@ components:
     typography: "{typography.label}"
     rounded: "{rounded.lg}"
     padding: 12px 14px
+  # Admin and self-service (auth phase 5). Data and forms on solid cards; glass only on chrome.
+  status-pill:
+    backgroundColor: "{colors.card-2}"
+    textColor: "{colors.muted}"
+    typography: "{typography.caption}"
+    rounded: "{rounded.pill}"
+    padding: 2px 9px 2px 8px
+  status-pill-positive:
+    textColor: "{colors.positive}"
+  status-pill-negative:
+    textColor: "{colors.negative}"
+  status-pill-warning:
+    textColor: "{colors.warning}"
+  status-pill-standing:
+    textColor: "{colors.primary-text}"
+  role-pill:
+    backgroundColor: "{colors.card-2}"
+    textColor: "{colors.ink}"
+    typography: "{typography.caption}"
+    rounded: "{rounded.pill}"
+    padding: 2px 10px
+  tag-chip:
+    backgroundColor: "{colors.card-2}"
+    textColor: "{colors.muted}"
+    typography: "{typography.caption}"
+    rounded: "{rounded.pill}"
+    padding: 2px 9px
+  data-table:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.body}"
+    typography: "{typography.label}"
+    rounded: "{rounded.card}"
+    padding: 11px 12px
+  data-table-header:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.muted}"
+    typography: "{typography.caption}"
+    padding: 12px 12px 8px
+  data-table-row-expanded:
+    backgroundColor: "{colors.card-2}"
+    textColor: "{colors.body}"
+  filter-bar:
+    backgroundColor: "{colors.canvas}"
+    textColor: "{colors.body}"
+    typography: "{typography.label}"
+    height: 40px
+  field-input:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body}"
+    rounded: "{rounded.md}"
+    padding: 9px 12px
+  field-input-mono:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.ink}"
+    typography: "{typography.mono}"
+    rounded: "{rounded.md}"
+    padding: 9px 12px
+  field-date:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.ink}"
+    typography: "{typography.mono}"
+    rounded: "{rounded.md}"
+    width: 150px
+  field-error:
+    textColor: "{colors.negative}"
+    typography: "{typography.caption}"
+  segmented-control:
+    backgroundColor: "{colors.card-2}"
+    textColor: "{colors.muted}"
+    typography: "{typography.label}"
+    rounded: "{rounded.pill}"
+    padding: 3px
+  segmented-control-selected:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.pill}"
+    padding: 6px 14px
+  radio-row:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body}"
+    rounded: "{rounded.lg}"
+    padding: 12px 16px
+  radio-row-selected:
+    backgroundColor: "{colors.primary-soft}"
+  tree-list:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.body}"
+    typography: "{typography.label}"
+    rounded: "{rounded.md}"
+    padding: 7px 10px
+  tree-list-selected:
+    backgroundColor: "{colors.primary-soft}"
+  dialog:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body}"
+    rounded: "{rounded.shell}"
+    padding: 22px 22px 18px
+    width: 480px
+  dialog-scrim:
+    backgroundColor: "{colors.scrim}"
+  secret-reveal:
+    backgroundColor: "{colors.card-2}"
+    textColor: "{colors.ink}"
+    typography: "{typography.mono}"
+    rounded: "{rounded.md}"
+    padding: 10px 10px 10px 14px
+  empty-state:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.ink}"
+    typography: "{typography.title}"
+    rounded: "{rounded.card}"
+    padding: 44px 24px 40px
+  skeleton:
+    backgroundColor: "{colors.card-2}"
+    rounded: "{rounded.sm}"
+    height: 12px
+  notice-error:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.body}"
+    typography: "{typography.body}"
+    rounded: "{rounded.card}"
+    padding: 14px 16px
+  route-guard:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.body}"
+    typography: "{typography.body}"
+    rounded: "{rounded.card}"
+    padding: 22px 22px 20px
+    width: 560px
+  catalog-combobox:
+    backgroundColor: "{colors.glass}"
+    textColor: "{colors.ink}"
+    typography: "{typography.label}"
+    rounded: "{rounded.shell}"
+    padding: 8px
+  avatar:
+    backgroundColor: "{colors.primary-soft}"
+    typography: "{typography.caption}"
+    rounded: "{rounded.pill}"
+    size: 30px
+  avatar-service:
+    backgroundColor: "{colors.card-2}"
+    textColor: "{colors.muted}"
+    typography: "{typography.caption}"
+    rounded: "{rounded.sm}"
+    size: 30px
+  sidebar-section-header:
+    backgroundColor: "{colors.glass-heavy}"
+    textColor: "{colors.muted}"
+    typography: "{typography.caption}"
+    padding: 14px 10px 5px
+  count-badge:
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.on-primary}"
+    typography: "{typography.caption}"
+    rounded: "{rounded.pill}"
+    padding: 0 6px
+    height: 20px
+  user-chip:
+    backgroundColor: "{colors.glass-heavy}"
+    textColor: "{colors.ink}"
+    typography: "{typography.label}"
+    rounded: "{rounded.lg}"
+    padding: 10px
+  action-toast:
+    backgroundColor: "{colors.glass}"
+    textColor: "{colors.ink}"
+    typography: "{typography.label}"
+    rounded: "{rounded.lg}"
+    padding: 12px 14px
+  action-toast-icon:
+    backgroundColor: "{colors.card-2}"
+    rounded: "{rounded.pill}"
+    size: 22px
+  series-hatch:
+    backgroundColor: "{colors.primary}"
+    rounded: "{rounded.sm}"
+    height: 10px
+  route-label:
+    backgroundColor: "{colors.glass}"
+    textColor: "{colors.muted}"
+    typography: "{typography.mono}"
 ---
 
 # Atlas Hybrid Glass: the ygg-atlas design standard
@@ -353,6 +540,7 @@ why it moved**. The design serves that in four layers, each borrowed from a prod
 - **Ink** (`{colors.ink}`) is for headings, numbers and emphasis. **Body** (`{colors.body}`) is running text. **Muted** (`{colors.muted}`) is for labels and metadata. **Muted-2** (`{colors.muted-2}`) is for placeholders and tertiary text.
 
 ### Accent & semantic
+- **Primary text** (`{colors.primary-text}`, the clay as text; `{colors.primary-on-dark}` on dark) is the accent for text, links and accent-tone pills; it is `--primary-text` in CSS.
 - **Primary / clay** (`{colors.primary}`, #b45536, AA 4.9:1 with white) is used for the primary button, send button, selected pill, focus ring (`{colors.primary-soft}` at 4px), links, chart series and progress.
 - **Positive / Negative** (`{colors.positive}` / `{colors.negative}`) are used **only** for deltas, health states and diff add/remove. Never on buttons.
 - **Warning** (`{colors.warning}`) is for staleness and caution notices.
@@ -374,7 +562,7 @@ Every token has a `-dark` twin. **Light is the default theme**; dark and system 
 
 - **Shell**: a 10px inset (`{spacing.shell-gap}`). It holds the floating glass sidebar (236px, `{rounded.shell}`) and the main pane (`{rounded.shell}`). The artifact panel slides in on the right.
 - **Floating chrome**: the toolbar sits 10px from the top and 14px from the sides. The composer sits 16px from the bottom, centered, max 740px. Content reserves `{spacing.chrome-clearance}` at the top and `{spacing.composer-clearance}` at the bottom so nothing hides under glass at rest.
-- **Content widths**: dashboard ≤1080px, chat column ≤740px, catalog and settings ≤760px.
+- **Content widths**: dashboard ≤1080px, admin tables (users, groups, requests, audit) ≤1080px, chat column ≤740px, catalog, settings and account pages ≤760px.
 - **Grid**: 4px base. KPI row is 4 columns, then 2 under 1000px. Dashboard row 2 splits 1.6fr / 1fr. Presets are 4 columns, then 2.
 - **Empty chat**: greeting and composer are vertically centered. On first send the composer glides to the bottom (shared-element motion).
 
@@ -437,11 +625,39 @@ Bigger surfaces get bigger radii. Corners nest concentrically: inner radius = ou
 - **Answer prose**: `{typography.title}` heading, then `{typography.answer}` paragraphs streamed (see *Motion*). Bold marks the key figures.
 - **`metric-card`**: the headline number of an answer. `{typography.metric-xl}`, a delta badge, and a digit roll on appear.
 - **`provenance-chip`** (Atlas, **mandatory**): metric id, source (read-only), and a freshness dot (green, or amber when stale). It appears under every answer and on every KPI. Hovering it opens a glass popover with the vetted definition. Hovering a number in prose highlights its chip.
+- **Policy chips** (Atlas, guardrails #2 and #4): when provenance says a row scope or label masking shaped the number, a neutral **`tag-chip`** sits right after the provenance chips, deduplicated across the answer: **"rows · scoped to `csm`"** (dimension names only, never values) and **"account names · pseudonymised"** / "people names · suppressed" / "… · bucketed". Unrestricted, unmasked results show none. On a masked breakdown (dashboard card and chat `artifact-panel`) a muted caption under the table says what changed: a **suppressed** breakdown states "N rows hidden by name masking" (no empty table, no CSV export; its `artifact-card` subline says the same), an empty unmasked one says "No data for this range", and a **bucketed** one states what the **Others** row covers (`others_covers`, e.g. "Others = remaining fetched rows"). Never interactive; never shown on glass.
 - **`artifact-card`**: an inline card linking to a chart or table. Click it and the **`artifact-panel`** slides in from the right and leaves the same way (docked at ≥1200px, an overlay sheet with scrim below). It offers Export CSV. "Save to dashboard" arrives with saved dashboards (Known Gaps).
-- **`review-card`**: Codex review-before-apply. Header "Proposed change · needs your approval", a **`diff-block`** (mono, `+` positive, `−` negative and struck through), then Approve / Edit / Dismiss. **Every agent action that writes, schedules or sends goes through this card.** Approve morphs to "✓ Approved", and the toast confirms.
+- **`review-card`**: Codex review-before-apply. Header "Proposed change · needs your approval", a **`diff-block`** (mono, `+` positive, `−` negative and struck through), then Approve / Edit / Dismiss. **Every agent action that writes, schedules or sends goes through this card.** Approve morphs to "✓ Approved", and the toast confirms. It is also used for **human admin writes** (grants, members, roles, request decisions, deletes): every widening or destructive write shows the card first, its diff mirrors the audit row it will write (`rbac_changes.before/after`), and a caption names that audit action in mono. If access changed while the write ran (HTTP 409), nothing is written: the card shows the fact inline in `{colors.negative}` and the button becomes Retry.
 - **Clarify** (Atlas, guardrail #1): when no governed metric matches, the assistant explains why it won't guess and offers **choice pills** for the metric and the period. It never invents a number.
 - **`notice-denied`** (Atlas, guardrail #4): lock icon, "X isn't available to your role", why ("access comes from your sign-in"), which scope to request (mono), a provenance chip "scope · from your Google sign-in", and in-scope alternatives as pills.
 - **`notice-warning`** (Atlas, guardrail #2): amber-tinted card, "Source last synced N hours ago", and a **Refresh source** pill that morphs: "↻ Refresh", then "Syncing…", then "✓ Synced". The answer's freshness chip turns amber.
+
+### Admin and self-service (auth phase 5)
+Every admin and account screen is a **view of backend responses**: the UI never decides access, and every failure fails closed. Tables, lists and forms sit on solid cards; glass stays on chrome (toolbar, sidebar, the catalog combobox popover, toasts).
+
+- **`status-pill`**: a status is always a **dot plus text**, never colour alone. Tinted fill (10% of the tone) with the tone as text: `{colors.positive}` active / approved / allow, `{colors.negative}` declined / deny, `{colors.warning}` pending, `{colors.muted}` disabled / cancelled / expired. A **deny** uses a **diamond dot** (rotated square) so it reads without colour. **Standing pill** is the same component: `manager` in the accent text tone (`{colors.primary-text}`, which is `{colors.primary-on-dark}` on dark), `member` muted.
+- **`role-pill`**: the user's role (viewer, analyst, manager, admin) as a hairline-bordered `{colors.card-2}` pill with a small clay diamond before the name.
+- **`tag-chip`**: neutral metadata chip (kind, "you", parent group, counts, origin). Mono variant for ids and paths. Never interactive.
+- **`data-table`**: a `<table>` on a solid card, `{typography.label}` cells, `{typography.caption}` muted headers, a hairline under the header and soft hairlines between rows, tabular figures throughout, numeric columns right-aligned. **Clickable rows** are focusable and open on Enter/Space; hover tints `{colors.hairline-soft}`. An **expandable row** has a disclosure button (`aria-expanded`) and opens a `{colors.card-2}` detail row holding a `diff-block`. Below 1000px the card scrolls horizontally (table min-width 760px) instead of squeezing columns; low-value columns may hide below 1200px.
+- **`filter-bar`**: under the page heading, never on glass: a search `field-input` with a leading icon (max 360px), native selects ("Role: any"), then a muted tabular count on the right. Wraps on narrow widths.
+- **Form fields** (on solid cards): `field-input` (`{colors.card}`, hairline border, `{rounded.md}`, focus = clay border + 4px `{colors.primary-soft}` ring), **`field-input-mono`** for paths, ids and tokens, native **select** with a chevron, **textarea** (min 84px, vertical resize), **checkbox** for explicit confirmations (e.g. "I understand this restricts N members"), and **`field-date`**: an ISO `YYYY-MM-DD` text field in mono (150px, UTC, labelled "… (UTC)") with quick-pick pills beside it ("90 days", "Never"). Labels are `{typography.label}` in ink; hints are muted captions. **`field-error`** sits under the field in `{colors.negative}` with a round "!" glyph and says what to do; the field border turns negative. Validate inline, never on submit.
+- **`segmented-control`**: a recessed `{colors.card-2}` capsule of buttons; the selected one lifts onto `{colors.card}`. Two roles: **tabs** (`tablist`, optional tabular counts) and **kind pills** (`radiogroup`, e.g. Group · Role · Resource, Allow · Deny). Arrow keys move and select.
+- **`radio-row`**: selectable `inset-list` rows with a radio circle, mono id, description and meta; the selected row tints `{colors.primary-soft}`. Rows that cannot be chosen render dimmed and are skipped by the keyboard.
+- **`tree-list`**: two variants. The **group tree** indents by depth, shows a disclosure chevron and mono `members · grants` counts; the selected node tints `{colors.primary-soft}`; nodes outside the viewer's scope stay visible but **locked** (dimmed, lock glyph, not selectable). The **catalog tree** is read-only with hairline **guide lines** for each level, mono ids, muted labels, and a trailing slot (e.g. allow/deny pill with origin).
+- **`dialog`**: a solid `{colors.card}` panel (`{rounded.shell}`, 480px) over the `{colors.scrim}` (`{colors.scrim-dark}` on the dark canvas, stronger so the panel still separates), entering with the materialize motion. Used for forms (new token); a serif `{typography.title}` heading and a muted sentence of context.
+- **`secret-reveal`**: a one-time secret in mono on a recessed `{colors.card-2}` field with a **Copy** pill that morphs to "✓ Copied" in place. It copies once, sits above a `notice-warning` "Shown once" line, and once dismissed the value is **masked** (prefix plus dots) and never re-rendered.
+- **`empty-state`**: a solid card, centred: a 52px `{colors.primary-soft}` icon disc, a serif `{typography.title}` line, one muted sentence, then one action. Every list has one; filtered-empty says how to clear the filters.
+- **`skeleton`**: recessed bars and circles in the **shape of what is coming** (table rows, list rows, the split view), shimmering slowly; the region is `aria-busy`. No spinners for page loads.
+- **`notice-error`**: the neutral notice with "!" stating the failure as fact ("Couldn't load users", the status code in mono, "Nothing changed") and a **Retry** pill that morphs to "Loading…".
+- **`route-guard`**: a full-page `notice-denied` (560px, centred low on the canvas) for routes the token's capabilities don't cover: "This area needs `capability`", why (access comes from sign-in, nothing typed can widen it), provenance chips for scope and role, then "Go to My access" and "Request access".
+- **`catalog-combobox`**: an inline `cmdk` combobox under a mono `field-input`: a glass popover (`{rounded.shell}`) grows from the field and lists catalog entries as kind (source / entity / metric), name and mono path. Arrow keys and Enter pick; Escape closes. Only real catalog paths can be chosen.
+- **`avatar`**: initials on a `{colors.primary-soft}` disc in the accent (30px, 48px on detail headers). **`avatar-service`** is a rounded square on `{colors.card-2}` with a muted glyph for service identities.
+- **Sidebar additions**: **`sidebar-section-header`** (uppercase micro-label, `0.06em` tracking, muted) above the Account and Admin groups; the Admin group renders only when the token's capabilities include an admin capability. **`count-badge`**: a clay pill with a tabular count on a nav item (pending approvals); it counts exactly the requests the viewer can decide, excluding their own, the same set as the queue's Pending tab. **`user-chip`**: avatar, name, email (truncated) and role pill pinned to the sidebar foot.
+- **`action-toast`**: the glass `toast` in a **warning tone** with an amber "!" disc and a **Retry** pill. It stays until acted on or dismissed. Used for a stale-actor conflict (HTTP 409: "Access changed while this request was running; retry.").
+- **`series-hatch`**: the second series in a two-series bar chart (e.g. denied vs allowed decisions) keeps the accent hue at 45% opacity with a diagonal hatch, so it reads without colour. Its legend swatch uses the same pattern.
+- **`route-label`**: a muted mono route on the right of the `glass-toolbar` (e.g. `/admin/users`), truncated, hidden below 1000px.
+- **Label masking panel**: a list on a solid card below the groups workspace on Admin › Groups (admin:groups only), one hairline-separated row per label class with a mode select (suppress, pseudonymise, bucket) and, for bucket, a tabular size field (1–50). It lists only the maskable classes `GET /admin/label-classes` returns, never `category`, and every change opens a `review-card` (`label_class.update`, mode and bucket before → after) before anything is written.
+- **`toolbar-crumb`**: an optional back link before the `glass-toolbar` title on detail and sub-pages ("Users ›" on a user, "My access ›" on a new request): the parent's name as a muted serif link (ink on hover), then a muted "›". One level only; the title stays the page's own name.
 
 ### Dashboard
 - **Greeting**: `{typography.display}` with a muted subline.
@@ -545,6 +761,7 @@ Library: **`motion`** (springs, layout/shared-element, `AnimatePresence`). Numbe
 ## Known Gaps
 
 - "Save to dashboard" on the artifact panel needs saved-dashboard persistence, which doesn't exist yet.
+- The grant editor's row-scope builder, field clearances and connected apps are live (auth phases 3 and 4). A deployment can still turn personal tokens or OAuth off through `/meta/auth-methods`; those screens then say "Not enabled for this deployment".
 
 - The categorical chart palette for more than four series is undefined. Use accent opacity steps until one is designed.
 - Mobile bottom sheets (`vaul`) and the gesture rules (velocity handoff, rubber-banding) are deferred until there's a mobile surface.

@@ -1,0 +1,4 @@
+# Fake atl_pat_ fixtures in frontend tests (token reveal, audit view); never real credentials.
+e6c7c1cd0bcca96efce35c3684c77b0910153fef:frontend/src/features/account/components/create-token-dialog.test.tsx:generic-api-key:19
+dab7ef00ad00ad5ca3b5051e3d35842e8b2e5189:frontend/src/features/admin/components/audit-page.test.tsx:generic-api-key:248
+cea243a596f6eba9de6fff10f0b25ba02f6a832e:frontend/src/ui/secret-reveal.test.tsx:generic-api-key:7

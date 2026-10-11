@@ -7,19 +7,21 @@ land together.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any, cast
 from uuid import UUID
 
 import structlog
-from sqlalchemy import ColumnElement, CursorResult, and_, func, or_, update
+from sqlalchemy import ColumnElement, CursorResult, and_, false, func, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Mapped
 from sqlmodel import SQLModel, col, select
 
 from app.access.errors import PolicyUnavailableError
 from app.access.facts import (
     BUILTIN_ATTRIBUTES,
+    STANDING_MANAGER,
     SUBJECT_GROUP,
     SUBJECT_USER,
     GrantFacts,
@@ -28,6 +30,7 @@ from app.access.facts import (
     as_utc,
 )
 from app.access.models import (
+    AccessRequest,
     Capability,
     Grant,
     Group,
@@ -38,7 +41,10 @@ from app.access.models import (
     ScopeDimension,
     UserAttribute,
 )
-from app.identity import User
+from app.access.policy import DecidableScope
+from app.access.schemas import ChangeQuery, DecisionQuery, UserQuery
+from app.identity import User, UserKind, UserStatus
+from app.models.audit import AtlasAuditLog
 
 logger = structlog.get_logger()
 
@@ -389,31 +395,243 @@ class AccessRepository:
         )
         return (await self._db.execute(stmt)).scalar_one_or_none()
 
-    async def list_users(self, tenant: str, query: str, limit: int) -> list[User]:
-        stmt = select(User).where(col(User.tenant) == tenant)
-        if query:
+    async def list_users(
+        self, tenant: str, query: UserQuery, after: tuple[str, UUID] | None = None
+    ) -> list[User]:
+        """Users of `tenant` by (email, id) ascending, filtered; returns up to
+        `query.limit + 1` rows so the caller can tell whether a next page exists."""
+        email, row_id = col(User.email), col(User.id)
+        stmt = select(User).where(
+            col(User.tenant) == tenant,
+            *_equal_where(
+                (col(User.role), query.role),
+                (col(User.status), query.status),
+                (col(User.kind), query.kind),
+            ),
+        )
+        search = query.q.strip()
+        if search:
+            stmt = stmt.where(_matches_user(search))
+        if after is not None:
+            last_email, last_id = after
             stmt = stmt.where(
-                or_(
-                    col(User.email).icontains(query, autoescape=True),
-                    col(User.display_name).icontains(query, autoescape=True),
-                )
+                or_(email > last_email, and_(email == last_email, row_id > last_id))
             )
         stmt = (
-            stmt.order_by(col(User.email))
+            stmt.order_by(email, row_id)
+            .limit(query.limit + 1)
+            .execution_options(populate_existing=True)
+        )
+        return list((await self._db.execute(stmt)).scalars().all())
+
+    async def member_candidates(
+        self,
+        tenant: str,
+        group_id: UUID,
+        search: str,
+        *,
+        exclude_user_id: UUID | None,
+        limit: int,
+    ) -> list[User]:
+        """Active human users of `tenant` matching `search` who are not yet
+        direct members of `group_id`, by email (P5-D21)."""
+        already = (
+            select(col(GroupMember.user_id))
+            .where(col(GroupMember.group_id) == group_id)
+            .scalar_subquery()
+        )
+        stmt = select(User).where(
+            col(User.tenant) == tenant,
+            col(User.status) == UserStatus.ACTIVE,
+            col(User.kind) != UserKind.SERVICE,
+            col(User.id).not_in(already),
+            _matches_user(search),
+        )
+        if exclude_user_id is not None:
+            stmt = stmt.where(col(User.id) != exclude_user_id)
+        stmt = (
+            stmt.order_by(col(User.email), col(User.id))
             .limit(limit)
             .execution_options(populate_existing=True)
         )
         return list((await self._db.execute(stmt)).scalars().all())
 
-    async def list_changes(self, tenant: str, limit: int) -> list[RbacChange]:
+    async def count_members(self, group_id: UUID) -> int:
         stmt = (
-            select(RbacChange)
+            select(func.count())
+            .select_from(GroupMember)
+            .where(col(GroupMember.group_id) == group_id)
+        )
+        return (await self._db.execute(stmt)).scalar_one()
+
+    async def count_grants(self, subject_type: str, subject_id: UUID) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(Grant)
+            .where(
+                col(Grant.subject_type) == subject_type,
+                col(Grant.subject_id) == subject_id,
+            )
+        )
+        return (await self._db.execute(stmt)).scalar_one()
+
+    async def list_changes(
+        self,
+        tenant: str,
+        query: ChangeQuery,
+        after: tuple[datetime, UUID] | None = None,
+    ) -> list[tuple[RbacChange, User | None]]:
+        """Changes in `tenant`, newest first, each with its actor when that
+        actor is a user of the same tenant; returns up to `query.limit + 1`
+        rows so the caller can tell whether a next page exists."""
+        stmt = (
+            select(RbacChange, User)
+            .outerjoin(
+                User,
+                and_(
+                    col(User.id) == col(RbacChange.actor_user_id),
+                    col(User.tenant) == tenant,
+                ),
+            )
             .where(col(RbacChange.tenant) == tenant)
-            .order_by(col(RbacChange.at).desc())
-            .limit(limit)
+        )
+        at, row_id = col(RbacChange.at), col(RbacChange.id)
+        stmt = (
+            stmt.where(
+                *_equal_where(
+                    (col(RbacChange.actor_user_id), query.actor_user_id),
+                    (col(RbacChange.object_type), query.object_type),
+                    (col(RbacChange.action), query.action),
+                    (col(RbacChange.object_id), query.object_id),
+                )
+            )
+            .where(*_window(at, query.since, query.until))
+            .where(*_older_than(at, row_id, after))
+            .order_by(at.desc(), row_id.desc())
+            .limit(query.limit + 1)
             .execution_options(populate_existing=True)
         )
-        return list((await self._db.execute(stmt)).scalars().all())
+        # Same SQLModel tuple typing quirk as list_members.
+        return list(
+            cast(
+                "Sequence[tuple[RbacChange, User | None]]",
+                (await self._db.execute(stmt)).tuples().all(),
+            )
+        )
+
+    async def list_decisions(
+        self,
+        tenant: str,
+        query: DecisionQuery,
+        after: tuple[datetime, UUID] | None = None,
+    ) -> list[tuple[AtlasAuditLog, User]]:
+        """Atlas tool decisions by users of `tenant`, newest first. The inner
+        join drops rows with no user (legacy and anonymous rows) and fails
+        closed on tenant; returns up to `query.limit + 1` rows."""
+        stmt = (
+            select(AtlasAuditLog, User)
+            .join(User, col(User.id) == col(AtlasAuditLog.user_id))
+            .where(col(User.tenant) == tenant)
+        )
+        at, row_id = col(AtlasAuditLog.created_at), col(AtlasAuditLog.id)
+        stmt = (
+            stmt.where(
+                *_equal_where(
+                    (col(AtlasAuditLog.user_id), query.user_id),
+                    (col(AtlasAuditLog.decision), query.decision),
+                    (col(AtlasAuditLog.surface), query.surface),
+                    (col(AtlasAuditLog.tool), query.tool),
+                    (col(AtlasAuditLog.auth_method), query.auth_method),
+                )
+            )
+            .where(*_window(at, query.since, query.until))
+            .where(*_older_than(at, row_id, after))
+            .order_by(at.desc(), row_id.desc())
+            .limit(query.limit + 1)
+        )
+        # Same SQLModel tuple typing quirk as list_members.
+        return list(
+            cast(
+                "Sequence[tuple[AtlasAuditLog, User]]",
+                (await self._db.execute(stmt)).tuples().all(),
+            )
+        )
+
+    async def decision_counts_by_day(
+        self, tenant: str, since: datetime
+    ) -> list[tuple[date, str, int]]:
+        """(UTC day, decision, count) for `tenant`'s users since `since`."""
+        day = self._utc_day(col(AtlasAuditLog.created_at))
+        stmt = (
+            select(day, col(AtlasAuditLog.decision), func.count())
+            .join(User, col(User.id) == col(AtlasAuditLog.user_id))
+            .where(col(User.tenant) == tenant, col(AtlasAuditLog.created_at) >= since)
+            .group_by(day, col(AtlasAuditLog.decision))
+        )
+        rows = cast(
+            "Sequence[tuple[date | str, str, int]]",
+            (await self._db.execute(stmt)).tuples().all(),
+        )
+        # SQLite's date() returns ISO text; Postgres returns a date.
+        return [
+            (d if isinstance(d, date) else date.fromisoformat(d), decision, count)
+            for d, decision, count in rows
+        ]
+
+    async def top_deny_reasons(
+        self, tenant: str, since: datetime, limit: int
+    ) -> list[tuple[str | None, int]]:
+        count = func.count().label("n")
+        stmt = (
+            select(col(AtlasAuditLog.deny_reason), count)
+            .join(User, col(User.id) == col(AtlasAuditLog.user_id))
+            .where(
+                col(User.tenant) == tenant,
+                col(AtlasAuditLog.created_at) >= since,
+                col(AtlasAuditLog.decision) == "deny",
+            )
+            .group_by(col(AtlasAuditLog.deny_reason))
+            .order_by(count.desc(), col(AtlasAuditLog.deny_reason).asc().nulls_last())
+            .limit(limit)
+        )
+        return list(
+            cast(
+                "Sequence[tuple[str | None, int]]",
+                (await self._db.execute(stmt)).tuples().all(),
+            )
+        )
+
+    async def top_denied_users(
+        self, tenant: str, since: datetime, limit: int
+    ) -> list[tuple[UUID, str, int]]:
+        """(user id, display name, denials); never selects an email."""
+        count = func.count().label("n")
+        stmt = (
+            select(col(User.id), col(User.display_name), count)
+            .join(AtlasAuditLog, col(AtlasAuditLog.user_id) == col(User.id))
+            .where(
+                col(User.tenant) == tenant,
+                col(AtlasAuditLog.created_at) >= since,
+                col(AtlasAuditLog.decision) == "deny",
+            )
+            .group_by(col(User.id), col(User.display_name))
+            .order_by(count.desc(), col(User.display_name), col(User.id))
+            .limit(limit)
+        )
+        return list(
+            cast(
+                "Sequence[tuple[UUID, str, int]]",
+                (await self._db.execute(stmt)).tuples().all(),
+            )
+        )
+
+    def _utc_day(self, column: Mapped[datetime]) -> ColumnElement[Any]:
+        """The UTC calendar day of a timestamp column. Postgres's date() of a
+        timestamptz follows the session time zone, so convert to UTC first;
+        SQLite stores naive UTC already."""
+        if self._db.get_bind().dialect.name == "postgresql":
+            return func.date(func.timezone("UTC", column))
+        return func.date(column)
 
     async def grant(self, grant_id: UUID) -> Grant | None:
         return await self._db.get(Grant, grant_id, populate_existing=True)
@@ -446,6 +664,216 @@ class AccessRepository:
             .execution_options(populate_existing=True)
         )
         return (await self._db.execute(stmt)).scalars().first()
+
+    # ---- access requests (phase 5) ---------------------------------------
+
+    async def lock_user(self, user_id: UUID) -> User | None:
+        """Read the user row `FOR UPDATE` (Postgres), serializing one user's
+        request creates so the pending cap holds; a no-op on SQLite, which
+        serializes writers anyway."""
+        stmt = (
+            select(User)
+            .where(col(User.id) == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return (await self._db.execute(stmt)).scalar_one_or_none()
+
+    async def count_pending(self, user_id: UUID) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(AccessRequest)
+            .where(
+                col(AccessRequest.user_id) == user_id,
+                col(AccessRequest.status) == "pending",
+            )
+        )
+        return (await self._db.execute(stmt)).scalar_one()
+
+    async def pending_request(
+        self, user_id: UUID, kind: str, target: str
+    ) -> AccessRequest | None:
+        stmt = (
+            select(AccessRequest)
+            .where(
+                col(AccessRequest.user_id) == user_id,
+                col(AccessRequest.kind) == kind,
+                col(AccessRequest.target) == target,
+                col(AccessRequest.status) == "pending",
+            )
+            .execution_options(populate_existing=True)
+        )
+        return (await self._db.execute(stmt)).scalars().first()
+
+    async def request(self, request_id: UUID) -> AccessRequest | None:
+        return await self._db.get(AccessRequest, request_id, populate_existing=True)
+
+    async def request_for_update(self, request_id: UUID) -> AccessRequest | None:
+        """Re-read a request under a row lock (Postgres) inside a decision."""
+        stmt = (
+            select(AccessRequest)
+            .where(col(AccessRequest.id) == request_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return (await self._db.execute(stmt)).scalar_one_or_none()
+
+    async def list_own_requests(
+        self, tenant: str, user_id: UUID, limit: int
+    ) -> list[AccessRequest]:
+        stmt = (
+            select(AccessRequest)
+            .where(
+                col(AccessRequest.tenant) == tenant,
+                col(AccessRequest.user_id) == user_id,
+            )
+            .order_by(
+                col(AccessRequest.created_at).desc(), col(AccessRequest.id).desc()
+            )
+            .limit(limit)
+            .execution_options(populate_existing=True)
+        )
+        return list((await self._db.execute(stmt)).scalars().all())
+
+    async def list_decidable(
+        self,
+        tenant: str,
+        scope: DecidableScope,
+        statuses: Sequence[str] | None,
+        after: tuple[datetime, UUID] | None,
+        limit: int,
+        *,
+        user_id: UUID | None = None,
+    ) -> list[tuple[AccessRequest, User]]:
+        """Requests in `scope` (any of `statuses`; None = every status; only
+        `user_id`'s when given), newest first, with their requester; returns up
+        to `limit + 1` rows so the caller can tell whether a next page exists."""
+        stmt = (
+            select(AccessRequest, User)
+            .join(User, col(User.id) == col(AccessRequest.user_id))
+            .where(_decidable(tenant, scope))
+            .where(*_equal_where((col(AccessRequest.user_id), user_id)))
+        )
+        if statuses is not None:
+            stmt = stmt.where(col(AccessRequest.status).in_(statuses))
+        if after is not None:
+            at, row_id = after
+            stmt = stmt.where(
+                or_(
+                    col(AccessRequest.created_at) < at,
+                    and_(
+                        col(AccessRequest.created_at) == at,
+                        col(AccessRequest.id) < row_id,
+                    ),
+                )
+            )
+        stmt = (
+            stmt.order_by(
+                col(AccessRequest.created_at).desc(), col(AccessRequest.id).desc()
+            )
+            .limit(limit + 1)
+            .execution_options(populate_existing=True)
+        )
+        # Same SQLModel tuple typing quirk as list_members.
+        rows = cast(
+            "Sequence[tuple[AccessRequest, User]]",
+            (await self._db.execute(stmt)).tuples().all(),
+        )
+        return list(rows)
+
+    async def count_decidable(self, tenant: str, scope: DecidableScope) -> int:
+        """Pending requests in `scope` (the approvals badge)."""
+        stmt = (
+            select(func.count())
+            .select_from(AccessRequest)
+            .where(_decidable(tenant, scope), col(AccessRequest.status) == "pending")
+        )
+        return (await self._db.execute(stmt)).scalar_one()
+
+    async def finish_request(
+        self,
+        request_id: UUID,
+        tenant: str,
+        status: str,
+        *,
+        decided_by: UUID | None,
+        note: str,
+        requester: UUID | None = None,
+    ) -> int:
+        """Move a still-pending request to `status`; returns the rows changed
+        (0 when it was no longer pending, or not the requester's). Staged:
+        the caller commits."""
+        conditions = [
+            col(AccessRequest.id) == request_id,
+            col(AccessRequest.tenant) == tenant,
+            col(AccessRequest.status) == "pending",
+        ]
+        if requester is not None:
+            conditions.append(col(AccessRequest.user_id) == requester)
+        result = cast(
+            "CursorResult[Any]",
+            await self._db.execute(
+                update(AccessRequest)
+                .where(*conditions)
+                .values(
+                    status=status,
+                    decided_by=decided_by,
+                    decided_at=datetime.now(UTC),
+                    decision_note=note,
+                )
+            ),
+        )
+        return result.rowcount
+
+    async def users_by_id(self, user_ids: Iterable[UUID]) -> dict[UUID, User]:
+        ids = list(set(user_ids))
+        if not ids:
+            return {}
+        stmt = (
+            select(User)
+            .where(col(User.id).in_(ids))
+            .execution_options(populate_existing=True)
+        )
+        return {u.id: u for u in (await self._db.execute(stmt)).scalars().all()}
+
+    async def group_managers(self, group_ids: Iterable[UUID]) -> dict[UUID, list[str]]:
+        """Active managers' display names per group (never emails), sorted;
+        blank names are left out."""
+        ids = list(group_ids)
+        if not ids:
+            return {}
+        stmt = (
+            select(col(GroupMember.group_id), col(User.display_name))
+            .join(User, col(User.id) == col(GroupMember.user_id))
+            .where(
+                col(GroupMember.group_id).in_(ids),
+                col(GroupMember.standing) == STANDING_MANAGER,
+                col(User.status) == UserStatus.ACTIVE,
+            )
+            .order_by(col(User.display_name))
+        )
+        # Same SQLModel tuple typing quirk as list_members.
+        rows = cast(
+            "Sequence[tuple[UUID, str]]", (await self._db.execute(stmt)).tuples().all()
+        )
+        managers: dict[UUID, list[str]] = {}
+        for group_id, name in rows:
+            if name.strip():
+                managers.setdefault(group_id, []).append(name)
+        return managers
+
+    async def all_group_grants(self, tenant: str) -> list[GrantFacts]:
+        """Every grant held by a group in `tenant`, expired ones included."""
+        stmt = (
+            select(Grant)
+            .join(Group, col(Group.id) == col(Grant.subject_id))
+            .where(
+                col(Grant.subject_type) == SUBJECT_GROUP,
+                col(Group.tenant) == tenant,
+            )
+            .execution_options(populate_existing=True)
+        )
+        return [_grant_facts(g) for g in (await self._db.execute(stmt)).scalars()]
 
     # ---- row and field administration (phase 3) -------------------------
 
@@ -519,3 +947,63 @@ class AccessRepository:
             self._db.add(row)
             changed += 1
         return changed
+
+
+def _decidable(tenant: str, scope: DecidableScope) -> ColumnElement[bool]:
+    """The WHERE clause for `scope` (P5-D9), always tenant-filtered."""
+    kinds: list[ColumnElement[bool]] = []
+    if scope.role_and_resource:
+        kinds.append(col(AccessRequest.kind).in_(("role", "resource")))
+    if scope.all_groups:
+        kinds.append(col(AccessRequest.kind) == "group")
+    elif scope.group_ids:
+        kinds.append(
+            and_(
+                col(AccessRequest.kind) == "group",
+                col(AccessRequest.target).in_(sorted(str(g) for g in scope.group_ids)),
+            )
+        )
+    clause = and_(
+        col(AccessRequest.tenant) == tenant, or_(*kinds) if kinds else false()
+    )
+    if scope.user_id is not None:
+        clause = and_(clause, col(AccessRequest.user_id) != scope.user_id)
+    return clause
+
+
+def _matches_user(search: str) -> ColumnElement[bool]:
+    """Case-insensitive substring match on email or display name; `%` and `_`
+    are literal."""
+    return or_(
+        col(User.email).icontains(search, autoescape=True),
+        col(User.display_name).icontains(search, autoescape=True),
+    )
+
+
+def _equal_where(*filters: tuple[Mapped[Any], object]) -> list[ColumnElement[bool]]:
+    """`column == value` for every filter that was given (None = not filtered)."""
+    return [column == value for column, value in filters if value is not None]
+
+
+def _window(
+    column: Mapped[datetime], since: datetime | None, until: datetime | None
+) -> list[ColumnElement[bool]]:
+    """`since` inclusive, `until` exclusive, compared in UTC."""
+    clauses: list[ColumnElement[bool]] = []
+    if since is not None:
+        clauses.append(column >= since.astimezone(UTC))
+    if until is not None:
+        clauses.append(column < until.astimezone(UTC))
+    return clauses
+
+
+def _older_than(
+    at: Mapped[datetime],
+    row_id: Mapped[UUID],
+    after: tuple[datetime, UUID] | None,
+) -> list[ColumnElement[bool]]:
+    """Keyset position for a `(at, id)` descending walk: rows after the cursor."""
+    if after is None:
+        return []
+    moment, last_id = after
+    return [or_(at < moment, and_(at == moment, row_id < last_id))]

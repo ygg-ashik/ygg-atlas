@@ -47,6 +47,9 @@ DENY = "deny"
 MAX_DENY_REASON = 200
 POLICY_FAILED = "the access check failed"
 UNKNOWN_TOOL = "unknown tool"
+# Result key of a policy denial's {"resource", "label"} (chat-only, never sent
+# to a model or an MCP client).
+DENIED_KEY = "denied"
 
 DEFAULT_BREAKDOWN_LIMIT = 10
 MAX_BREAKDOWN_LIMIT = 50
@@ -65,14 +68,27 @@ class AtlasToolError(Exception):
 
 
 class AtlasAccessDeniedError(AtlasToolError):
-    """The caller's policy denies a governed resource (spec §6, point 2)."""
+    """The caller's policy denies a governed resource (spec §6, point 2).
 
-    def __init__(self, label: str, reason: str, message: str | None = None) -> None:
+    `resource` is set only when the policy itself said no, so the denial can
+    offer an access request; a scope or policy-evaluation failure leaves it None.
+    """
+
+    def __init__(
+        self,
+        label: str,
+        reason: str,
+        message: str | None = None,
+        *,
+        resource: str | None = None,
+    ) -> None:
         super().__init__(
             message
             or f"{label} isn't available to you. Ask an atlas admin if you need it."
         )
+        self.label = label
         self.reason = reason
+        self.resource = resource
 
 
 class AtlasPolicyError(AtlasToolError):
@@ -94,6 +110,11 @@ class _CallTrace:
 
 # Per execute() call; a ContextVar so concurrent calls never share a trace.
 _TRACE: ContextVar[_CallTrace | None] = ContextVar("atlas_call_trace", default=None)
+
+
+def without_denial(result: dict[str, Any]) -> dict[str, Any]:
+    """`result` minus the chat-only denial payload: what models and MCP see."""
+    return {k: v for k, v in result.items() if k != DENIED_KEY}
 
 
 def _policy_failed(label: str) -> AtlasAccessDeniedError:
@@ -261,11 +282,16 @@ class AtlasTools:
         arguments: dict[str, Any],
     ) -> tuple[dict[str, Any], _Outcome]:
         outcome = _Outcome()
+        result: dict[str, Any]
         try:
             result = await handler(**arguments)
         except AtlasAccessDeniedError as exc:
             outcome = _Outcome(False, str(exc), DENY, exc.reason[:MAX_DENY_REASON])
             result = {"error": str(exc)}
+            if exc.resource is not None:
+                # Chat-only: the agent loop turns it into a `denied` block and
+                # strips it, as MCP does; models never see it.
+                result[DENIED_KEY] = {"resource": exc.resource, "label": exc.label}
         except (AtlasToolError, ConnectorNotConfiguredError, ConnectorError) as exc:
             outcome = _Outcome(False, str(exc))
             result = {"error": str(exc)}
@@ -374,7 +400,9 @@ class AtlasTools:
         except Exception:
             logger.exception("atlas.policy_error", resource=resource)
             reason = POLICY_FAILED
-        return AtlasAccessDeniedError(label, reason)
+        # A crashed policy check offers no "request access" path (B7).
+        denied = None if reason == POLICY_FAILED else resource
+        return AtlasAccessDeniedError(label, reason, resource=denied)
 
     def _hidden(
         self, resource: str, label: str, entity: EntityDef | None

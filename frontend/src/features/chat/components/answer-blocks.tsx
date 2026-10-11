@@ -1,6 +1,7 @@
 import type { AnswerBlock, ArtifactBlock } from '@/api/chat';
 import { ArtifactCard } from './artifact-card';
 import { ClarifyBlock } from './clarify-block';
+import { DeniedBlock } from './denied-block';
 
 /** What the conversation lets an answer's blocks do. */
 export interface BlockActions {
@@ -16,18 +17,24 @@ interface AnswerBlocksProps {
   actions: BlockActions;
 }
 
-/** Structured parts of an answer (Track C contract): clarify pills, artifact cards. */
+/** Structured parts of an answer (Track C contract): clarify pills, artifact
+ * cards, and denials with a request-access path. */
 export function AnswerBlocks({ messageId, blocks, actions }: AnswerBlocksProps) {
-  return blocks.map((b, i) =>
-    b.kind === 'clarify' ? (
-      <ClarifyBlock
-        key={`clarify-${i}`}
-        block={b}
-        active={actions.activeMessageId === messageId}
-        onChoose={actions.onChoose}
-      />
-    ) : (
-      <ArtifactCard key={b.id} artifact={b} onOpen={() => actions.onOpenArtifact(b)} />
-    ),
-  );
+  return blocks.map((b, i) => {
+    switch (b.kind) {
+      case 'clarify':
+        return (
+          <ClarifyBlock
+            key={`clarify-${i}`}
+            block={b}
+            active={actions.activeMessageId === messageId}
+            onChoose={actions.onChoose}
+          />
+        );
+      case 'denied':
+        return <DeniedBlock key={`denied-${b.resource}`} block={b} />;
+      default:
+        return <ArtifactCard key={b.id} artifact={b} onOpen={() => actions.onOpenArtifact(b)} />;
+    }
+  });
 }

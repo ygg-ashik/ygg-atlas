@@ -322,6 +322,13 @@ async def test_me_access_shows_clearances(api: AsyncClient, db) -> None:
         "groups",
         "has_data_access",
         "clearances",
+        # phase 5's additions
+        "user_id",
+        "email",
+        "display_name",
+        "pending_requests",
+        "pending_approvals",
+        "is_manager",
     }
     assert body["clearances"] == ["fields:business_names"]
 

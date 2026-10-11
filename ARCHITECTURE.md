@@ -45,7 +45,7 @@ platform: app.models · app.database · app.config   (+ app.core, new)
 | Identity imports only platform modules | "Identity depends only on platform modules" |
 | Access imports only identity and platform modules | "Access depends only on identity and platform modules" |
 | Agent and atlas take a policy object, never identity or access | "Agent and atlas never import identity or access" |
-| Identity and access follow the §2.2 anatomy | "Identity module layering", "Access module layering" |
+| Identity and access follow the §2.2 anatomy; access adds `requests.py` (request lifecycle, above `admin`) and `cursor.py` (pure keyset cursor, bottom layer) | "Identity module layering", "Access module layering" |
 | MCP follows its own layering: `server \| cli` > `router` > `oauth_routes \| dependencies` > `oauth_provider` > `auth \| ratelimit \| schemas \| access_log` | "MCP module layering" |
 
 New top-level packages must be added to the contracts in `backend/pyproject.toml` in the same

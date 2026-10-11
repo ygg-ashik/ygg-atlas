@@ -1,5 +1,6 @@
 import { ArrowRight, Table2 } from 'lucide-react';
 import type { ArtifactBlock } from '@/api/chat';
+import { maskingNote } from '@/lib/provenance-policy';
 
 interface ArtifactCardProps {
   artifact: ArtifactBlock;
@@ -8,6 +9,8 @@ interface ArtifactCardProps {
 
 /** Inline card linking to the artifact side panel (DESIGN.md › artifact-card). */
 export function ArtifactCard({ artifact, onOpen }: ArtifactCardProps) {
+  // A fully suppressed breakdown has no chart or table: say what was hidden instead.
+  const hidden = artifact.rows.length === 0 ? maskingNote(artifact) : null;
   return (
     <button
       type="button"
@@ -23,7 +26,7 @@ export function ArtifactCard({ artifact, onOpen }: ArtifactCardProps) {
       <span className="min-w-0 flex-1">
         <span className="block truncate text-label font-semibold text-ink">{artifact.title}</span>
         <span className="block text-caption text-muted-foreground">
-          Chart + table · opens in side panel
+          {hidden ?? 'Chart + table · opens in side panel'}
         </span>
       </span>
       <ArrowRight aria-hidden className="h-4 w-4 text-muted-2" />

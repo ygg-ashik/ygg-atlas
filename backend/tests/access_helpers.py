@@ -19,7 +19,9 @@ from app.access.models import (
     ScopeDimension,
     UserAttribute,
 )
+from app.access.policy import Policy
 from app.access.repository import AccessRepository
+from app.access.requests import AccessRequests
 from app.access.service import AccessService
 from app.identity import TokenVerifier
 from app.identity.models import User
@@ -227,3 +229,15 @@ async def policy_version(db: AsyncSession) -> int:
     state = await db.get(PolicyState, 1, populate_existing=True)
     assert state is not None
     return state.policy_version
+
+
+def requests_for(db: AsyncSession) -> AccessRequests:
+    repo = AccessRepository(db)
+    return AccessRequests(repo, AccessService(repo, PolicyCache()))
+
+
+async def policy_of(db: AsyncSession, user: User) -> Policy:
+    """The user's policy at the current policy_version, as a new request sees it."""
+    return await AccessService(AccessRepository(db), PolicyCache()).policy_for_user(
+        user.id
+    )

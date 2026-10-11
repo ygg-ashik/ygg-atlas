@@ -26,6 +26,7 @@ from app.access.evaluator import evaluate
 from app.access.facts import GrantFacts, PolicyInputs, UserFacts
 from app.access.policy import Policy
 from app.access.router import router as access_router
+from app.access.schemas import UserOut, UserQuery
 from app.access.service import policy_for
 from app.access.startup import prepare_access, sync_scope_dimensions
 
@@ -46,6 +47,8 @@ __all__ = [
     "PolicyInputs",
     "PolicyUnavailableError",
     "UserFacts",
+    "UserOut",
+    "UserQuery",
     "access_error_handler",
     "access_router",
     "evaluate",

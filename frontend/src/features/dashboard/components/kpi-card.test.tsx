@@ -28,4 +28,16 @@ describe('KpiCard', () => {
     expect(delta).toHaveAttribute('data-tone', 'negative');
     expect(screen.getByText(/demo/).closest('[data-stale]')).toHaveAttribute('data-stale', 'true');
   });
+
+  it('shows a scope chip when row scope shaped the number', () => {
+    render(
+      <KpiCard
+        kpi={{
+          ...kpi,
+          provenance: { ...kpi.provenance, scope: { restricted: true, dimensions: ['csm'] } },
+        }}
+      />,
+    );
+    expect(screen.getByText('rows · scoped to csm')).toBeInTheDocument();
+  });
 });
