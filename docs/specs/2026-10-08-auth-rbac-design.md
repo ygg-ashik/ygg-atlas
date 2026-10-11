@@ -493,6 +493,32 @@ Each phase ships independently, gated by tests and evals.
 
 Until phase 5, administration happens through the admin API (and the bootstrap admins).
 
+### Phase 4 deltas (MCP authentication, as built)
+
+Phase 4 follows §4.1, §4.3 and §11.5 with these recorded changes (plan
+`docs/plans/2026-10-09-auth-rbac-phase-4-mcp-auth.md`, decisions D1–D36). Accepted deviations
+(user-approved 2026-10-09) are marked **deviation**.
+
+| Area | As built |
+|---|---|
+| Endpoint and discovery (§4.3) | One setting, `ATLAS_PUBLIC_URL`. Resource `<url>/mcp-server/mcp`, issuer `<url>/mcp-server`, AS metadata (RFC 8414) at `<url>/.well-known/oauth-authorization-server/mcp-server` and under the issuer, protected-resource metadata (RFC 9728) at `<url>/.well-known/oauth-protected-resource/mcp-server/mcp`. Rollout splits into 4a (`http://localhost:8080` through the SSH tunnel; Claude Code, PATs) and 4b (public https; hosted connectors), which is configuration plus binding consent to the browser. |
+| DCR and redirects (D8) | DCR on. A `redirect_uri` is loopback `http` (`localhost`, `127.0.0.1`, `[::1]`; any port and path, so Claude Desktop's `http://localhost:35535/oauth/callback` works) or exactly one of `OAUTH_HOSTED_REDIRECT_URIS` (default `https://claude.ai/api/mcp/auth_callback`). Public clients are the expected case; confidential clients are accepted with the secret hashed. At most 5 redirect URIs; a missing or long name shows as "Unnamed client". |
+| CIMD (D9) | **Deviation.** Client ID Metadata Documents are deferred and not advertised, so clients use DCR. Supporting them needs port-agnostic loopback matching and an SSRF-safe fetch. |
+| Scopes (D10, §7) | **Deviation.** No OAuth scopes and no token narrowing: `scopes_supported` is omitted, tokens carry no scopes, rights come only from the Policy. The `api_tokens.scope_narrowing` column is not created; it can arrive in its own migration. |
+| Missing `mcp:use` on MCP calls (D31) | The MCP endpoint never answers 403 for a missing capability: the SDK can only express 403 as `insufficient_scope`, which current clients treat as a scope step-up and loop on. A caller without `mcp:use` gets an empty `tools/list` and a tool-level denial on `tools/call` (HTTP 200). The consent page still refuses such a user (§4.1 denial table). |
+| PATs (D11) | PATs and service tokens open the MCP door only; REST `get_principal` stays Firebase-only. Lifetimes `PAT_DEFAULT_DAYS` (90) and `PAT_MAX_DAYS` (365); at most 10 live PATs per user. Until phase 5, admins also mint PATs with the CLI on the box (`via=cli`, shown once). |
+| Tokens (§7) | Opaque 256-bit tokens with typed prefixes, stored as SHA-256 hashes. Access tokens 60 min; refresh 30 d sliding with rotation and reuse detection; a rotated refresh token presented again by the same client within 30 s gets a fresh pair, anything else revokes the family. Codes 60 s, single use; reuse revokes the family. New tables: `oauth_authorization_requests` (pending consent, 10 min, id stored hashed) and `credential_events`. |
+| Audit and revocations (D12, D15, §9) | `atlas_audit_log` gains `token_id` and `client_id`; MCP `auth_method` is `oauth`, `pat` or `service`. **Deviation:** token and client events (created, revoked, revoke-all, consent approved or denied, issued, refreshed, reuse detected, family revoked, gc) go to the identity-owned, append-only `credential_events`, not `rbac_changes`; identity cannot write the access model. `rbac_changes` records only service-account creation and the migration that disables the shared user. |
+| Service accounts (D13) | `users(kind=service, owner_user_id, role)` with email `svc-<slug>@atlas.internal`, created with `admin:users`; service tokens need `admin:tokens` and the account's capabilities must be within the minting admin's; OAuth clients are managed with `admin:clients`. |
+| Routes (§8, §10) | `/me/tokens`, `/me/connected-apps` (not `/me/clients`), `/oauth/consent` (SPA page) with `GET /api/v1/oauth/consent/{txn}` and `POST /api/v1/oauth/consent`, `/admin/tokens`, `/admin/users/{id}/tokens/revoke-all`, `/admin/service-accounts`, `/admin/clients`, `/admin/credential-events`, and `GET /api/v1/meta/auth-methods`. All live in `app/mcp`, not `api/me` and `api/admin`. Disabling a user revokes all of their tokens. |
+| Shared token (§11.5) | Retired: `ATLAS_MCP_TOKEN` and `MCP_SERVICE_EMAIL` are removed and migration 0005 disables `mcp-shared@atlas.internal` (with a policy-version bump). |
+| Rate limits | In-process sliding windows (one uvicorn worker) with 429 and `Retry-After`: MCP calls 120/min per token, consent 10/min per user, and per source `/token` 30/min, `/authorize` 30/min, `/register` 10/h and failed bearers 20/min. Only bearers the door does not recognise count as failed, never an expired real token. A loopback, private or link-local peer is the source "unknown" (`app/mcp/ratelimit.py`): in 4a every caller arrives through nginx or the SSH tunnel, so `/token`, `/authorize` and `/register` each share one global key and the failed-bearer guard only logs, never blocks (ruling E1). At 4b, uvicorn trusts the compose subnet's proxy headers and per-source limits key on the client IP. |
+
+§16 answers: the pinned SDK (`mcp` 1.30.0) provides the authorization-server handlers, which atlas
+wires to its own provider, client authenticator and revocation handler; the redirect URIs are the
+ones in the DCR row above; Claude Code registers with DCR against remote HTTP servers and sends
+OAuth credentials only over https or to localhost.
+
 ## 15. Out of scope (designed for, not built)
 
 - External client tenants: the `tenant` column and implicit dimension exist; tenant onboarding does

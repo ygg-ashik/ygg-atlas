@@ -353,9 +353,14 @@ def test_row_field_tables_and_seeds(tmp_path: Path) -> None:
         ("person_name", "suppress", 5),
         ("business_name", "pseudonymise", 5),
     }
-    # Appended, so phase 4's columns rebase cleanly after them (contract K2).
+    # Appended (contract K2): phase 3's columns, then phase 4's credential ones.
     assert _column_order(sync_url, "grants")[-1] == "row_scope"
-    assert _column_order(sync_url, "atlas_audit_log")[-2:] == ["scope", "masking"]
+    assert _column_order(sync_url, "atlas_audit_log")[-4:] == [
+        "scope",
+        "masking",
+        "token_id",
+        "client_id",
+    ]
 
 
 def test_row_field_model_columns_are_appended() -> None:
@@ -363,14 +368,14 @@ def test_row_field_model_columns_are_appended() -> None:
         return list(SQLModel.metadata.tables[table].columns.keys())[-n:]
 
     assert last("grants", 1) == ["row_scope"]
-    assert last("atlas_audit_log", 2) == ["scope", "masking"]
+    assert last("atlas_audit_log", 4) == ["scope", "masking", "token_id", "client_id"]
 
 
 def test_row_field_downgrade_round_trips(tmp_path: Path) -> None:
     db = tmp_path / "m.db"
     sync_url = f"sqlite:///{db}"
     config = _config(f"sqlite+aiosqlite:///{db}")
-    command.upgrade(config, "head")
+    command.upgrade(config, "0004")
 
     command.downgrade(config, "0003")
 
@@ -378,7 +383,7 @@ def test_row_field_downgrade_round_trips(tmp_path: Path) -> None:
     assert "row_scope" not in _column_order(sync_url, "grants")
     assert not {"scope", "masking"} & set(_column_order(sync_url, "atlas_audit_log"))
 
-    command.upgrade(config, "head")
+    command.upgrade(config, "0004")
 
     assert _tables(sync_url) >= ROW_FIELD_TABLES
     assert _column_order(sync_url, "atlas_audit_log")[-2:] == ["scope", "masking"]

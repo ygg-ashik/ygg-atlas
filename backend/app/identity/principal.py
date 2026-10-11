@@ -16,3 +16,6 @@ class Principal:
     kind: str
     tenant: str
     auth_method: AuthMethod
+    # The MCP credential behind this request (phase 4); None on the web door.
+    token_id: UUID | None = None
+    client_id: str | None = None

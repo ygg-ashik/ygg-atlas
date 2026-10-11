@@ -10,6 +10,7 @@ import ChatPage, { ChatThreadList } from '@/features/chat';
 import { MetricsPage } from '@/features/metrics';
 import { CommandPalette, CommandTrigger } from '@/features/command';
 import { OverviewPage } from '@/features/dashboard';
+import { ConsentPage } from '@/features/oauth-consent';
 
 const NAV: NavItem[] = [
   { to: '/', label: 'Overview', icon: LayoutDashboard },
@@ -44,6 +45,14 @@ function Home() {
   return <OverviewPage userName={user?.name ?? ''} />;
 }
 
+/** /oauth/consent sits outside ProtectedRoute: it signs in itself and keeps ?txn=. */
+function OAuthConsent() {
+  const { user, isLoading, signInWithGoogle } = useAuth();
+  return (
+    <ConsentPage session={{ email: user?.email ?? null, isLoading, signIn: signInWithGoogle }} />
+  );
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -52,6 +61,7 @@ export default function App() {
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/oauth/consent" element={<OAuthConsent />} />
               <Route
                 element={
                   <ProtectedRoute>

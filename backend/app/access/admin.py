@@ -84,7 +84,15 @@ from app.access.schemas import (
     UserUpdate,
 )
 from app.access.service import AccessService
-from app.identity import TokenVerifier, User, UserKind, UserStatus
+from app.identity import (
+    REVOKED_USER_DISABLED,
+    TokenVerifier,
+    User,
+    UserKind,
+    UserStatus,
+    revoke_user_tokens,
+    service_account_email,
+)
 
 logger = structlog.get_logger()
 
@@ -648,6 +656,12 @@ class AccessAdmin:
             )
         if after.get("status") == UserStatus.DISABLED:
             await self._end_firebase_sessions(user)
+            await revoke_user_tokens(
+                user.id,
+                reason=REVOKED_USER_DISABLED,
+                actor_user_id=actor.user_id,
+                via="cli" if actor.via == "cli" else "api",
+            )
         return user
 
     async def effective_access(self, actor: Actor, user_id: UUID) -> Policy:
@@ -976,3 +990,38 @@ class AccessAdmin:
                 raise InvalidChangeError(msg)
             seen.add(current)
             current = groups[current].parent_id
+
+    async def create_service_account(self, actor: Actor, name: str, role: str) -> User:
+        """D13: a service identity owned by the actor; audited and versioned."""
+        actor.require(ADMIN_USERS)
+        if role not in ROLES:
+            msg = f"Unknown role '{role}'. Roles: {', '.join(ROLES)}."
+            raise InvalidChangeError(msg)
+        _check_role_escalation(actor, role)
+        email = service_account_email(name)
+        if email is None:
+            msg = "Use 3-40 letters, digits or dashes for the service account name."
+            raise InvalidChangeError(msg)
+        async with self._write(actor):
+            if await self._repo.user_by_email(email) is not None:
+                msg = f"A service account '{email}' already exists."
+                raise ConflictError(msg)
+            user = User(
+                email=email,
+                display_name=name.strip(),
+                kind=UserKind.SERVICE,
+                role=role,
+                owner_user_id=actor.user_id,
+                tenant=actor.tenant,
+            )
+            self._repo.add(user)
+            await self._commit(
+                _change(
+                    actor,
+                    "service_account.create",
+                    ("user", user.id),
+                    None,
+                    _snapshot(user),
+                )
+            )
+        return user

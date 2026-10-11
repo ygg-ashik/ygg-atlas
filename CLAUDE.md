@@ -36,7 +36,8 @@ Deployment: AWS EC2 (`ssh atlas`), docker compose, reverse proxy + HTTPS. NOT GC
    to `@yougotagift.com`). Nothing user-typed can widen data access. Data access is evaluated
    server-side from groups and grants (`backend/app/access`); the agent and atlas only ever receive
    the evaluated policy. Row scopes come from grants and admin-set user attributes (`$self`), never
-   from the prompt or identity-provider claims.
+   from the prompt or identity-provider claims. MCP callers use atlas-issued tokens (OAuth, PAT or
+   service), stored only as hashes; the MCP door never honours AUTH_DISABLED.
 5. **Audit everything.** Every atlas tool execution is written to the audit log (`backend/app/models/audit.py`).
 6. **Evals gate merges.** New agent/prompt/registry behavior needs golden coverage in `evals/goldens/`.
 
