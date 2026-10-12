@@ -1,4 +1,4 @@
-"""Garbage collection of dead credential rows (D3)."""
+"""Garbage collection of dead credential rows."""
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta

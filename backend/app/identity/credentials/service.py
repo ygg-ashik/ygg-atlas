@@ -152,10 +152,10 @@ async def revoke_user_tokens(
     actor_user_id: UUID | None,
     via: CredentialVia,
 ) -> None:
-    """Post-commit hook for AccessAdmin.update_user (D18, C5): opens its own session
-    from get_session_factory(), revokes every token of every kind, writes
-    tokens.revoked_all, and never raises (logs identity.revoke_all_failed). The bearer
-    door refuses disabled users regardless."""
+    """Post-commit hook for AccessAdmin.update_user when a user is disabled: opens
+    its own session from get_session_factory(), revokes every token of every kind,
+    writes tokens.revoked_all, and never raises (logs identity.revoke_all_failed).
+    The bearer door refuses disabled users regardless."""
     try:
         async with get_session_factory()() as db:
             await TokenService(db).revoke_all_tokens(

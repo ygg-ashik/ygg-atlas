@@ -5,12 +5,12 @@ decline change no access, so they write only `access_requests`: no
 `rbac_changes` row and no policy_version bump, and request traffic never
 evicts cached policies. An approval is one unit of work under the shared
 `AccessWriter`: the request is re-read under the lock, the access change is
-staged through the same topic-service helper a direct admin write uses (so D8
-and D10 run unchanged), and the access change plus a `request.approve` row
-commit with one version bump.
+staged through the same topic-service helper a direct admin write uses (so the
+manager-standing and no-self-widening checks run unchanged), and the access
+change plus a `request.approve` row commit with one version bump.
 
-Who decides what is one pure function, `decidable_scope` (P5-D9); a request
-outside the caller's scope reads as "No such request." (P5-D10).
+Who decides what is one pure function, `decidable_scope`; a request
+outside the caller's scope reads as "No such request."
 """
 
 from datetime import UTC, datetime
@@ -204,7 +204,7 @@ class RequestService:
 
     async def options(self, policy: Policy, resource: str) -> RequestOptionsOut:
         """Groups that would grant `resource` to a new member, with their
-        managers' display names (P5-D13), for the request form."""
+        managers' display names, for the request form."""
         require_active(policy)
         if not is_resource_path(resource):
             msg = f"'{resource}' is not a resource path like demo/order/revenue."
@@ -238,8 +238,8 @@ class RequestService:
         user_id: UUID | None = None,
     ) -> Page[AccessRequestOut]:
         """Requests the actor may decide, newest first. `status` is one status,
-        `decided` (approved or declined; P5-D23) or None for every status;
-        `user_id` narrows to one requester, still inside the scope (P5-D24)."""
+        `decided` (approved or declined) or None for every status;
+        `user_id` narrows to one requester, still inside the scope."""
         scope = decidable_scope_of(actor)
         if scope.empty:
             raise AccessDeniedError(NO_SCOPE)
@@ -322,7 +322,7 @@ class RequestService:
         return await self._views.reloaded(request_id, with_requester=True)
 
     async def _valid_target(self, user: User, kind: str, target: str) -> str:
-        """The canonical target for a new request, or a 422 (P5-D11)."""
+        """The canonical target for a new request, or a 422."""
         if kind == KIND_GROUP:
             return await self._valid_group_target(user, target)
         if kind == KIND_ROLE:
@@ -386,7 +386,7 @@ class RequestService:
         now: datetime,
     ) -> RbacChange | None:
         """Stage the access the request asks for; None when it is already held
-        (an approval never demotes or duplicates, P5-D7)."""
+        (an approval never demotes or duplicates)."""
         if request.kind == KIND_GROUP:
             group_id = UUID(request.target)
             if await self._repo.groups.member(group_id, request.user_id) is not None:

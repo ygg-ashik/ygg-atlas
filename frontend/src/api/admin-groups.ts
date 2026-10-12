@@ -1,5 +1,5 @@
 // Groups, memberships and grants (admin:groups, group managers for members).
-// Shapes: backend app/access/schemas/groups.py; detail and member role/status from B5.
+// Shapes: backend app/access/schemas/groups.py; group detail and member role/status.
 import { api } from './axios-instance';
 import { type GroupStanding } from './access';
 import { seg } from './params';
@@ -36,7 +36,7 @@ export interface GroupUpdate {
   parent_id?: string | null;
 }
 
-/** `MemberOut`; `role` and `status` from B5. */
+/** `MemberOut`, with the member's `role` and `status`. */
 export interface Member {
   user_id: string;
   email: string;
@@ -47,7 +47,7 @@ export interface Member {
   status: string;
 }
 
-/** `MemberCandidateOut`: a colleague the group's managers may add (P5-D21):
+/** `MemberCandidateOut`: a colleague the group's managers may add:
  * active, human, not already a member, never the caller. */
 export interface MemberCandidate {
   user_id: string;

@@ -73,7 +73,7 @@ class TokenRepository:
         )
 
     async def mark_rotated(self, token_id: UUID, now: datetime) -> bool:
-        """Exactly one concurrent refresh of a token sees True (D6)."""
+        """Exactly one concurrent refresh of a token sees True."""
         return await self.revoke_token(token_id, REVOKED_ROTATED, now)
 
     async def revoke_user_tokens(

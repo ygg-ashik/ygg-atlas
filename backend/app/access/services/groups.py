@@ -23,8 +23,8 @@ class GroupService:
 
     async def list_groups(self, actor: Actor) -> list[Group]:
         """Every tenant group for admin:groups (and the CLI); for a group
-        manager without it, only the groups they manage, subgroups included
-        (P5-D22). Rows keep their real parent_id."""
+        manager without it, only the groups they manage, subgroups included.
+        Rows keep their real parent_id."""
         policy = actor.policy
         if policy is not None and not policy.has(ADMIN_GROUPS):
             if not (policy.active and policy.managed_group_ids):
@@ -118,7 +118,7 @@ class GroupService:
         self, actor: Actor, old_parent: UUID | None, new_parent: UUID | None
     ) -> None:
         """Re-parenting a group gains the new ancestors' clearance allows and
-        lifts the old ancestors' clearance denies for all its members (C10)."""
+        lifts the old ancestors' clearance denies for all its members."""
         old = await self._lookup.lineage(actor, old_parent)
         new = await self._lookup.lineage(actor, new_parent)
         await self._lookup.require_clearances(actor, new - old, EFFECT_ALLOW)

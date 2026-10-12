@@ -52,7 +52,7 @@ class MemberOut(BaseModel):
 
 
 class MemberCandidateOut(BaseModel):
-    """A colleague a group's managers may add (P5-D21)."""
+    """A colleague a group's managers may add."""
 
     user_id: UUID
     display_name: str

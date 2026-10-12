@@ -36,7 +36,7 @@ _NAME_MAX: Final = 100
 
 @dataclass(frozen=True, slots=True)
 class IssuedToken:
-    """A freshly minted token: the stored row and the raw value, shown once (D3)."""
+    """A freshly minted token: the stored row and the raw value, shown once."""
 
     token: ApiToken
     raw: str = field(repr=False)  # never logged or stored
@@ -58,7 +58,7 @@ class TokenRequest:
 def service_account_email(name: str) -> str | None:
     """The `svc-<slug>@atlas.internal` email for a service-account name, or None when
     the name is over 100 characters (it becomes the display name) or the slug is not
-    3-40 lowercase letters, digits or dashes (D13, ruling C5)."""
+    3-40 lowercase letters, digits or dashes."""
     cleaned = name.strip()
     if len(cleaned) > _NAME_MAX:
         return None

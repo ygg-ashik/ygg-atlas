@@ -169,7 +169,7 @@ class RequestRepository:
 
 
 def _decidable(tenant: str, scope: DecidableScope) -> ColumnElement[bool]:
-    """The WHERE clause for `scope` (P5-D9), always tenant-filtered."""
+    """The WHERE clause for `scope`, always tenant-filtered."""
     kinds: list[ColumnElement[bool]] = []
     if scope.role_and_resource:
         kinds.append(col(AccessRequest.kind).in_(("role", "resource")))

@@ -1,4 +1,4 @@
-"""Personal and service tokens, connected apps and the single bearer door (D3, D20).
+"""Personal and service tokens, connected apps and the single bearer door.
 
 Raw secrets exist only in `IssuedToken.raw`, once, and are never logged, stored or
 put in a repr.

@@ -1,6 +1,6 @@
 """The rules of access requests that need no database: limits, statuses,
-messages, who may decide what (`decidable_scope`, P5-D9) and the approval
-expiry (P5-D12), and which groups would grant a resource."""
+messages, who may decide what (`decidable_scope`) and the approval
+expiry, and which groups would grant a resource."""
 
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
@@ -120,7 +120,7 @@ def check_decidable(actor: Actor, request: AccessRequest | None) -> AccessReques
 def approval_expiry(
     request: AccessRequest, decision: RequestDecision, now: datetime
 ) -> datetime | None:
-    """P5-D12: absent → now + 90 days; null → none; a value must be future."""
+    """Approval expiry: absent → now + 90 days; null → none; a value must be future."""
     if request.kind != KIND_RESOURCE:
         if expiry_present(decision):
             msg = "An expiry only applies to a resource request."

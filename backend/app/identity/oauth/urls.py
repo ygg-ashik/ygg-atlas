@@ -37,11 +37,11 @@ def same_audience(resource: str, audience: str) -> bool:
 
 
 def redirect_allowed(uri: str, hosted: Collection[str]) -> bool:
-    """D8. Parsed with Pydantic AnyUrl (WHATWG, as the browser parses it), so there is
-    no parser differential: loopback http on any port and path, or an exact approved
-    https callback. Never userinfo (even `evil.com@localhost`, which lands on
-    loopback: credentials-shaped text in a redirect is only a phishing aid) and never
-    a fragment (RFC 6749 §3.1.2)."""
+    """Whether a redirect URI is allowed. Parsed with Pydantic AnyUrl (WHATWG, as
+    the browser parses it), so there is no parser differential: loopback http on
+    any port and path, or an exact approved https callback. Never userinfo (even
+    `evil.com@localhost`, which lands on loopback: credentials-shaped text in a
+    redirect is only a phishing aid) and never a fragment (RFC 6749 §3.1.2)."""
     url = _parse_url(uri)
     if url is None:
         return False

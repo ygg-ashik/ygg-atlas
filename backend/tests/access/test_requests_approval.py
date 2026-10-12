@@ -560,7 +560,8 @@ async def test_approving_for_a_disabled_requester_is_409(db) -> None:
 
 async def test_approving_into_a_cleared_group_needs_the_clearance(db) -> None:
     # C10: joining inherits the lineage's clearance allows, so the approval
-    # path (_stage_member) refuses an uncleared decider, as put_member does.
+    # path (MemberService.stage_member) refuses an uncleared decider, as
+    # put_member does.
     growth = await make_group(db, "growth")
     await add_grant(db, growth, CLEARANCE_PEOPLE_NAMES, kind="clearance")
     sara = await make_user(db, "sara@yougotagift.com")
@@ -580,8 +581,8 @@ async def test_approving_into_a_cleared_group_needs_the_clearance(db) -> None:
 
 
 async def test_an_approved_resource_grant_is_unscoped(db) -> None:
-    # The approval path builds its grant in _stage_grant with no row scope:
-    # a scoped grant only ever comes from the grant editor.
+    # The approval path builds its grant in GrantService.stage_grant with no row
+    # scope: a scoped grant only ever comes from the grant editor.
     sara = await make_user(db, "sara@yougotagift.com")
     admin = await _holding(db, "viewer", "admin:users")
     request = await _ask(db, sara, "resource", REVENUE)

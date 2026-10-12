@@ -1,4 +1,4 @@
-"""The OAuth 2.1 authorization service behind the MCP edge (D4-D8, D30, D36).
+"""The OAuth 2.1 authorization service behind the MCP edge.
 
 Clients (dynamic registration, allowlisted redirects), pending authorizations,
 single-use codes and rotating refresh-token families with reuse detection, one

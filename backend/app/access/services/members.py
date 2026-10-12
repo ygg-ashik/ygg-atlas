@@ -21,7 +21,7 @@ from app.access.services.lookup import TenantLookup
 from app.access.services.writer import AccessWriter, rbac_change, snapshot
 from app.identity import User, UserKind
 
-MAX_CANDIDATES: Final = 10  # member-candidate lookup (P5-D21)
+MAX_CANDIDATES: Final = 10  # member-candidate lookup
 CANDIDATE_QUERY: Final = (3, 100)  # stripped length bounds
 
 
@@ -42,14 +42,15 @@ def _member_out(member: GroupMember, user: User) -> MemberOut:
 
 
 def _no_self_membership(actor: Actor, user_id: UUID) -> None:
-    """D10: joining, re-standing or leaving a group yourself changes your own
+    """Joining, re-standing or leaving a group yourself changes your own
     access through the group, so it needs admin:groups, not manager standing."""
     if actor.user_id is not None and actor.user_id == user_id:
         actor.require(ADMIN_GROUPS)
 
 
 class MemberService:
-    """Membership changes, by atlas admins or the group's managers (D8, D10)."""
+    """Membership changes, by atlas admins or the group's managers; nobody
+    widens their own access."""
 
     def __init__(self, repo: AccessRepository, writer: AccessWriter) -> None:
         self._repo = repo
@@ -67,7 +68,7 @@ class MemberService:
         self, actor: Actor, group_id: UUID, query: str
     ) -> list[MemberCandidateOut]:
         """Up to ten active human colleagues matching `query` who could join
-        the group: never its members, service users or the actor (P5-D21)."""
+        the group: never its members, service users or the actor."""
         actor.require_member_admin(group_id)
         search = query.strip()
         shortest, longest = CANDIDATE_QUERY
@@ -121,14 +122,14 @@ class MemberService:
             actor.require(ADMIN_GROUPS)
         member = await self._repo.groups.member(group.id, user.id)
         # Only admin:groups appoints a manager, demotes one or edits one's
-        # standing further (decision D8): a manager may only ever change
+        # standing further: a manager may only ever change
         # the membership of a plain member.
         if standing == STANDING_MANAGER or (
             member is not None and member.standing == STANDING_MANAGER
         ):
             actor.require(ADMIN_GROUPS)
         if member is None:
-            # Joining inherits the lineage's clearance allows (C10).
+            # Joining inherits the lineage's clearance allows; the actor must hold them.
             lineage = await self._lookup.lineage(actor, group.id)
             await self._lookup.require_clearances(actor, lineage, EFFECT_ALLOW)
         before = snapshot(member)
@@ -162,9 +163,9 @@ class MemberService:
                 actor.require(ADMIN_GROUPS)
             if await self._carries_restriction(actor, group.id):
                 # Membership carries the group's and its ancestors' grants;
-                # removal lifts their denies, which widens access (D10).
+                # removal lifts their denies, which widens access.
                 actor.require(ADMIN_GROUPS)
-            # Leaving lifts the lineage's clearance denies (C10).
+            # Leaving lifts the lineage's clearance denies; the actor must hold them.
             lineage = await self._lookup.lineage(actor, group.id)
             await self._lookup.require_clearances(actor, lineage, EFFECT_DENY)
             before = snapshot(member)

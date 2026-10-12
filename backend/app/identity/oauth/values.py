@@ -110,7 +110,7 @@ class CodeGrant:
     resource: str
     scopes: tuple[str, ...]
     expires_at: datetime
-    display: str  # display prefix only (D28)
+    display: str  # display prefix only
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,7 +121,7 @@ class RefreshGrant:
     user_id: UUID
     resource: str
     expires_at: datetime
-    display: str  # display prefix only (D28)
+    display: str  # display prefix only
 
 
 @dataclass(frozen=True, slots=True)

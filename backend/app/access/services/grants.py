@@ -1,4 +1,4 @@
-"""Grants: list, create (with the D10/C10 widening checks) and revoke."""
+"""Grants: list, create (with the no-self-widening and clearance checks) and revoke."""
 
 from datetime import UTC, datetime
 from typing import Literal
@@ -84,7 +84,7 @@ def _clearance_target(payload: GrantCreate) -> str:
 
 def _check_scope_shape(payload: GrantCreate) -> None:
     """Row scopes ride on resource allows only, and never in a
-    shape the evaluator would treat as malformed (D3.3): storing one would
+    shape the evaluator would treat as malformed: storing one would
     deny everything to everyone the grant applies to."""
     if payload.row_scope is None:
         return
@@ -124,17 +124,17 @@ class GrantService:
     async def create_grant(self, actor: Actor, payload: GrantCreate) -> Grant:
         actor.require(_grant_capability(payload.subject_type))
         if payload.subject_type == SUBJECT_USER and actor.user_id == payload.subject_id:
-            # D10: no self-grants; only capabilities you hold.
+            # No self-grants; only capabilities you hold.
             msg = "You can't grant access to yourself. Ask another admin."
             raise AccessDeniedError(msg)
         now = _utcnow()
         target = _validated_target(payload, now)
         _check_scope_shape(payload)
         if payload.target_kind == KIND_CAPABILITY:
-            # D10: no self-grants; only capabilities you hold.
+            # No self-grants; only capabilities you hold.
             actor.require(target)
         if payload.target_kind == KIND_CLEARANCE and payload.effect == EFFECT_ALLOW:
-            require_clearance(actor, target)  # C10
+            require_clearance(actor, target)  # only clearances you hold
         async with self._writer.write(actor):
             grant, change = await self.stage_grant(actor, payload, now)
             await self._writer.commit(change)
@@ -147,16 +147,16 @@ class GrantService:
         duplicate is a 409."""
         actor.require(_grant_capability(payload.subject_type))
         if payload.subject_type == SUBJECT_USER and actor.user_id == payload.subject_id:
-            # D10: no self-grants; only capabilities you hold.
+            # No self-grants; only capabilities you hold.
             msg = "You can't grant access to yourself. Ask another admin."
             raise AccessDeniedError(msg)
         target = _validated_target(payload, now)
         _check_scope_shape(payload)
         if payload.target_kind == KIND_CAPABILITY:
-            # D10: no self-grants; only capabilities you hold.
+            # No self-grants; only capabilities you hold.
             actor.require(target)
         if payload.target_kind == KIND_CLEARANCE and payload.effect == EFFECT_ALLOW:
-            require_clearance(actor, target)  # C10
+            require_clearance(actor, target)  # only clearances you hold
         await self._lookup.subject(actor, payload.subject_type, payload.subject_id)
         if payload.row_scope is not None:
             await self._row_field.check_scope(target, payload.row_scope)
@@ -203,8 +203,8 @@ class GrantService:
             except NotFoundError:
                 # Hide whether a grant exists for a subject outside the actor's
                 # tenant: the same "No such grant" as an unknown id. Checked
-                # before D10 below, so a cross-tenant grant always reads as
-                # "No such grant", never as a D10 access-denied message.
+                # before the self-widening checks below, so a cross-tenant grant always
+                # reads as "No such grant", never as an access-denied message.
                 msg = "No such grant."
                 raise NotFoundError(msg) from None
             if (
@@ -212,14 +212,14 @@ class GrantService:
                 and grant.subject_type == SUBJECT_USER
                 and grant.subject_id == actor.user_id
             ):
-                # D10: revoking a deny widens access, same as a self-grant.
+                # Revoking a deny widens access, same as a self-grant.
                 msg = "You can't lift a restriction on yourself. Ask another admin."
                 raise AccessDeniedError(msg)
             if grant.effect == EFFECT_DENY and grant.target_kind == KIND_CAPABILITY:
-                # D10: revoking a deny widens access; only lift one you hold.
+                # Revoking a deny widens access; only lift one you hold.
                 actor.require(grant.target)
             if grant.effect == EFFECT_DENY and grant.target_kind == KIND_CLEARANCE:
-                require_clearance(actor, grant.target)  # C10
+                require_clearance(actor, grant.target)  # only one you hold
             actor.require(_grant_capability(grant.subject_type))
             before = snapshot(grant)
             await self._repo.delete(grant)

@@ -1,5 +1,5 @@
 """The authorization-code grant: load a code, then exchange it exactly once. A used
-code presented again revokes its whole family (D30)."""
+code presented again revokes its whole family."""
 
 import structlog
 from sqlalchemy.exc import SQLAlchemyError
@@ -50,7 +50,7 @@ class CodeExchange:
 
     async def load_code(self, client_id: str, raw_code: str) -> CodeGrant | None:
         """None for unknown, foreign or reused codes. A used code revokes its family
-        whoever presents it. Expiry is the SDK's check (C14). An unexpected database
+        whoever presents it. Expiry is the SDK's check. An unexpected database
         error raises GrantUnavailableError."""
         try:
             return await self._load_code(client_id, raw_code)
@@ -79,7 +79,7 @@ class CodeExchange:
         self, client_id: str, grant: CodeGrant, eligible: Eligibility
     ) -> TokenPair:
         """Exactly one exchange of a code succeeds; a second one (reuse or a lost
-        race) revokes the family, the winner's tokens included (D30, C8). Raises
+        race) revokes the family, the winner's tokens included. Raises
         OAuthGrantError, or GrantUnavailableError for a transient failure."""
         return await self._families.db_errors_as_unavailable(
             self._exchange_code(client_id, grant, eligible), op="exchange_code"

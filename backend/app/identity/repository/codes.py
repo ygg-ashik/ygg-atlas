@@ -33,7 +33,7 @@ class CodeRepository:
     async def consume_request(
         self, request_hash: str, now: datetime
     ) -> OAuthAuthorizationRequest | None:
-        """Single use (D36): exactly one concurrent consent sees the request."""
+        """Single use: exactly one concurrent consent sees the request."""
         consumed = await run_dml(
             self._db,
             update(OAuthAuthorizationRequest)
@@ -60,7 +60,7 @@ class CodeRepository:
         return await self._db.get(OAuthCode, code_id, populate_existing=fresh)
 
     async def mark_code_used(self, code_id: UUID, now: datetime) -> bool:
-        """Single use (D5): exactly one caller ever sees True, on SQLite and on PG
+        """Single use: exactly one caller ever sees True, on SQLite and on PG
         READ COMMITTED (the loser's UPDATE waits for the winner's row lock,
         re-checks used_at and matches 0 rows)."""
         return (

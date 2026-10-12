@@ -18,7 +18,7 @@ class CredentialRepository:
 
     Every "only once" write is one conditional UPDATE whose rowcount decides: on
     PostgreSQL READ COMMITTED the loser's UPDATE waits for the winner's row lock,
-    re-checks its WHERE clause and matches 0 rows (D5, D6, D30).
+    re-checks its WHERE clause and matches 0 rows.
     """
 
     def __init__(self, db: AsyncSession) -> None:

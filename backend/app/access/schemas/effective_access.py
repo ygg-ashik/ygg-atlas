@@ -74,7 +74,7 @@ class EffectiveAccessOut(BaseModel):
     def from_policy(cls, policy: Policy, resource: str | None) -> Self:
         """The policy view of a user's access. `decision.row_scope` is what the
         policy grants; the atlas additionally drops any dimension the entity
-        does not declare (D3.7), so execution may be narrower, never wider."""
+        does not declare, so execution may be narrower, never wider."""
         decision = None
         if resource:
             verdict = policy.decide(resource)

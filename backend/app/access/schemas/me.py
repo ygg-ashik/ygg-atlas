@@ -24,7 +24,7 @@ class MeAccessOut(BaseModel):
     email: str
     display_name: str
     pending_requests: int  # the caller's own
-    pending_approvals: int  # the caller may decide (never their own; P5-D9)
+    pending_approvals: int  # the caller may decide (never their own)
     is_manager: bool
     clearances: list[str]
 

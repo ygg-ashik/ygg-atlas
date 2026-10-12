@@ -47,7 +47,7 @@ def _not_self(actor: Actor, user: User) -> None:
 
 
 def _check_role_escalation(actor: Actor, role: str) -> None:
-    """D10: a role can only be assigned if its capabilities are within the
+    """A role can only be assigned if its capabilities are within the
     actor's own; the CLI actor (policy None) is unaffected."""
     if actor.policy is None:
         return
@@ -186,7 +186,7 @@ class UserService:
         return await self._access.policy_for_user(user.id)
 
     async def create_service_account(self, actor: Actor, name: str, role: str) -> User:
-        """D13: a service identity owned by the actor; audited and versioned."""
+        """A service identity owned by the actor; audited and versioned."""
         actor.require(ADMIN_USERS)
         if role not in ROLES:
             msg = f"Unknown role '{role}'. Roles: {', '.join(ROLES)}."
@@ -221,7 +221,7 @@ class UserService:
         return user
 
     async def _check_not_above_actor(self, actor: Actor, user: User) -> None:
-        """D10: nobody changes the role or status of a user whose effective
+        """Nobody changes the role or status of a user whose effective
         capabilities exceed their own (the CLI actor, policy None, is unaffected).
 
         Judged by the capabilities the target would have if active: a disabled

@@ -91,7 +91,7 @@ class UserRepository:
         limit: int,
     ) -> list[User]:
         """Active human users of `tenant` matching `search` who are not yet
-        direct members of `group_id`, by email (P5-D21)."""
+        direct members of `group_id`, by email."""
         already = (
             select(col(GroupMember.user_id))
             .where(col(GroupMember.group_id) == group_id)

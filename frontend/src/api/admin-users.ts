@@ -1,5 +1,5 @@
 // Users and per-user effective access (admin:users). Shapes: backend
-// app/access/schemas/users.py; list and detail from phase 5 (B5).
+// app/access/schemas/users.py; user list and detail.
 import { type GrantOut, type RowScope } from './admin-groups';
 import { api } from './axios-instance';
 import { type Page } from './cursor';
@@ -33,7 +33,7 @@ export interface UserDetail extends User {
   pending_requests: number;
 }
 
-/** `GET /admin/users` filters (B5). Empty values are not sent. */
+/** `GET /admin/users` filters. Empty values are not sent. */
 export interface UserFilters {
   q?: string;
   role?: string;

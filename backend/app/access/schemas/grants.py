@@ -37,7 +37,7 @@ class GrantCreate(BaseModel):
 def _normalize_scope(scope: dict[str, list[str]]) -> dict[str, list[str]]:
     """Validate a row scope and return it with sorted keys and de-duplicated,
     sorted values. Never returns a scope the evaluator would treat as
-    malformed (D3.3): `is_well_formed_scope` is the final word."""
+    malformed: `is_well_formed_scope` is the final word."""
     if not 1 <= len(scope) <= MAX_SCOPE_DIMENSIONS:
         msg = f"A row scope names 1 to {MAX_SCOPE_DIMENSIONS} dimensions."
         raise ValueError(msg)

@@ -11,7 +11,7 @@ BAD_CURSOR: Final = "That page link is invalid; reload the list."
 
 
 def page_position(cursor: str | None) -> tuple[datetime, UUID] | None:
-    """A request's cursor as a UTC keyset position; a bad one is a 422 (P5-D16)."""
+    """A request's cursor as a UTC keyset position; a bad one is a 422."""
     if cursor is None:
         return None
     try:

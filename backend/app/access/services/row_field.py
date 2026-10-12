@@ -1,5 +1,5 @@
-"""Row and field controls: user attributes (D3.5), label classes (D3.9) and
-the scope dimensions a row-scoped grant may use (D3.6)."""
+"""Row and field controls: user attributes, label classes and
+the scope dimensions a row-scoped grant may use."""
 
 import re
 from collections.abc import Mapping, Sequence
@@ -26,7 +26,7 @@ from app.access.services.writer import AccessWriter, rbac_change
 from app.identity import User
 
 _ATTRIBUTE_KEY: Final = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
-_MASK_SUPPRESS: Final = "suppress"  # the mode with no stored row (C17)
+_MASK_SUPPRESS: Final = "suppress"  # the mode with no stored row
 
 
 def _utcnow() -> datetime:
@@ -58,7 +58,7 @@ def _check_attribute_key(key: str) -> None:
 
 
 def _not_self_attribute(actor: Actor, user: User) -> None:
-    """Attributes feed `$self` row scopes, so they are permissions (D3.5)."""
+    """Attributes feed `$self` row scopes, so they are permissions."""
     if actor.user_id is not None and actor.user_id == user.id:
         msg = "You can't change your own attributes. Ask another admin."
         raise ConflictError(msg)
@@ -164,7 +164,7 @@ class RowFieldService:
             )
 
     async def list_label_classes(self, actor: Actor) -> list[LabelClassSetting]:
-        """Both maskable classes (C12); an unset one shows as `suppress`, which
+        """Both maskable classes; an unset one shows as `suppress`, which
         is what the atlas does without a row (fail closed)."""
         actor.require(ADMIN_GROUPS)
         stored = {
@@ -220,7 +220,7 @@ class RowFieldService:
     async def check_scope(
         self, pattern: str, scope: Mapping[str, Sequence[str]]
     ) -> None:
-        """D3.6: every dimension is declared by at least one entity the pattern
+        """Every dimension is declared by at least one entity the pattern
         covers (for a one-entity pattern: by that entity), and `$self` only on
         a dimension that declares it. The mirror holds enabled plugins only, so
         a scope on a disabled plugin's data is rejected (fail closed)."""

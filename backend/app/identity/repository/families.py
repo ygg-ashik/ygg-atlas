@@ -85,7 +85,7 @@ class FamilyRepository:
                 .order_by(col(ApiToken.expires_at))
             )
         ).all()
-        # A grace refresh (D6) may leave two live refresh tokens in one family
+        # A grace refresh may leave two live refresh tokens in one family
         # for a moment; the later expiry wins.
         latest: dict[UUID, tuple[ApiToken, OAuthClient]] = {}
         for token, client in live:

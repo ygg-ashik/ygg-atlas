@@ -69,7 +69,7 @@ class AuditUserOut(BaseModel):
 
 
 class AuditDecisionOut(BaseModel):
-    """One atlas tool call and its policy decision (P5-D15)."""
+    """One atlas tool call and its policy decision."""
 
     id: UUID
     user: AuditUserOut

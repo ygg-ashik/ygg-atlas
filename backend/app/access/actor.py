@@ -11,7 +11,7 @@ from app.access.policy import Policy
 
 @dataclass(frozen=True, slots=True)
 class Actor:
-    """Who changes access. `policy` is None only for the trusted CLI (decision D5)."""
+    """Who changes access. `policy` is None only for the trusted CLI."""
 
     user_id: UUID | None
     via: str  # 'api' | 'cli'
@@ -24,7 +24,7 @@ class Actor:
 
     @classmethod
     def cli(cls, tenant: str = DEFAULT_TENANT) -> Self:
-        """The trusted CLI operator (D5): skips capability and D10 checks.
+        """The trusted CLI operator: skips capability and no-widening checks.
         Never construct this from request or agent code."""
         return cls(None, "cli", tenant, None)
 
@@ -47,7 +47,7 @@ class Actor:
 
 
 def require_clearance(actor: Actor, clearance: str) -> None:
-    """C10 (the D10 analogue): granting a clearance, or lifting a clearance
+    """Granting a clearance, or lifting a clearance
     deny, widens access, so an API actor must hold that clearance; the
     trusted CLI (policy None) is exempt."""
     if actor.policy is not None and not actor.policy.has_clearance(clearance):

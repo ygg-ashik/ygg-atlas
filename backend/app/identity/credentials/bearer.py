@@ -1,4 +1,4 @@
-"""The single bearer door (D3, D20): every PAT, service token and OAuth access token
+"""The single bearer door: every PAT, service token and OAuth access token
 an MCP caller presents is checked here, plus the user lookups the MCP edge needs."""
 
 from dataclasses import dataclass, replace
@@ -40,7 +40,7 @@ _AUTH_METHOD: Final[dict[TokenKind, AuthMethod]] = {
 
 @dataclass(frozen=True, slots=True)
 class AuthenticatedBearer:
-    """What the bearer door hands the MCP token verifier (C11)."""
+    """What the bearer door hands the MCP token verifier."""
 
     principal: Principal  # auth_method oauth|pat|service, token_id and client_id set
     expires_at: datetime
@@ -56,7 +56,7 @@ async def authenticate_bearer(
     ForbiddenError (user disabled). Never includes token material in the message."""
     moment = now or utcnow()
     candidate = raw.strip()
-    kind = kind_of(candidate)  # rejected before any DB work (D3)
+    kind = kind_of(candidate)  # rejected before any DB work
     if kind is None or kind not in BEARER_KINDS:  # refresh tokens are never bearers
         raise _rejected("malformed" if kind is None else "not_a_bearer", None)
     prefix = display_prefix(candidate)
@@ -121,7 +121,7 @@ async def _require_live_client(
 
 
 async def _touch(creds: CredentialRepository, row: ApiToken, moment: datetime) -> None:
-    """last_used_at, written at most every LAST_USED_INTERVAL (D3)."""
+    """last_used_at, written at most every LAST_USED_INTERVAL."""
     last = row.last_used_at
     if last is not None and moment - as_utc(last) < LAST_USED_INTERVAL:
         return
@@ -131,7 +131,7 @@ async def _touch(creds: CredentialRepository, row: ApiToken, moment: datetime) -
 
 async def principal_for_user(db: AsyncSession, user_id: UUID) -> Principal | None:
     """Active users only; auth_method 'service' for service accounts, 'pat' otherwise.
-    Used by the MCP edge to evaluate a user's Policy (eligibility, D34)."""
+    Used by the MCP edge to evaluate a user's Policy (eligibility)."""
     user = await UserRepository(db).get(user_id)
     if user is None or user.status != UserStatus.ACTIVE:
         return None
@@ -140,6 +140,6 @@ async def principal_for_user(db: AsyncSession, user_id: UUID) -> Principal | Non
 
 async def tenant_of_user(db: AsyncSession, user_id: UUID) -> str | None:
     """The tenant of any user, whatever their status; None for an unknown id. Lets an
-    admin clean up a disabled user's credentials (D18 hook failure)."""
+    admin clean up a disabled user's credentials (after a failed revoke-all hook)."""
     user = await UserRepository(db).get(user_id)
     return None if user is None else user.tenant

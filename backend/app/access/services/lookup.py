@@ -1,6 +1,6 @@
 """Tenant-scoped lookups the topic services share: a group or user of the
 actor's tenant (else 404), a grant subject, a group's lineage, and the live
-clearance grants a membership change would gain or lift (C10)."""
+clearance grants a membership change would gain or lift."""
 
 from datetime import UTC, datetime
 from uuid import UUID

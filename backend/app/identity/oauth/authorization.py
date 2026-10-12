@@ -86,7 +86,7 @@ class AuthorizationService:
         return with_query(self._config.consent_url, txn=txn)
 
     def _bind_audience(self, requested: str | None) -> str:
-        """RFC 8707 (D7): a missing resource is bound to ours anyway."""
+        """RFC 8707: a missing resource is bound to ours anyway."""
         if requested is None:
             return self._config.resource
         if not same_audience(self._config.resource, requested):
@@ -112,7 +112,7 @@ class AuthorizationService:
         )
 
     async def _consume(self, txn: str, now: datetime) -> OAuthAuthorizationRequest:
-        """Single use (D36). A client revoked meanwhile leaves the request as it was
+        """Single use. A client revoked meanwhile leaves the request as it was
         and issues nothing."""
         request = await self._creds.codes.consume_request(hash_secret(txn), now)
         if request is None:

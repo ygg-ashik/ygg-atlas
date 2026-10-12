@@ -16,7 +16,7 @@ class AccessRequestCreate(BaseModel):
 
 class RequestDecision(BaseModel):
     note: str = Field(default="", max_length=500)
-    # Absent, explicit null and a value mean different things (P5-D12): read
+    # Absent, explicit null and a value mean different things: read
     # presence through `model_fields_set`.
     expires_at: AwareDatetime | None = None
 

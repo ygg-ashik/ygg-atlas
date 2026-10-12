@@ -69,7 +69,7 @@ class AccessWriter:
         Authority checks run against the policy resolved at request start. If
         any access change committed since (the actor may have been disabled or
         demoted meanwhile), the write is refused with a 409 rather than judged
-        on stale authority. The trusted CLI actor (D5) has no policy to go
+        on stale authority. The trusted CLI actor has no policy to go
         stale. No-op writes take the same path, so they are refused too: a
         harmless retry, and one rule with no exceptions.
 

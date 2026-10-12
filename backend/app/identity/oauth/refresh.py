@@ -1,5 +1,5 @@
 """The refresh-token grant: rotation with reuse detection and a 30 s same-client
-grace (D6). Every refresh re-checks the user, mcp:use, the client and the audience."""
+grace. Every refresh re-checks the user, mcp:use, the client and the audience."""
 
 from datetime import datetime
 from uuid import UUID
@@ -85,7 +85,7 @@ class RefreshRotation:
     async def rotate_refresh(
         self, client_id: str, grant: RefreshGrant, eligible: Eligibility
     ) -> TokenPair:
-        """Rotation with reuse detection and a 30 s same-client grace (D6). Every
+        """Rotation with reuse detection and a 30 s same-client grace. Every
         refresh re-checks the user, mcp:use, the client and the audience. Raises
         OAuthGrantError, or GrantUnavailableError for a transient failure."""
         return await self._families.db_errors_as_unavailable(

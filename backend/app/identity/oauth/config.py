@@ -28,7 +28,7 @@ class OAuthConfig:
 
     @classmethod
     def from_settings(cls, settings: Settings) -> Self:
-        """Issuer, resource and consent URLs from ATLAS_PUBLIC_URL (D2)."""
+        """Issuer, resource and consent URLs from ATLAS_PUBLIC_URL."""
         return cls(
             issuer=settings.mcp_issuer_url,
             resource=settings.mcp_resource_url,

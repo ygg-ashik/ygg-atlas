@@ -23,7 +23,7 @@ class RowFieldRepository:
         self._db = db
 
     async def attributes_for(self, user_id: UUID) -> dict[str, str]:
-        """The user's stored attributes plus the built-ins, which win (C11).
+        """The user's stored attributes plus the built-ins, which win.
 
         Empty for an unknown user: there is nothing `$self` could resolve to.
         """
@@ -48,7 +48,7 @@ class RowFieldRepository:
     async def self_attributes(self) -> dict[str, str]:
         """dimension -> the attribute its `$self` resolves to, from the mirror.
 
-        The registry lints one `self` per dimension (C1); should the mirror
+        The registry lints one `self` per dimension; should the mirror
         disagree anyway, the dimension is left out, so `$self` on it resolves to
         nothing and the grant is skipped (fail closed).
         """
