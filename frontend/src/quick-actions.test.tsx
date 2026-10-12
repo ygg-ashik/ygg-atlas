@@ -3,7 +3,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useState } from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type MeAccess } from '@/api/access';
@@ -12,8 +11,7 @@ import { useMyAccess } from '@/api/hooks/use-my-access';
 import { type Token } from '@/api/tokens';
 import { ThemeProvider } from '@/lib/theme-provider';
 import { Toaster } from '@/ui';
-import { CommandPalette } from '@/features/command';
-import { useQuickActions } from './quick-actions';
+import { QuickDialogs, QuickPalette, useQuickDialogs } from './quick-actions';
 
 const { http } = vi.hoisted(() => ({
   http: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -112,15 +110,14 @@ function answer() {
 let path = '';
 function Harness() {
   const view = useMyAccess();
-  const [open, setOpen] = useState(false);
-  const quick = useQuickActions(view, open);
+  const dialogs = useQuickDialogs();
   const l = useLocation();
   path = l.pathname;
   return (
     <>
       <p>{view.status}</p>
-      <CommandPalette pages={[]} actions={quick.actions} onOpenChange={setOpen} />
-      {quick.host}
+      <QuickPalette view={view} pages={[]} onRun={dialogs.setOpen} />
+      <QuickDialogs view={view} open={dialogs.open} close={dialogs.close} />
     </>
   );
 }

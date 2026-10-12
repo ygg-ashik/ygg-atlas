@@ -3,7 +3,7 @@
 // tasks that run in place over the current page and reuse the account and admin
 // features' own dialogs. Which actions exist comes from `/me/access` through the
 // same rules as the routes; the API still refuses anything the token can't do.
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ArrowLeftRight, Inbox, KeyRound, KeySquare, ShieldCheck } from 'lucide-react';
 import { type AccessRequest } from '@/api/access-requests';
@@ -11,7 +11,7 @@ import { useRequestQueue } from '@/api/hooks/use-access-requests';
 import { useAuthMethods } from '@/api/hooks/use-auth-methods';
 import { type MyAccessView } from '@/api/hooks/use-my-access';
 import { useAdminTokens } from '@/api/hooks/use-tokens';
-import { type AuthMethods, type Token } from '@/api/tokens';
+import { type Token } from '@/api/tokens';
 import { useTheme } from '@/lib/theme-provider';
 import { type OpenRequestAccess } from '@/lib/request-access';
 import { type RequestPrefill } from '@/lib/routes';
@@ -19,9 +19,10 @@ import { THEME_CHOICES, toast } from '@/ui';
 import { AccessPeek, CreateTokenDialog, RequestAccessDialog } from '@/features/account';
 import { ApproveRequestDialog, RevokeTokenDialog } from '@/features/admin';
 import { allows } from '@/features/auth';
-import { type QuickAction } from '@/features/command';
+import { CommandPalette, type PaletteLink, type QuickAction } from '@/features/command';
 import { ACCESS } from './navigation';
 
+/** The quick dialog on screen, with what it acts on. */
 type Open =
   | { kind: 'token' }
   | { kind: 'request'; prefill: RequestPrefill }
@@ -72,9 +73,9 @@ function revokeActions(tokens: readonly Token[], set: (o: Open) => void) {
     .filter((t) => !t.revoked_at)
     .map((t, i): QuickAction => ({
       id: `revoke:${t.id}`,
-      label: `Revoke token ${t.prefix}… · ${t.user_id}`,
+      label: `Revoke token ${t.prefix}… · ${t.name}`,
       icon: KeySquare,
-      keywords: ['revoke', 'token', t.name, t.kind],
+      keywords: ['revoke', 'token', t.user_id, t.kind],
       onlyWhenSearching: firstOnly(i),
       tag: 'admin',
       run: () => set({ kind: 'revoke', token: t }),
@@ -109,58 +110,38 @@ function selfActions(set: (o: Open) => void, canCreateToken: boolean): QuickActi
   ];
 }
 
-interface HostProps {
-  open: Open | null;
-  close: () => void;
-  /** The token form's limits, present only when the viewer may create tokens. */
-  pat: AuthMethods['pat'] | null;
-  canApprove: boolean;
-  canRevoke: boolean;
-}
-
 /** The open dialog when it is of `kind`, else null. */
 function only<K extends Open['kind']>(open: Open | null, kind: K) {
   return open?.kind === kind ? (open as Extract<Open, { kind: K }>) : null;
 }
 
-/** The dialogs quick actions open, each reused from its feature. Approve and
- * revoke render only for the capabilities that offered them. */
-function QuickActionHost({ open, close, pat, canApprove, canRevoke }: HostProps) {
-  const onOpenChange = (next: boolean) => {
-    if (!next) close();
-  };
-  const request = only(open, 'request');
-  const approve = canApprove ? only(open, 'approve') : null;
-  const revoke = canRevoke ? only(open, 'revoke') : null;
-  return (
-    <>
-      <RequestAccessDialog
-        open={request !== null}
-        onOpenChange={onOpenChange}
-        prefill={request?.prefill}
-      />
-      {pat && (
-        <CreateTokenDialog open={open?.kind === 'token'} onOpenChange={onOpenChange} pat={pat} />
-      )}
-      <AccessPeek open={open?.kind === 'access'} onOpenChange={onOpenChange} />
-      <ApproveRequestDialog target={approve?.request ?? null} onClose={close} />
-      <RevokeTokenDialog target={revoke?.token ?? null} onClose={close} />
-    </>
-  );
-}
-
-interface QuickActions {
-  actions: QuickAction[];
-  /** For chat denials and the first-run empty state (`lib/request-access`). */
-  requestAccess: OpenRequestAccess;
-  /** The dialogs the actions open; render once inside the router. */
-  host: ReactNode;
-}
-
-/** The viewer's quick actions. Approvals and tokens load only while the palette is open. */
-export function useQuickActions(view: MyAccessView, paletteOpen: boolean): QuickActions {
+/** Which quick dialog is open. It lives in AppShell so the chat (denials, first
+ * run) can open the request dialog through `lib/request-access`. */
+export function useQuickDialogs() {
   const [open, setOpen] = useState<Open | null>(null);
   const close = useCallback(() => setOpen(null), []);
+  // Following a link out of a dialog (Open full page, Track it) closes it.
+  const { key } = useLocation();
+  useEffect(close, [key, close]);
+  const requestAccess = useCallback<OpenRequestAccess>(
+    (prefill = {}) => setOpen({ kind: 'request', prefill }),
+    [],
+  );
+  return { open, setOpen, close, requestAccess };
+}
+
+interface ViewerProps {
+  view: MyAccessView;
+}
+
+/** ⌘K with the viewer's quick actions. It owns its open state, so opening it
+ * re-renders only the palette; approvals and tokens load only while it is open. */
+export function QuickPalette({
+  view,
+  pages,
+  onRun,
+}: ViewerProps & { pages: readonly PaletteLink[]; onRun: (dialog: Open) => void }) {
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const { theme, setTheme } = useTheme();
   const { methods } = useAuthMethods();
   const ready = view.status === 'ready';
@@ -169,32 +150,61 @@ export function useQuickActions(view: MyAccessView, paletteOpen: boolean): Quick
   const canCreateToken = view.can('tokens:create') && methods.pat.enabled;
   const queue = useRequestQueue('pending', { enabled: paletteOpen && canApprove });
   const tokens = useAdminTokens({}, paletteOpen && canRevoke);
-
-  // Following a link out of a dialog (Open full page, Track it) closes it.
-  const { key } = useLocation();
-  useEffect(close, [key, close]);
-
-  const requestAccess = useCallback<OpenRequestAccess>(
-    (prefill = {}) => setOpen({ kind: 'request', prefill }),
-    [],
-  );
   const actions = useMemo(
     () => [
       ...themeActions(theme, setTheme),
-      ...(ready ? selfActions(setOpen, canCreateToken) : []),
-      ...(canApprove ? approveActions(view, queue.items, setOpen) : []),
-      ...(canRevoke ? revokeActions(tokens.data ?? [], setOpen) : []),
+      ...(ready ? selfActions(onRun, canCreateToken) : []),
+      ...(canApprove ? approveActions(view, queue.items, onRun) : []),
+      ...(canRevoke ? revokeActions(tokens.data ?? [], onRun) : []),
     ],
-    [theme, setTheme, ready, canCreateToken, canApprove, view, queue.items, canRevoke, tokens.data],
+    [
+      theme,
+      setTheme,
+      ready,
+      onRun,
+      canCreateToken,
+      canApprove,
+      view,
+      queue.items,
+      canRevoke,
+      tokens.data,
+    ],
   );
-  const host = (
-    <QuickActionHost
-      open={open}
-      close={close}
-      pat={canCreateToken ? methods.pat : null}
-      canApprove={canApprove}
-      canRevoke={canRevoke}
-    />
+  return <CommandPalette pages={pages} actions={actions} onOpenChange={setPaletteOpen} />;
+}
+
+/** The dialogs quick actions open, each reused from its feature. Approve and
+ * revoke render only for the capabilities that offered them. */
+export function QuickDialogs({
+  view,
+  open,
+  close,
+}: ViewerProps & { open: Open | null; close: () => void }) {
+  const { methods } = useAuthMethods();
+  const canCreateToken = view.can('tokens:create') && methods.pat.enabled;
+  const onOpenChange = (next: boolean) => {
+    if (!next) close();
+  };
+  const request = only(open, 'request');
+  const approve = allows(view, ACCESS.requests) ? only(open, 'approve') : null;
+  const revoke = allows(view, ACCESS.tokens) ? only(open, 'revoke') : null;
+  return (
+    <>
+      <RequestAccessDialog
+        open={request !== null}
+        onOpenChange={onOpenChange}
+        prefill={request?.prefill}
+      />
+      {canCreateToken && (
+        <CreateTokenDialog
+          open={open?.kind === 'token'}
+          onOpenChange={onOpenChange}
+          pat={methods.pat}
+        />
+      )}
+      <AccessPeek open={open?.kind === 'access'} onOpenChange={onOpenChange} />
+      <ApproveRequestDialog target={approve?.request ?? null} onClose={close} />
+      <RevokeTokenDialog target={revoke?.token ?? null} onClose={close} />
+    </>
   );
-  return { actions, requestAccess, host };
 }

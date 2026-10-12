@@ -32,9 +32,6 @@ export interface AccountMenuProps {
   admin?: AdminEntry;
 }
 
-const ITEM =
-  'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13.5px] text-ink transition-[background-color,transform] duration-200 focus:bg-foreground/5 active:scale-[.98] data-[highlighted]:bg-foreground/5';
-
 /** Screen-reader meaning of the pending-approvals count. */
 function approvalsLabel(count: number): string {
   return count === 1 ? '1 pending approval' : `${count} pending approvals`;
@@ -71,7 +68,7 @@ export function AccountMenu({ user, onSignOut, admin }: AccountMenuProps) {
         align="start"
         side="top"
         sideOffset={8}
-        className="glass w-[276px] rounded-shell border-0 bg-transparent p-1.5 shadow-none"
+        className="w-[276px] rounded-shell"
       >
         <DropdownMenuLabel className="flex items-center gap-2.5 px-2.5 pb-3 pt-2.5 font-normal">
           <Avatar name={user.name || user.email} />
@@ -81,8 +78,8 @@ export function AccountMenu({ user, onSignOut, admin }: AccountMenuProps) {
           </span>
           {user.role && <RolePill role={user.role} />}
         </DropdownMenuLabel>
-        <DropdownMenuSeparator className="mx-1.5 bg-border/70" />
-        <DropdownMenuItem asChild className={ITEM}>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
           <Link to={ROUTES.settings} aria-keyshortcuts="Meta+Comma">
             <Settings aria-hidden className="h-4 w-4 text-muted-foreground" />
             Settings
@@ -90,7 +87,7 @@ export function AccountMenu({ user, onSignOut, admin }: AccountMenuProps) {
           </Link>
         </DropdownMenuItem>
         {admin && (
-          <DropdownMenuItem asChild className={ITEM}>
+          <DropdownMenuItem asChild>
             <Link to={admin.to}>
               <ShieldCheck aria-hidden className="h-4 w-4 text-muted-foreground" />
               Admin
@@ -101,10 +98,10 @@ export function AccountMenu({ user, onSignOut, admin }: AccountMenuProps) {
             </Link>
           </DropdownMenuItem>
         )}
-        <DropdownMenuSeparator className="mx-1.5 bg-border/70" />
+        <DropdownMenuSeparator />
         <ThemeRadios />
-        <DropdownMenuSeparator className="mx-1.5 bg-border/70" />
-        <DropdownMenuItem className={ITEM} onSelect={onSignOut}>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onSignOut}>
           <LogOut aria-hidden className="h-4 w-4 text-muted-foreground" />
           Sign out
         </DropdownMenuItem>

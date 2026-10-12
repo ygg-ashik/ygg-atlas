@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/api/query-client';
@@ -16,7 +16,7 @@ import {
 import { Shell } from '@/features/layout';
 import ChatPage, { ChatThreadList } from '@/features/chat';
 import { MetricsPage } from '@/features/metrics';
-import { CommandPalette, CommandTrigger } from '@/features/command';
+import { CommandTrigger } from '@/features/command';
 import { OverviewPage } from '@/features/dashboard';
 import {
   GeneralPage,
@@ -39,7 +39,7 @@ import { ConsentPage } from '@/features/oauth-consent';
 import { RequestAccessProvider } from '@/lib/request-access';
 import { ROUTES } from '@/lib/routes';
 import { ACCESS, PRIMARY_NAV, adminEntry, buildPalettePages, buildSettingsNav } from './navigation';
-import { useQuickActions } from './quick-actions';
+import { QuickDialogs, QuickPalette, useQuickDialogs } from './quick-actions';
 
 /** Composition point: wires auth, access, chat, settings and the command palette
  * into the layout so features stay decoupled. Navigation, the settings rail, the
@@ -47,15 +47,14 @@ import { useQuickActions } from './quick-actions';
 function AppShell() {
   const { user, signOut } = useAuth();
   const view = useMyAccess();
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  const quick = useQuickActions(view, paletteOpen);
+  const dialogs = useQuickDialogs();
   const settings = useMemo(() => buildSettingsNav(view), [view]);
   const pages = useMemo(() => buildPalettePages(view), [view]);
   const admin = useMemo(() => adminEntry(view), [view]);
   const role = view.access?.role;
   const shellUser = useMemo(() => (user ? { ...user, role } : null), [user, role]);
   return (
-    <RequestAccessProvider value={quick.requestAccess}>
+    <RequestAccessProvider value={dialogs.requestAccess}>
       <Shell
         user={shellUser}
         onSignOut={() => void signOut()}
@@ -70,8 +69,8 @@ function AppShell() {
         }
       >
         <Outlet />
-        <CommandPalette pages={pages} actions={quick.actions} onOpenChange={setPaletteOpen} />
-        {quick.host}
+        <QuickPalette view={view} pages={pages} onRun={dialogs.setOpen} />
+        <QuickDialogs view={view} open={dialogs.open} close={dialogs.close} />
       </Shell>
     </RequestAccessProvider>
   );

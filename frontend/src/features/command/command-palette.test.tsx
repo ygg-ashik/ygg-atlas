@@ -170,6 +170,19 @@ describe('CommandPalette', () => {
     expect(await screen.findByRole('option', { name: /Theme: System/ })).toBeInTheDocument();
   });
 
+  it('a typed task outranks the Ask fallback, so Enter runs it', async () => {
+    const run = vi.fn();
+    actions = [{ id: 'a', label: 'New token', icon: KeyRound, run }];
+    setup();
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    await userEvent.type(await screen.findByPlaceholderText(/Type a task/), 'new token');
+    const options = screen.getAllByRole('option');
+    expect(options[0]).toHaveTextContent('New token');
+    expect(options.at(-1)).toHaveTextContent('Ask: “new token”');
+    await userEvent.keyboard('{Enter}');
+    expect(run).toHaveBeenCalledOnce();
+  });
+
   it('tells the composer when it opens and closes', async () => {
     setup();
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
