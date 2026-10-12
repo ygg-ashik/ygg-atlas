@@ -1,5 +1,6 @@
 // src/features/metrics/ask.ts
 // Entry point into chat: /ask?q=… (handled by the chat feature).
+import { askPath } from '@/lib/routes';
 
 /** A catalog entry: metrics carry a time scope, funnels don't. */
 export interface AskTarget {
@@ -9,7 +10,7 @@ export interface AskTarget {
 
 /** Link that opens chat with a governed-metric question prefilled. */
 export function askHref(item: AskTarget): string {
-  return `/ask?q=${encodeURIComponent(question(item))}`;
+  return askPath(question(item));
 }
 
 function question(item: AskTarget): string {

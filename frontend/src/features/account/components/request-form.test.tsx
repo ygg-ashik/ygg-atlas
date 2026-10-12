@@ -69,8 +69,8 @@ function renderAt(path: string) {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
-          <Route path="/account/requests/new" element={<NewRequestPage />} />
-          <Route path="/account/requests" element={<MyRequestsPage />} />
+          <Route path="/settings/requests/new" element={<NewRequestPage />} />
+          <Route path="/settings/requests" element={<MyRequestsPage />} />
         </Routes>
       </MemoryRouter>
       <Toaster />
@@ -78,7 +78,7 @@ function renderAt(path: string) {
   );
 }
 
-const fromChat = `/account/requests/new?resource=${encodeURIComponent(RESOURCE)}&label=Checkout+funnel`;
+const fromChat = `/settings/requests/new?resource=${encodeURIComponent(RESOURCE)}&label=Checkout+funnel`;
 const note = () => screen.getByRole('textbox', { name: /Why do you need it/ });
 const send = () => userEvent.click(screen.getByRole('button', { name: 'Send request' }));
 
@@ -98,12 +98,12 @@ describe('NewRequestPage / RequestForm', () => {
     requests.listMyRequests.mockReset().mockResolvedValue([]);
   });
 
-  it('the toolbar links back to My access', () => {
-    renderAt('/account/requests/new');
+  it('the toolbar links back to Requests', () => {
+    renderAt('/settings/requests/new');
     const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' });
-    expect(within(crumbs).getByRole('link', { name: 'My access' })).toHaveAttribute(
+    expect(within(crumbs).getByRole('link', { name: 'Requests' })).toHaveAttribute(
       'href',
-      '/account',
+      '/settings/requests',
     );
   });
 
@@ -143,7 +143,7 @@ describe('NewRequestPage / RequestForm', () => {
     expect(requests.createRequest).not.toHaveBeenCalled();
   });
 
-  it('picking a suggested group sends a group request, then it shows in My requests', async () => {
+  it('picking a suggested group sends a group request, then it shows in Requests', async () => {
     requests.listMyRequests.mockResolvedValue([SENT]);
     renderAt(fromChat);
     await userEvent.click(await screen.findByRole('radio', { name: /marketing-paid/ }));
@@ -156,7 +156,7 @@ describe('NewRequestPage / RequestForm', () => {
       note: 'Checkout drop-off review',
     });
     expect(await screen.findByText('Sent to Sara Mansour and Omar Saleh.')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('link', { name: /Track it in My requests/ }));
+    await userEvent.click(screen.getByRole('link', { name: /Track it in Requests/ }));
     expect(await screen.findByText('marketing-paid')).toBeInTheDocument();
     expect(screen.getByText('pending')).toBeInTheDocument();
   });
@@ -182,7 +182,7 @@ describe('NewRequestPage / RequestForm', () => {
   });
 
   it('the group kind finds groups by the data they hold', async () => {
-    renderAt('/account/requests/new');
+    renderAt('/settings/requests/new');
     expect(screen.getByRole('radio', { name: 'Group' })).toHaveAttribute('aria-checked', 'true');
     const field = screen.getByRole('textbox', { name: 'Data you need' });
     await userEvent.type(field, 'demo/*{Enter}');
@@ -200,7 +200,7 @@ describe('NewRequestPage / RequestForm', () => {
   });
 
   it('?kind=role offers only roles above the current one', async () => {
-    renderAt('/account/requests/new?kind=role');
+    renderAt('/settings/requests/new?kind=role');
     const viewer = await screen.findByRole('radio', { name: /viewer/ });
     expect(viewer).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByText('Your role today is')).toBeInTheDocument();
@@ -228,7 +228,7 @@ describe('NewRequestPage / RequestForm', () => {
     expect(await screen.findByText("You're already in marketing-paid.")).toBeInTheDocument();
   });
 
-  it('a duplicate (409) says so in an action toast that leads to My requests', async () => {
+  it('a duplicate (409) says so in an action toast that leads to Requests', async () => {
     requests.createRequest.mockRejectedValue(
       httpError(409, { detail: "You already asked for this; it's pending." }),
     );
@@ -239,7 +239,7 @@ describe('NewRequestPage / RequestForm', () => {
     expect(await screen.findByText("You already asked for this; it's pending.")).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'View' }));
     await waitFor(() =>
-      expect(screen.getByRole('heading', { level: 2, name: 'My requests' })).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { level: 2, name: 'Requests' })).toBeInTheDocument(),
     );
   });
 });

@@ -6,7 +6,12 @@
 import { useRef, useState } from 'react';
 import { type AccessRequest, type RequestDecision } from '@/api/access-requests';
 import { useCapabilityCatalog } from '@/api/hooks/use-capability-catalog';
-import { useApproveRequest, useDeclineRequest } from '@/api/hooks/use-access-requests';
+import {
+  useApproveRequest,
+  useDeclineRequest,
+  type useRequestQueue,
+} from '@/api/hooks/use-access-requests';
+import { mergePages } from '@/api/cursor';
 import { describeMutationError } from '@/api/mutation-errors';
 import { Button, DateField, Field, FieldError, isIsoDate, ReviewCard, Textarea } from '@/ui';
 import { expiryToIso, plusDays, todayUtc } from '../grant-rules';
@@ -24,6 +29,16 @@ export interface DecisionHandlers {
   onSettled: (row: QueueRow) => void;
   /** Refetch the pending queue; true when `requestId` is still pending there. */
   stillPending: (requestId: string) => Promise<boolean>;
+}
+
+type QueueRefetch = ReturnType<typeof useRequestQueue>['refetch'];
+
+/** Refetch the pending queue; true when `requestId` is still pending there. An
+ * unknown answer (the refetch failed) counts as pending, so a conflict stays retryable. */
+export async function stillPendingAfter(refetch: QueueRefetch, requestId: string) {
+  const result = await refetch();
+  if (result.isError) return true;
+  return mergePages(result.data).some((r) => r.id === requestId && r.status === 'pending');
 }
 
 const DEFAULT_DAYS = 90;

@@ -86,7 +86,7 @@ function renderPage() {
   const { wrapper: Wrapper } = createQueryWrapper();
   render(
     <Wrapper>
-      <MemoryRouter initialEntries={['/admin/audit']}>
+      <MemoryRouter initialEntries={['/settings/admin/audit']}>
         <AuditPage />
       </MemoryRouter>
     </Wrapper>,

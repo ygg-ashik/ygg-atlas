@@ -1,6 +1,5 @@
 import { Check } from 'lucide-react';
 import { type ComponentProps, type ReactNode, useCallback, useMemo, useState } from 'react';
-import { mergePages } from '@/api/cursor';
 import { useRequestQueue } from '@/api/hooks/use-access-requests';
 import { useMyAccess } from '@/api/hooks/use-my-access';
 import {
@@ -13,7 +12,7 @@ import {
   tabId,
   tabPanelId,
 } from '@/ui';
-import { type QueueRow } from './request-decision';
+import { stillPendingAfter, type QueueRow } from './request-decision';
 import { RequestQueueRow } from './request-queue-row';
 import { AdminPage } from './admin-page';
 
@@ -40,11 +39,7 @@ export function AdminRequestsPage() {
   }, []);
   const { refetch } = pending;
   const stillPending = useCallback(
-    async (requestId: string) => {
-      const result = await refetch();
-      if (result.isError) return true; // unknown: keep the conflict retryable
-      return mergePages(result.data).some((r) => r.id === requestId && r.status === 'pending');
-    },
+    (requestId: string) => stillPendingAfter(refetch, requestId),
     [refetch],
   );
 
@@ -144,7 +139,7 @@ function QueueList({ rows, tab, ...rowProps }: QueueListProps) {
   if (!rows.length) {
     return tab === 'pending' ? (
       <EmptyState icon={<Check className="h-5 w-5" />} title="No pending requests">
-        You&apos;re all caught up. New requests show here and as a badge in the sidebar.
+        You&apos;re all caught up. New requests show here and as a count in the account menu.
       </EmptyState>
     ) : (
       <EmptyState icon={<Check className="h-5 w-5" />} title="Nothing decided yet">

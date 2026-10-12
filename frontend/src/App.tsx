@@ -16,9 +16,15 @@ import {
 import { Shell } from '@/features/layout';
 import ChatPage, { ChatThreadList } from '@/features/chat';
 import { MetricsPage } from '@/features/metrics';
-import { CommandPalette, CommandTrigger } from '@/features/command';
+import { CommandTrigger } from '@/features/command';
 import { OverviewPage } from '@/features/dashboard';
-import { MyAccessPage, MyRequestsPage, NewRequestPage, TokensPage } from '@/features/account';
+import {
+  GeneralPage,
+  MyAccessPage,
+  MyRequestsPage,
+  NewRequestPage,
+  TokensPage,
+} from '@/features/account';
 import {
   AdminClientsPage,
   AdminRequestsPage,
@@ -29,48 +35,69 @@ import {
   UserDetailPage,
   UsersPage,
 } from '@/features/admin';
-import { ACCESS, ACCOUNT_MENU, buildNav } from './navigation';
 import { ConsentPage } from '@/features/oauth-consent';
+import { RequestAccessProvider } from '@/lib/request-access';
+import { ROUTES } from '@/lib/routes';
+import {
+  ACCESS,
+  PRIMARY_NAV,
+  adminEntry,
+  buildPalettePages,
+  buildSettingsNav,
+  isAdmin,
+} from './navigation';
+import { QuickDialogs, QuickPalette, useQuickDialogs } from './quick-actions';
 
-/** Composition point: wires auth, access, chat and the command palette into the
- * layout so features stay decoupled. Nav and palette share one filtered list. */
+/** Composition point: wires auth, access, chat, settings and the command palette
+ * into the layout so features stay decoupled. Navigation, the settings rail, the
+ * account menu and the palette all come from the same `/me/access` answer. */
 function AppShell() {
   const { user, signOut } = useAuth();
   const view = useMyAccess();
-  const nav = useMemo(() => buildNav(view), [view]);
+  const dialogs = useQuickDialogs();
+  const settings = useMemo(() => buildSettingsNav(view), [view]);
+  const pages = useMemo(() => buildPalettePages(view), [view]);
+  const admin = useMemo(() => adminEntry(view), [view]);
   const role = view.access?.role;
   const shellUser = useMemo(() => (user ? { ...user, role } : null), [user, role]);
   return (
-    <Shell
-      user={shellUser}
-      onSignOut={() => void signOut()}
-      nav={nav}
-      menuItems={ACCOUNT_MENU}
-      threads={
-        <>
-          <CommandTrigger />
-          <ChatThreadList />
-        </>
-      }
-    >
-      <Outlet />
-      <CommandPalette pages={nav} />
-    </Shell>
+    <RequestAccessProvider value={dialogs.requestAccess}>
+      <Shell
+        user={shellUser}
+        onSignOut={() => void signOut()}
+        nav={PRIMARY_NAV}
+        settings={settings}
+        admin={admin}
+        threads={
+          <>
+            <CommandTrigger />
+            <ChatThreadList />
+          </>
+        }
+      >
+        <Outlet />
+        <QuickPalette view={view} pages={pages} onRun={dialogs.setOpen} />
+        <QuickDialogs view={view} open={dialogs.open} close={dialogs.close} />
+      </Shell>
+    </RequestAccessProvider>
   );
 }
 
-/** Home route: the Overview dashboard, greeted by the signed-in user's name.
- * A first sign-in with no data access (and no admin capability) lands on My
- * access instead, where the way to ask for data is. */
+/** Home route: the Overview dashboard, greeted by the signed-in user's name. A
+ * viewer with no data access (and no admin capability) gets the chat instead,
+ * whose first-run empty state offers the request in place. */
 function Home() {
   const { user } = useAuth();
   const view = useMyAccess();
   if (view.status === 'loading') return <HomeSkeleton />;
-  const admin = view.capabilities.some((c) => c.startsWith('admin:'));
-  if (view.access && !view.access.has_data_access && !admin) {
-    return <Navigate to="/account" replace state={{ firstRun: true }} />;
-  }
+  if (view.access && !view.access.has_data_access && !isAdmin(view)) return <ChatPage />;
   return <OverviewPage userName={user?.name ?? ''} />;
+}
+
+/** Settings › General: the account feature's page with the auth feature's session. */
+function GeneralSettings() {
+  const { user, signOut } = useAuth();
+  return <GeneralPage email={user?.email ?? ''} onSignOut={() => void signOut()} />;
 }
 
 /** Placeholder while `/me/access` decides where a first sign-in lands. */
@@ -97,12 +124,13 @@ function guarded(rule: AccessRule, title: string, page: React.ReactNode) {
   );
 }
 
-/** Every route of the signed-in app (exported for the route smoke test). */
+/** Every route of the signed-in app (exported for the route smoke test). Paths
+ * come from `lib/routes`; there are no redirects from retired paths. */
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/oauth/consent" element={<OAuthConsent />} />
+      <Route path={ROUTES.login} element={<LoginPage />} />
+      <Route path={ROUTES.consent} element={<OAuthConsent />} />
       <Route
         element={
           <ProtectedRoute>
@@ -111,45 +139,58 @@ export function AppRoutes() {
         }
       >
         <Route index element={<Home />} />
-        <Route path="ask/:sessionId?" element={<ChatPage />} />
-        <Route path="metrics" element={<MetricsPage />} />
-        <Route path="account">
-          <Route index element={guarded(ACCESS.account, 'My access', <MyAccessPage />)} />
-          <Route
-            path="requests"
-            element={guarded(ACCESS.account, 'My requests', <MyRequestsPage />)}
-          />
-          <Route
-            path="requests/new"
-            element={guarded(ACCESS.account, 'New request', <NewRequestPage />)}
-          />
-          <Route
-            path="tokens"
-            element={guarded(ACCESS.account, 'Tokens & connected apps', <TokensPage />)}
-          />
-        </Route>
-        <Route path="admin">
-          <Route index element={<Navigate to="/" replace />} />
-          <Route path="users" element={guarded(ACCESS.users, 'Users', <UsersPage />)} />
-          <Route path="users/:id" element={guarded(ACCESS.users, 'Users', <UserDetailPage />)} />
-          <Route path="groups" element={guarded(ACCESS.groups, 'Groups', <GroupsPage />)} />
-          <Route
-            path="groups/:id"
-            element={guarded(ACCESS.groups, 'Groups', <GroupDetailPage />)}
-          />
-          <Route
-            path="requests"
-            element={guarded(ACCESS.requests, 'Access requests', <AdminRequestsPage />)}
-          />
-          <Route path="audit" element={guarded(ACCESS.audit, 'Audit', <AuditPage />)} />
-          <Route path="tokens" element={guarded(ACCESS.tokens, 'Tokens', <AdminTokensPage />)} />
-          <Route
-            path="clients"
-            element={guarded(ACCESS.clients, 'OAuth clients', <AdminClientsPage />)}
-          />
-        </Route>
+        <Route path={ROUTES.askThread} element={<ChatPage />} />
+        <Route path={ROUTES.metrics} element={<MetricsPage />} />
+        {/* Settings › You: every signed-in user. */}
+        <Route
+          path={ROUTES.settings}
+          element={guarded(ACCESS.account, 'General', <GeneralSettings />)}
+        />
+        <Route
+          path={ROUTES.access}
+          element={guarded(ACCESS.account, 'My access', <MyAccessPage />)}
+        />
+        <Route
+          path={ROUTES.requests}
+          element={guarded(ACCESS.account, 'Requests', <MyRequestsPage />)}
+        />
+        <Route
+          path={ROUTES.newRequest}
+          element={guarded(ACCESS.account, 'New request', <NewRequestPage />)}
+        />
+        <Route
+          path={ROUTES.tokens}
+          element={guarded(ACCESS.account, 'Tokens & connected apps', <TokensPage />)}
+        />
+        {/* Settings › Organization: each behind its capability rule, failing closed. */}
+        <Route path={ROUTES.adminUsers} element={guarded(ACCESS.users, 'Users', <UsersPage />)} />
+        <Route
+          path={ROUTES.adminUser}
+          element={guarded(ACCESS.users, 'Users', <UserDetailPage />)}
+        />
+        <Route
+          path={ROUTES.adminGroups}
+          element={guarded(ACCESS.groups, 'Groups', <GroupsPage />)}
+        />
+        <Route
+          path={ROUTES.adminGroup}
+          element={guarded(ACCESS.groups, 'Groups', <GroupDetailPage />)}
+        />
+        <Route
+          path={ROUTES.adminRequests}
+          element={guarded(ACCESS.requests, 'Access requests', <AdminRequestsPage />)}
+        />
+        <Route path={ROUTES.adminAudit} element={guarded(ACCESS.audit, 'Audit', <AuditPage />)} />
+        <Route
+          path={ROUTES.adminTokens}
+          element={guarded(ACCESS.tokens, 'Tokens', <AdminTokensPage />)}
+        />
+        <Route
+          path={ROUTES.adminClients}
+          element={guarded(ACCESS.clients, 'OAuth clients', <AdminClientsPage />)}
+        />
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to={ROUTES.home} replace />} />
     </Routes>
   );
 }

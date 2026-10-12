@@ -30,7 +30,7 @@ const CATALOG: CapabilityCatalog = {
   mask_modes: ['pseudonymise', 'suppress', 'bucket'],
 };
 
-function renderPage(entry: string | { pathname: string; state: unknown } = '/account') {
+function renderPage(entry = '/settings/access') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
@@ -53,32 +53,15 @@ describe('MyAccessPage', () => {
     expect(screen.getByRole('heading', { name: 'No data access yet' })).toBeInTheDocument();
     expect(screen.getByText('lina@yougotagift.com', { selector: 'b' })).toBeInTheDocument();
     const links = screen.getAllByRole('link', { name: /Request access/ });
-    expect(links.map((l) => l.getAttribute('href'))).toContain('/account/requests/new?kind=group');
+    expect(links.map((l) => l.getAttribute('href'))).toContain('/settings/requests/new?kind=group');
     expect(screen.getByText('None yet. Groups decide what data you can see.')).toBeInTheDocument();
     // What the next role adds, with a role request.
     expect(await screen.findByText('tokens:create')).toBeInTheDocument();
     expect(screen.getAllByText(/Comes with analyst/)).toHaveLength(2);
     expect(screen.getByRole('link', { name: 'Request analyst' })).toHaveAttribute(
       'href',
-      '/account/requests/new?kind=role',
+      '/settings/requests/new?kind=role',
     );
-  });
-
-  it('greets a first sign-in that landed here', () => {
-    state.view = PERSONAS.newViewer;
-    renderPage({ pathname: '/account', state: { firstRun: true } });
-    expect(
-      screen.getByRole('heading', { level: 2, name: 'Welcome to Atlas, Lina' }),
-    ).toBeInTheDocument();
-  });
-
-  it('a missing display name falls back to the email', () => {
-    state.view = accessView({ display_name: '' });
-    renderPage({ pathname: '/account', state: { firstRun: true } });
-    expect(
-      screen.getByRole('heading', { level: 2, name: 'Welcome to Atlas, lina' }),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText('lina@yougotagift.com').length).toBeGreaterThan(0);
   });
 
   it('with data access, lists capabilities and groups with their standing', async () => {
@@ -99,7 +82,7 @@ describe('MyAccessPage', () => {
     expect(items[1]).toHaveTextContent('marketing-paidmember');
     expect(screen.getByRole('link', { name: /2 pending requests/ })).toHaveAttribute(
       'href',
-      '/account/requests',
+      '/settings/requests',
     );
   });
 

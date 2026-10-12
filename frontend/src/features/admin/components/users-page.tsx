@@ -19,6 +19,7 @@ import {
 import { useDebouncedValue } from '../hooks/use-debounced-value';
 import { AdminPage } from './admin-page';
 import { userColumns } from './user-row';
+import { adminUserPath } from '@/lib/routes';
 
 interface FilterState {
   q: string;
@@ -88,7 +89,7 @@ function UsersTable({ users }: { users: UsersList }) {
         rowKey={(u) => u.id}
         rowAction={{
           label: (u) => `Open ${u.display_name || u.email}`,
-          onActivate: (u) => navigate(`/admin/users/${u.id}`),
+          onActivate: (u) => navigate(adminUserPath(u.id)),
         }}
       />
       {users.hasNextPage && (

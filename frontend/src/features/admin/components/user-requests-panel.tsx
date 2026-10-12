@@ -18,6 +18,7 @@ import { seenAt } from '../format';
 import { requestTargetText } from '../request-lines';
 import { REQUEST_TONE } from './request-queue-row';
 import { INSET_LIST } from './surfaces';
+import { ROUTES } from '@/lib/routes';
 
 const QUEUE_LINK = 'text-primary-text underline-offset-4 hover:underline';
 
@@ -82,7 +83,7 @@ export function UserRequestsPanel({ user }: { user: UserDetail }) {
     <div>
       <p className="mb-2.5 text-caption text-muted-foreground">
         Requests you may decide, newest first. Decide them in{' '}
-        <Link to="/admin/requests" className={QUEUE_LINK}>
+        <Link to={ROUTES.adminRequests} className={QUEUE_LINK}>
           Access requests
         </Link>
         .

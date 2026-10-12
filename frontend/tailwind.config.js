@@ -4,6 +4,9 @@ import animate from 'tailwindcss-animate';
 // Token → Tailwind color with opacity-modifier support (bg-primary/15 etc.).
 const v = (name) => `hsl(var(--${name}) / <alpha-value>)`;
 
+/** DESIGN.md › Motion `ease-sheet`: panels, the composer glide, the settings rail swap. */
+const EASE_SHEET = 'cubic-bezier(.32,.72,0,1)';
+
 export default {
   darkMode: ['class'],
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}', './node_modules/streamdown/dist/*.js'],
@@ -68,7 +71,7 @@ export default {
       },
       transitionTimingFunction: {
         out: 'cubic-bezier(.22,1,.36,1)',
-        sheet: 'cubic-bezier(.32,.72,0,1)',
+        sheet: EASE_SHEET,
       },
       keyframes: {
         'materialize-in': {
@@ -82,12 +85,17 @@ export default {
         shimmer: { from: { backgroundPosition: '120% 0' }, to: { backgroundPosition: '-80% 0' } },
         'caret-pulse': { '50%': { transform: 'scale(.6)', opacity: '.5' } },
         grow: { from: { transform: 'scaleX(0)' }, to: { transform: 'scaleX(1)' } },
+        // DESIGN.md › settings-rail: the sidebar swaps in place, 12px on ease-sheet.
+        'rail-in': { from: { opacity: '0', transform: 'translateX(12px)' } },
+        'rail-back': { from: { opacity: '0', transform: 'translateX(-12px)' } },
       },
       animation: {
         'materialize-in': 'materialize-in 320ms cubic-bezier(.22,1,.36,1) both',
         'materialize-out': 'materialize-out 220ms cubic-bezier(.22,1,.36,1) both',
         shimmer: 'shimmer 1.6s linear infinite',
         'caret-pulse': 'caret-pulse 1s ease-in-out infinite',
+        'rail-in': `rail-in 350ms ${EASE_SHEET} both`,
+        'rail-back': `rail-back 350ms ${EASE_SHEET} both`,
       },
     },
   },

@@ -47,7 +47,7 @@ function renderPage() {
   const { wrapper: Wrapper } = createQueryWrapper();
   render(
     <Wrapper>
-      <MemoryRouter initialEntries={['/account/tokens']}>
+      <MemoryRouter initialEntries={['/settings/tokens']}>
         <TokensPage />
       </MemoryRouter>
     </Wrapper>,
@@ -100,7 +100,7 @@ describe('TokensPage', () => {
     expect(screen.queryByRole('button', { name: /New token/ })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Request analyst' })).toHaveAttribute(
       'href',
-      '/account/requests/new?kind=role',
+      '/settings/requests/new?kind=role',
     );
   });
 

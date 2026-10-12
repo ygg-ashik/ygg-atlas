@@ -9,6 +9,7 @@ import { AccountPage, SectionHeading } from './account-page';
 import { ConnectedApps } from './connected-apps';
 import { CreateTokenDialog } from './create-token-dialog';
 import { TokenList } from './token-list';
+import { newRequestPath } from '@/lib/routes';
 
 const CREATE = 'tokens:create';
 
@@ -85,7 +86,7 @@ function PersonalTokens(props: PersonalTokensProps) {
         }
         action={
           <Button asChild variant="pill">
-            <Link to="/account/requests/new?kind=role">Request analyst</Link>
+            <Link to={newRequestPath({ kind: 'role' })}>Request analyst</Link>
           </Button>
         }
       >

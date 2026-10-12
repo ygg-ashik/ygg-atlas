@@ -6,6 +6,7 @@ import { type GrantOut, type RowScope } from '@/api/admin-groups';
 import { type LabelClass, type LabelClassPut } from '@/api/row-field';
 import { CREDENTIAL_EVENT } from '@/api/credential-events';
 import { type DiffLine } from '@/ui';
+import { type ReviewSpec } from './hooks/use-reviewed-write';
 
 const KEY_WIDTH = 10;
 /** `key` padded to the audit column (at least one space before the value). */
@@ -190,6 +191,24 @@ export function tokenRevokeLines(token: TokenLine): DiffLine[] {
     rm(kv('token', `${token.prefix}…  ${token.name}`)),
     ctx('anything using it gets 401 on the next call'),
   ];
+}
+
+/** The review of revoking one token (Admin › Tokens and the ⌘K quick action). */
+export function tokenRevokeReview(
+  token: TokenLine,
+  slot: string,
+  run: () => Promise<unknown>,
+): ReviewSpec {
+  return {
+    slot,
+    title: 'Revoke token',
+    auditAction: TOKEN_REVOKE,
+    lines: tokenRevokeLines(token),
+    applyLabel: 'Revoke token',
+    appliedLabel: 'Revoked',
+    retryOn409: false,
+    run,
+  };
 }
 
 /** OAuth client revoke: every connected sign-in through it ends. */

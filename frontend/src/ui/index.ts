@@ -25,6 +25,8 @@ export {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuCheckboxItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from './dropdown-menu';
@@ -79,5 +81,11 @@ export { Avatar, initials, type AvatarProps } from './avatar';
 export { SidebarSectionHeader } from './sidebar-section-header';
 export { CountBadge, type CountBadgeProps } from './count-badge';
 export { UserChip, type UserChipProps } from './user-chip';
+export {
+  ThemeSwitch,
+  THEME_CHOICES,
+  type ThemeChoice,
+  type ThemeSwitchProps,
+} from './theme-switch';
 export { actionToast, type ActionToastOptions } from './action-toast';
 export { SeriesSwatch, seriesFill, type Series } from './series-swatch';

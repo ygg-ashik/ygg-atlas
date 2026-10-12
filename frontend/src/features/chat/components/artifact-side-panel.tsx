@@ -10,7 +10,7 @@ import {
   EASE_SHEET,
   withReducedMotion,
 } from '@/ui';
-import { useMediaQuery } from '../hooks/use-media-query';
+import { useMediaQuery } from '@/lib/use-media-query';
 import { ArtifactPanel } from './artifact-panel';
 
 /** At and above this width the panel docks beside the conversation. */

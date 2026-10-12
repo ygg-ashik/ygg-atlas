@@ -1,6 +1,7 @@
 import { Navigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from './auth-context';
+import { ROUTES } from '@/lib/routes';
 
 /** Gate for authenticated routes: spinner while the persisted session is
  * restored, redirect to /login when there is none. */
@@ -15,7 +16,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     );
   }
 
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!isAuthenticated) return <Navigate to={ROUTES.login} replace />;
 
   return <>{children}</>;
 }

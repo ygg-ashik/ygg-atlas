@@ -43,8 +43,8 @@ function renderAt(path: string) {
       <MemoryRouter initialEntries={[path]}>
         <RouteProbe />
         <Routes>
-          <Route path="/admin/groups" element={<GroupsPage />} />
-          <Route path="/admin/groups/:id" element={<GroupDetailPage />} />
+          <Route path="/settings/admin/groups" element={<GroupsPage />} />
+          <Route path="/settings/admin/groups/:id" element={<GroupDetailPage />} />
         </Routes>
       </MemoryRouter>
     </Wrapper>,
@@ -85,7 +85,7 @@ describe('Groups', () => {
   });
 
   it('an admin edits label masking for exactly the maskable classes', async () => {
-    renderAt('/admin/groups');
+    renderAt('/settings/admin/groups');
     const list = await screen.findByRole('list', { name: 'Label classes' });
     expect(within(list).getByText('business_name')).toBeInTheDocument();
     expect(within(list).getByText('person_name')).toBeInTheDocument();
@@ -93,7 +93,7 @@ describe('Groups', () => {
   });
 
   it('an admin sees the tree, members and grants of the first group', async () => {
-    renderAt('/admin/groups');
+    renderAt('/settings/admin/groups');
     const tree = await screen.findByRole('tree', { name: 'Groups' });
     expect(within(tree).getByRole('treeitem', { name: 'marketing-paid' })).toBeInTheDocument();
     expect(await screen.findByRole('heading', { level: 2, name: 'marketing' })).toBeInTheDocument();
@@ -102,14 +102,14 @@ describe('Groups', () => {
   });
 
   it("a group's own route is titled with the group's name", async () => {
-    renderAt('/admin/groups/g-mp');
+    renderAt('/settings/admin/groups/g-mp');
     expect(
       await screen.findByRole('heading', { level: 1, name: 'marketing-paid' }),
     ).toBeInTheDocument();
   });
 
   it('deleting a group in use is refused with the backend sentence, without a request', async () => {
-    renderAt('/admin/groups/g-m');
+    renderAt('/settings/admin/groups/g-m');
     await fast().click(await screen.findByRole('button', { name: 'Delete group' }));
     expect(screen.getByRole('alert')).toHaveTextContent(
       "Remove the group's subgroups, members and grants first.",
@@ -118,7 +118,7 @@ describe('Groups', () => {
   });
 
   it('deleting an empty group is reviewed first', async () => {
-    renderAt('/admin/groups/g-r');
+    renderAt('/settings/admin/groups/g-r');
     await fast().click(await screen.findByRole('button', { name: 'Delete group' }));
     const card = screen.getByRole('region', { name: 'Delete group' });
     expect(diffLines(card)[0]).toEqual(['context', 'group.delete  risk-ops']);
@@ -126,7 +126,9 @@ describe('Groups', () => {
     api.listGroups.mockResolvedValue(GROUPS.filter((g) => g.id !== 'g-r'));
     await fast().click(within(card).getByRole('button', { name: 'Delete group' }));
     expect(api.deleteGroup).toHaveBeenCalledWith('g-r');
-    await waitFor(() => expect(screen.getByTestId('route')).toHaveTextContent(/^\/admin\/groups$/));
+    await waitFor(() =>
+      expect(screen.getByTestId('route')).toHaveTextContent(/^\/settings\/admin\/groups$/),
+    );
   });
 
   it('a manager sees their managed subtree from GET /admin/groups, and no grant controls', async () => {
@@ -136,7 +138,7 @@ describe('Groups', () => {
     });
     // The backend answers a manager with their subtree, real parent ids kept.
     api.listGroups.mockResolvedValue(GROUPS.filter((g) => g.id !== 'g-r'));
-    renderAt('/admin/groups');
+    renderAt('/settings/admin/groups');
     expect(await screen.findByRole('heading', { level: 2, name: 'marketing' })).toBeInTheDocument();
     expect(api.listGroups).toHaveBeenCalled();
     const tree = screen.getByRole('tree', { name: 'Groups' });
@@ -160,14 +162,14 @@ describe('Groups', () => {
   it('a manager whose groups fail to load sees the failure, not an empty tree', async () => {
     view = PERSONAS.manager;
     api.listGroups.mockRejectedValue(new Error('down'));
-    renderAt('/admin/groups');
+    renderAt('/settings/admin/groups');
     expect(await screen.findByText("Couldn't load groups")).toBeInTheDocument();
     expect(screen.queryByText('No groups yet')).not.toBeInTheDocument();
   });
 
   it('without admin:groups or management nothing is listed', () => {
     view = PERSONAS.viewer;
-    renderAt('/admin/groups');
+    renderAt('/settings/admin/groups');
     expect(api.listGroups).not.toHaveBeenCalled();
   });
 });

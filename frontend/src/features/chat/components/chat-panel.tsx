@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
+import type { MeAccess } from '@/api/access';
 import type { ChatMessage } from '@/api/chat';
 import { useChatMessages } from '@/api/hooks/use-chat-sessions';
+import { useMyAccess } from '@/api/hooks/use-my-access';
 import { springDefault, withReducedMotion } from '@/ui';
 import {
   useChatTurn,
@@ -16,6 +18,7 @@ import { ArtifactSidePanel } from './artifact-side-panel';
 import { Composer } from './composer';
 import { DraftView } from './draft-view';
 import { EmptyState } from './empty-state';
+import { FirstRunState } from './first-run-state';
 import { Notice } from './notice';
 import { StoredMessage } from './stored-message';
 
@@ -73,6 +76,21 @@ function Conversation(props: ConversationProps) {
   );
 }
 
+interface EmptyProps {
+  access: MeAccess | null;
+  composer: React.ReactNode;
+  onPick: (question: string) => void;
+}
+
+/** A viewer without data access gets the first-run state; everyone else the presets. */
+function Empty({ access, composer, onPick }: EmptyProps) {
+  return access && !access.has_data_access ? (
+    <FirstRunState name={access.display_name} email={access.email} composer={composer} />
+  ) : (
+    <EmptyState composer={composer} onPick={onPick} />
+  );
+}
+
 /** Chat layout: empty state with a centered composer, or the conversation with
  * the composer floating at the bottom. The composer glides between the two. */
 export function ChatPanel({ sessionId, ensureSession, initialQuestion }: ChatPanelProps) {
@@ -85,6 +103,7 @@ export function ChatPanel({ sessionId, ensureSession, initialQuestion }: ChatPan
   const artifactPanel = useOpenArtifact(sessionId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
+  const { access } = useMyAccess();
 
   useEffect(() => () => abort(), [abort]);
   useStickToBottom(scrollRef, [messages.length, draft?.assistantText, draft?.steps.length, notice]);
@@ -135,7 +154,7 @@ export function ChatPanel({ sessionId, ensureSession, initialQuestion }: ChatPan
       <div className="relative min-w-0 flex-1">
         <div ref={scrollRef} className="absolute inset-0 overflow-y-auto">
           {isEmpty ? (
-            <EmptyState composer={composer} onPick={sendText} />
+            <Empty access={access} composer={composer} onPick={sendText} />
           ) : (
             <Conversation
               messages={messages}

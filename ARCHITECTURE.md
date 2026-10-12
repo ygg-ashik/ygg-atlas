@@ -136,6 +136,8 @@ without the policy inputs would serve one user's rows or unmasked labels to anot
 
 ```
 App.tsx / main.tsx       routing and composition only
+navigation.ts            app-level composition: access rules and nav from /me/access
+quick-actions.tsx        app-level composition: ⌘K quick actions over features' dialogs
 features/<name>/         self-contained product features
 api/                     HTTP and SSE client, TanStack Query hooks (shared)
 lib/                     app-wide non-visual infrastructure (theme, firebase, formatting)

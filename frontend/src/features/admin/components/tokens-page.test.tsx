@@ -47,7 +47,7 @@ function renderPage() {
   const { wrapper: Wrapper } = createQueryWrapper();
   render(
     <Wrapper>
-      <MemoryRouter initialEntries={['/admin/tokens']}>
+      <MemoryRouter initialEntries={['/settings/admin/tokens']}>
         <AdminTokensPage />
       </MemoryRouter>
     </Wrapper>,

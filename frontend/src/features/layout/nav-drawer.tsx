@@ -13,18 +13,18 @@ import {
   springDefault,
   withReducedMotion,
 } from '@/ui';
-import { SidebarContent, type SidebarContentProps } from './sidebar-content';
 
 // Same path in and out (DESIGN.md › Motion rule 3): slides in from the left and
 // leaves to the left. Reduced motion swaps the slide for a short cross-fade.
 const SLIDE = { hidden: { x: '-110%', opacity: 1 }, shown: { x: 0, opacity: 1 } };
 const FADE = { hidden: { x: 0, opacity: 0 }, shown: { x: 0, opacity: 1 } };
 /** Mirrors the `max-[999px]` breakpoint that hides the docked sidebar. */
-const DOCKED_QUERY = '(min-width: 1000px)';
+export const DOCKED_QUERY = '(min-width: 1000px)';
 
 /** Below 1000px the docked sidebar is hidden; this compact glass button opens
- * the same sidebar content as a left drawer. Closes on Esc, scrim or navigation. */
-export function NavDrawer(props: SidebarContentProps) {
+ * the same sidebar content (the app sidebar or the settings rail) as a left
+ * drawer. Closes on Esc, scrim or navigation. */
+export function NavDrawer({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const reduced = useReducedMotion();
   const { key } = useLocation();
@@ -77,7 +77,7 @@ export function NavDrawer(props: SidebarContentProps) {
                 transition={transition}
               >
                 <DialogTitle className="sr-only">Navigation</DialogTitle>
-                <SidebarContent {...props} />
+                {children}
               </motion.div>
             </DialogBareContent>
           </DialogPortal>

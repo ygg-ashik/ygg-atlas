@@ -15,12 +15,13 @@ import {
 import { formatRelativeTime } from '@/lib/utils';
 import { useChatSessions, useDeleteChatSession } from '@/api/hooks/use-chat-sessions';
 import type { ChatSession } from '@/api/chat';
+import { ROUTES, threadPath } from '@/lib/routes';
 
 /** Threads for the shell sidebar. The active thread comes from the URL
  * (/ask/:sessionId) so the list and the chat page never share state. */
 export function ChatThreadList() {
   const navigate = useNavigate();
-  const activeId = useMatch('/ask/:sessionId')?.params.sessionId ?? null;
+  const activeId = useMatch(`${ROUTES.ask}/:sessionId`)?.params.sessionId ?? null;
   const { data: sessions = [] } = useChatSessions();
   const deleteSession = useDeleteChatSession();
   const [pendingDelete, setPendingDelete] = useState<ChatSession | null>(null);
@@ -28,7 +29,7 @@ export function ChatThreadList() {
   const confirmDelete = async () => {
     if (!pendingDelete) return;
     await deleteSession.mutateAsync(pendingDelete.id);
-    if (activeId === pendingDelete.id) navigate('/ask');
+    if (activeId === pendingDelete.id) navigate(ROUTES.ask);
     setPendingDelete(null);
   };
 
@@ -38,7 +39,7 @@ export function ChatThreadList() {
         <span className="flex-1 text-caption uppercase tracking-[0.06em] text-muted-2">
           Threads
         </span>
-        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => navigate('/ask')}>
+        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => navigate(ROUTES.ask)}>
           <Plus /> New chat
         </Button>
       </div>
@@ -51,7 +52,7 @@ export function ChatThreadList() {
           return (
             <div key={s.id} className="group relative">
               <Link
-                to={`/ask/${s.id}`}
+                to={threadPath(s.id)}
                 aria-current={current ? 'page' : undefined}
                 className={cn(
                   'flex items-center gap-2 rounded-md px-2.5 py-1.5 text-label transition-colors duration-200',

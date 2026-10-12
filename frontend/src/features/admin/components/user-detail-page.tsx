@@ -22,6 +22,7 @@ import { UserGroupsPanel } from './user-groups-panel';
 import { UserRequestsPanel } from './user-requests-panel';
 import { UserTokensPanel } from './user-tokens-panel';
 import { CARD } from './surfaces';
+import { ROUTES } from '@/lib/routes';
 
 const TABS_ID = 'user-detail';
 
@@ -95,7 +96,7 @@ export function UserDetailPage() {
   return (
     <AdminPage
       title={user ? user.display_name || user.email : 'User'}
-      crumb={{ to: '/admin/users', label: 'Users' }}
+      crumb={{ to: ROUTES.adminUsers, label: 'Users' }}
     >
       {detail.isPending && <DetailSkeleton />}
       {detail.isError && (

@@ -2,6 +2,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
+import { accessView, PERSONAS } from '@/test/access-view';
 import { ChatPanel } from './chat-panel';
 
 const send = vi.hoisted(() => vi.fn());
@@ -21,6 +23,8 @@ vi.mock('@/api/hooks/use-chat-sessions', () => ({
 }));
 // The api client boots Firebase on import; the panel never talks to the network here.
 vi.mock('@/api/chat', () => ({ setMessageFeedback: vi.fn() }));
+const access = vi.hoisted(() => ({ view: null as unknown }));
+vi.mock('@/api/hooks/use-my-access', () => ({ useMyAccess: () => access.view }));
 
 const artifactBlock = {
   kind: 'artifact',
@@ -64,11 +68,13 @@ function renderPanel(initialQuestion?: string) {
   const qc = new QueryClient();
   const ui = (
     <QueryClientProvider client={qc}>
-      <ChatPanel
-        sessionId={null}
-        ensureSession={async () => 's1'}
-        initialQuestion={initialQuestion}
-      />
+      <MemoryRouter>
+        <ChatPanel
+          sessionId={null}
+          ensureSession={async () => 's1'}
+          initialQuestion={initialQuestion}
+        />
+      </MemoryRouter>
     </QueryClientProvider>
   );
   const result = render(ui);
@@ -77,6 +83,7 @@ function renderPanel(initialQuestion?: string) {
 
 describe('ChatPanel', () => {
   beforeEach(() => {
+    access.view = PERSONAS.viewer;
     send.mockReset();
     turn.draft = null;
     turn.messages = [];
@@ -164,5 +171,48 @@ describe('ChatPanel', () => {
       const sheet = await screen.findByRole('dialog', { name: 'Artifact' });
       expect(sheet).toContainElement(screen.getByRole('heading', { name: 'Revenue: breakdown' }));
     });
+  });
+});
+
+describe('ChatPanel first run', () => {
+  beforeEach(() => {
+    turn.draft = null;
+    turn.messages = [];
+  });
+
+  it('a viewer without data access sees "No data access yet" with Request access', () => {
+    access.view = PERSONAS.newViewer;
+    renderPanel();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Welcome to Atlas, Lina' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'No data access yet' })).toBeInTheDocument();
+    expect(screen.getByText('lina@yougotagift.com')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Request access' })).toHaveAttribute(
+      'href',
+      '/settings/requests/new?kind=group',
+    );
+    expect(screen.getByText('scope · from your Google sign-in')).toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toBeInTheDocument();
+    expect(screen.queryByText('What would you like to know?')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the email when the display name is blank', () => {
+    access.view = accessView({ display_name: ' ' });
+    renderPanel();
+    expect(screen.getByRole('heading', { level: 2, name: 'Welcome to Atlas, lina' })).toBeVisible();
+  });
+
+  it('a viewer with data access gets the presets, not the first-run state', () => {
+    access.view = PERSONAS.viewer;
+    renderPanel();
+    expect(screen.getByText('What would you like to know?')).toBeInTheDocument();
+    expect(screen.queryByText('No data access yet')).not.toBeInTheDocument();
+  });
+
+  it('while access loads, the chat shows the presets (nothing is claimed)', () => {
+    access.view = accessView({}, 'loading');
+    renderPanel();
+    expect(screen.getByText('What would you like to know?')).toBeInTheDocument();
   });
 });
