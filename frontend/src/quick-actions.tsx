@@ -15,12 +15,12 @@ import { type Token } from '@/api/tokens';
 import { useTheme } from '@/lib/theme-provider';
 import { type OpenRequestAccess } from '@/lib/request-access';
 import { type RequestPrefill } from '@/lib/routes';
-import { THEME_CHOICES, toast } from '@/ui';
+import { THEME_CHOICES, toast, type ThemeChoice } from '@/ui';
 import { AccessPeek, CreateTokenDialog, RequestAccessDialog } from '@/features/account';
 import { ApproveRequestDialog, RevokeTokenDialog } from '@/features/admin';
 import { allows } from '@/features/auth';
 import { CommandPalette, type PaletteLink, type QuickAction } from '@/features/command';
-import { ACCESS } from './navigation';
+import { ACCESS, isAdmin } from './navigation';
 
 /** The quick dialog on screen, with what it acts on. */
 type Open =
@@ -33,7 +33,7 @@ type Open =
 /** Each list offers its first entry up front; the rest appear once you type. */
 const firstOnly = (i: number) => i > 0;
 
-function themeActions(current: string, setTheme: (t: 'light' | 'dark' | 'system') => void) {
+function themeActions(current: ThemeChoice, setTheme: (t: ThemeChoice) => void) {
   return THEME_CHOICES.filter((t) => t.value !== current).map((t, i): QuickAction => ({
     id: `theme:${t.value}`,
     label: `Theme: ${t.label}`,
@@ -54,7 +54,7 @@ function approveActions(
   set: (o: Open) => void,
 ) {
   const me = view.access?.user_id;
-  const tag = view.capabilities.some((c) => c.startsWith('admin:')) ? 'admin' : 'manager';
+  const tag = isAdmin(view) ? 'admin' : 'manager';
   return requests
     .filter((r) => r.status === 'pending' && r.requester && r.requester.user_id !== me)
     .map((r, i): QuickAction => ({

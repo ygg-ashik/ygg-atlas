@@ -17,6 +17,7 @@ export function SettingsRail({ sections, email, onBack }: SettingsRailProps) {
       <button
         type="button"
         onClick={onBack}
+        data-swap-focus
         aria-keyshortcuts="Escape"
         className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13.5px] text-muted-foreground transition-[background-color,color,transform] duration-200 hover:bg-foreground/5 hover:text-ink active:scale-[.97]"
       >

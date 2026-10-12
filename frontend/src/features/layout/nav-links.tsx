@@ -12,11 +12,11 @@ const EXACT = new Set<string>([ROUTES.home, ROUTES.settings]);
 export function NavLinks({ items }: { items: readonly NavItem[] }) {
   return (
     <>
-      {items.map(({ to, label, icon: Icon, badge, end }) => (
+      {items.map(({ to, label, icon: Icon, badge }) => (
         <NavLink
           key={to}
           to={to}
-          end={end ?? EXACT.has(to)}
+          end={EXACT.has(to)}
           className={({ isActive }) =>
             cn(
               'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-[background-color,transform] duration-200 active:scale-[.97]',

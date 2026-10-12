@@ -2,12 +2,12 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { location, renderShell, USER } from './test-shell';
+import { location, renderShell, USER } from '@/test/shell-harness';
 
 // The open menu hides the rest of the page from assistive tech; the chip stays queryable.
 const chip = () =>
   within(screen.getByRole('complementary', { hidden: true })).getByRole('button', {
-    name: 'Account menu',
+    name: /^Account menu/,
     hidden: true,
   });
 
@@ -58,6 +58,13 @@ describe('Account menu', () => {
     expect(within(menu).getByRole('menuitem', { name: /Sign out/ })).toBeInTheDocument();
   });
 
+  it('the chip announces the pending approvals in its accessible name', () => {
+    renderShell('/ask', { admin: { to: '/settings/admin/requests', pendingApprovals: 3 } });
+    expect(
+      screen.getByRole('button', { name: 'Account menu, 3 pending approvals' }),
+    ).toBeInTheDocument();
+  });
+
   it('a manager or admin gets Admin with the pending count, and the chip a dot', async () => {
     renderShell('/ask', { admin: { to: '/settings/admin/requests', pendingApprovals: 3 } });
     expect(within(chip()).getByRole('img', { name: '3 pending approvals' })).toBeInTheDocument();
@@ -77,11 +84,20 @@ describe('Account menu', () => {
     expect(within(chip()).queryByRole('img')).not.toBeInTheDocument();
   });
 
-  it('Settings opens the settings page', async () => {
+  it('Settings opens the settings page and moves focus to Back to Atlas', async () => {
     renderShell('/ask');
     const menu = await openMenu();
     await userEvent.click(within(menu).getByRole('menuitem', { name: /Settings/ }));
     expect(location.current).toBe('/settings');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Back to Atlas/ })).toHaveFocus(),
+    );
+  });
+
+  it('Back to Atlas returns focus to the account chip', async () => {
+    renderShell('/settings/access');
+    await userEvent.click(screen.getByRole('button', { name: /Back to Atlas/ }));
+    await waitFor(() => expect(chip()).toHaveFocus());
   });
 
   it('switches the theme in place and keeps the menu open', async () => {

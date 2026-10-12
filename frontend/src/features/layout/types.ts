@@ -14,8 +14,6 @@ export interface NavItem {
   label: string;
   icon: LucideIcon;
   badge?: NavBadge;
-  /** Active only on this exact path (`/` and `/settings` always are). */
-  end?: boolean;
 }
 
 /** A titled group of the settings rail ("You", "Organization"). */

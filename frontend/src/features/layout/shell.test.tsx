@@ -2,7 +2,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
-import { location, renderShell } from './test-shell';
+import { location, renderShell } from '@/test/shell-harness';
 
 const sidebar = () => screen.getByRole('complementary');
 

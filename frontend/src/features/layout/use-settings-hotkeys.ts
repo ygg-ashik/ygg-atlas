@@ -20,7 +20,8 @@ function escapeIsTaken(e: KeyboardEvent): boolean {
   ) {
     return true;
   }
-  return document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]') !== null;
+  const open = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
+  return document.querySelector(open) !== null;
 }
 
 /** ⌘, opens Settings; Escape leaves it (DESIGN.md › settings-rail). */

@@ -256,7 +256,7 @@ describe('App routes', () => {
 
   it('the account menu offers Admin and the chip a dot for an admin with approvals', async () => {
     renderAt('/ask');
-    const chip = within(sidebar()).getByRole('button', { name: 'Account menu' });
+    const chip = within(sidebar()).getByRole('button', { name: /^Account menu/ });
     expect(await within(chip).findByRole('img', { name: '4 pending approvals' })).toBeVisible();
     await userEvent.click(chip);
     const menu = await screen.findByRole('menu');
@@ -270,7 +270,7 @@ describe('App routes', () => {
     fetchMyAccess.mockResolvedValue(VIEWER);
     renderAt('/ask');
     await screen.findByRole('heading', { level: 1, name: 'New chat' });
-    await userEvent.click(within(sidebar()).getByRole('button', { name: 'Account menu' }));
+    await userEvent.click(within(sidebar()).getByRole('button', { name: /^Account menu/ }));
     const menu = await screen.findByRole('menu');
     expect(within(menu).queryByRole('menuitem', { name: /Admin/ })).toBeNull();
   });

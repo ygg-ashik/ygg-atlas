@@ -1,11 +1,16 @@
-// Test-only harness for the layout feature: the shell at a path, with a probe
-// of the current location. Imported only by *.test.tsx.
+// Test-only harness for the layout feature (src/test: shared test support): the
+// shell at a path, with a probe of the current location. Imported only by *.test.tsx.
 import { render } from '@testing-library/react';
 import { Inbox, Library, MessageCircle, Settings2, ShieldCheck, Users } from 'lucide-react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { ThemeProvider } from '@/lib/theme-provider';
-import Shell from './shell';
-import { type AdminEntry, type NavItem, type NavSection, type ShellUser } from './types';
+import {
+  Shell,
+  type AdminEntry,
+  type NavItem,
+  type NavSection,
+  type ShellUser,
+} from '@/features/layout';
 
 export const NAV: NavItem[] = [
   { to: '/ask', label: 'Ask Atlas', icon: MessageCircle },

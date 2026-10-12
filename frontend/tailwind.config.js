@@ -4,6 +4,9 @@ import animate from 'tailwindcss-animate';
 // Token → Tailwind color with opacity-modifier support (bg-primary/15 etc.).
 const v = (name) => `hsl(var(--${name}) / <alpha-value>)`;
 
+/** DESIGN.md › Motion `ease-sheet`: panels, the composer glide, the settings rail swap. */
+const EASE_SHEET = 'cubic-bezier(.32,.72,0,1)';
+
 export default {
   darkMode: ['class'],
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}', './node_modules/streamdown/dist/*.js'],
@@ -68,7 +71,7 @@ export default {
       },
       transitionTimingFunction: {
         out: 'cubic-bezier(.22,1,.36,1)',
-        sheet: 'cubic-bezier(.32,.72,0,1)',
+        sheet: EASE_SHEET,
       },
       keyframes: {
         'materialize-in': {
@@ -91,8 +94,8 @@ export default {
         'materialize-out': 'materialize-out 220ms cubic-bezier(.22,1,.36,1) both',
         shimmer: 'shimmer 1.6s linear infinite',
         'caret-pulse': 'caret-pulse 1s ease-in-out infinite',
-        'rail-in': 'rail-in 350ms cubic-bezier(.32,.72,0,1) both',
-        'rail-back': 'rail-back 350ms cubic-bezier(.32,.72,0,1) both',
+        'rail-in': `rail-in 350ms ${EASE_SHEET} both`,
+        'rail-back': `rail-back 350ms ${EASE_SHEET} both`,
       },
     },
   },

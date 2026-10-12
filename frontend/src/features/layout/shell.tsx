@@ -41,6 +41,28 @@ function useSwap(inSettings: boolean): Swap {
   return swap;
 }
 
+/** Docked sidebar: mirrors the `max-[999px]:hidden` breakpoint below. */
+const DOCKED_QUERY = '(min-width: 1000px)';
+
+/** After the sidebar swaps, the control that had focus (the chip, a rail link)
+ * is gone. Move focus to the new sidebar's entry point (Back to Atlas, or the
+ * account chip) when docked, else to the main pane, but only if focus was lost. */
+function useSwapFocus(
+  swap: Swap,
+  inSettings: boolean,
+  refs: { aside: React.RefObject<HTMLElement | null>; main: React.RefObject<HTMLElement | null> },
+) {
+  const docked = useMediaQuery(DOCKED_QUERY, true);
+  const { aside, main } = refs;
+  useEffect(() => {
+    if (!swap) return;
+    const lost = !document.activeElement || document.activeElement === document.body;
+    if (!lost) return;
+    const target = docked ? aside.current?.querySelector<HTMLElement>('[data-swap-focus]') : null;
+    (target ?? main.current)?.focus();
+  }, [swap, inSettings, docked, aside, main]);
+}
+
 /** App frame (DESIGN.md › Layout): 10px inset, floating heavy-glass sidebar,
  * rounded main pane. Inside `/settings` the sidebar swaps in place to the
  * settings rail; ⌘, opens Settings and Escape leaves it. Below 1000px the
@@ -52,6 +74,9 @@ export default function Shell(props: ShellProps) {
   const phone = useMediaQuery(PHONE_QUERY, false);
   const inSettings = isSettingsPath(pathname);
   const swap = useSwap(inSettings);
+  const asideRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  useSwapFocus(swap, inSettings, { aside: asideRef, main: mainRef });
 
   // "Back to Atlas" returns to the last page outside Settings.
   const lastApp = useRef<string>(ROUTES.home);
@@ -80,6 +105,7 @@ export default function Shell(props: ShellProps) {
   return (
     <div className="flex h-screen gap-2.5 p-2.5">
       <Glass
+        ref={asideRef}
         as="aside"
         variant="heavy"
         specular
@@ -97,7 +123,11 @@ export default function Shell(props: ShellProps) {
         </div>
       </Glass>
       {drillDown ? !showList && <BackToList onClick={toList} /> : <NavDrawer>{sidebar}</NavDrawer>}
-      <main className="relative min-w-0 flex-1 overflow-hidden rounded-shell max-[999px]:[--toolbar-lead:58px]">
+      <main
+        ref={mainRef}
+        tabIndex={-1}
+        className="relative min-w-0 flex-1 overflow-hidden rounded-shell outline-none max-[999px]:[--toolbar-lead:58px]"
+      >
         {showList ? (
           <SettingsList sections={settings} user={user} onBack={back} onSignOut={onSignOut} />
         ) : (

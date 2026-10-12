@@ -91,11 +91,15 @@ export function buildPalettePages(view: MyAccessView): { label: string; to: stri
   ];
 }
 
+/** True when the viewer holds any `admin:*` capability (false until access answers). */
+export function isAdmin(view: MyAccessView): boolean {
+  return view.capabilities.some((c) => c.startsWith('admin:'));
+}
+
 /** The account menu's Admin item: managers and holders of any `admin:*`
  * capability. It opens the queue when something waits, else the first page. */
 export function adminEntry(view: MyAccessView): AdminEntry | undefined {
-  const admin = view.capabilities.some((c) => c.startsWith('admin:'));
-  if (view.status !== 'ready' || !(admin || view.isManager)) return undefined;
+  if (view.status !== 'ready' || !(isAdmin(view) || view.isManager)) return undefined;
   const pages = organization(view);
   const queue = pages.find((p) => p.to === ROUTES.adminRequests);
   const to = view.pendingApprovals > 0 && queue ? queue.to : pages[0]?.to;

@@ -47,7 +47,8 @@ export function AccountMenu({ user, onSignOut, admin }: AccountMenuProps) {
   const trigger = (
     <button
       type="button"
-      aria-label="Account menu"
+      aria-label={pending > 0 ? `Account menu, ${approvalsLabel(pending)}` : 'Account menu'}
+      data-swap-focus
       className="block w-full rounded-[14px] text-left transition-[background-color,transform] duration-200 hover:bg-foreground/5 active:scale-[.98] data-[state=open]:bg-card"
     >
       <UserChip
@@ -131,7 +132,7 @@ function ThemeRadios() {
             key={value}
             value={value}
             onSelect={(e) => e.preventDefault()}
-            className="flex flex-1 items-center justify-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-muted-foreground transition-[background-color,color] duration-200 data-[highlighted]:text-ink data-[state=checked]:bg-card data-[state=checked]:text-ink data-[state=checked]:shadow-[0_0_0_1px_hsl(var(--border)/0.6),0_1px_3px_rgba(0,0,0,0.08)] data-[highlighted]:ring-2 data-[highlighted]:ring-primary/20"
+            className="flex flex-1 items-center justify-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-muted-foreground transition-[background-color,color] duration-200 data-[highlighted]:text-ink data-[state=checked]:bg-card data-[state=checked]:text-ink data-[state=checked]:shadow-[0_0_0_1px_hsl(var(--border)/0.6),0_1px_3px_hsl(var(--ink)/0.08)] data-[highlighted]:ring-2 data-[highlighted]:ring-primary/20"
           >
             <Icon aria-hidden className="h-3 w-3" />
             {label}

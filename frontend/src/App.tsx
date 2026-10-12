@@ -38,7 +38,14 @@ import {
 import { ConsentPage } from '@/features/oauth-consent';
 import { RequestAccessProvider } from '@/lib/request-access';
 import { ROUTES } from '@/lib/routes';
-import { ACCESS, PRIMARY_NAV, adminEntry, buildPalettePages, buildSettingsNav } from './navigation';
+import {
+  ACCESS,
+  PRIMARY_NAV,
+  adminEntry,
+  buildPalettePages,
+  buildSettingsNav,
+  isAdmin,
+} from './navigation';
 import { QuickDialogs, QuickPalette, useQuickDialogs } from './quick-actions';
 
 /** Composition point: wires auth, access, chat, settings and the command palette
@@ -83,8 +90,7 @@ function Home() {
   const { user } = useAuth();
   const view = useMyAccess();
   if (view.status === 'loading') return <HomeSkeleton />;
-  const admin = view.capabilities.some((c) => c.startsWith('admin:'));
-  if (view.access && !view.access.has_data_access && !admin) return <ChatPage />;
+  if (view.access && !view.access.has_data_access && !isAdmin(view)) return <ChatPage />;
   return <OverviewPage userName={user?.name ?? ''} />;
 }
 
