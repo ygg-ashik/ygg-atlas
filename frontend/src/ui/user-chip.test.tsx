@@ -16,4 +16,14 @@ describe('UserChip', () => {
     render(<UserChip name="" email="lina@yougotagift.com" />);
     expect(screen.getByText('L')).toBeInTheDocument();
   });
+
+  it('marks the avatar with a labelled clay dot when something waits on the viewer', () => {
+    render(<UserChip name="Ashik Babu" email="ashik@yougotagift.com" dot="3 pending approvals" />);
+    expect(screen.getByRole('img', { name: '3 pending approvals' })).toHaveClass('bg-primary');
+  });
+
+  it('shows no dot without a label', () => {
+    render(<UserChip name="Ashik Babu" email="ashik@yougotagift.com" />);
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
 });

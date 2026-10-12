@@ -82,12 +82,17 @@ export default {
         shimmer: { from: { backgroundPosition: '120% 0' }, to: { backgroundPosition: '-80% 0' } },
         'caret-pulse': { '50%': { transform: 'scale(.6)', opacity: '.5' } },
         grow: { from: { transform: 'scaleX(0)' }, to: { transform: 'scaleX(1)' } },
+        // DESIGN.md › settings-rail: the sidebar swaps in place, 12px on ease-sheet.
+        'rail-in': { from: { opacity: '0', transform: 'translateX(12px)' } },
+        'rail-back': { from: { opacity: '0', transform: 'translateX(-12px)' } },
       },
       animation: {
         'materialize-in': 'materialize-in 320ms cubic-bezier(.22,1,.36,1) both',
         'materialize-out': 'materialize-out 220ms cubic-bezier(.22,1,.36,1) both',
         shimmer: 'shimmer 1.6s linear infinite',
         'caret-pulse': 'caret-pulse 1s ease-in-out infinite',
+        'rail-in': 'rail-in 350ms cubic-bezier(.32,.72,0,1) both',
+        'rail-back': 'rail-back 350ms cubic-bezier(.32,.72,0,1) both',
       },
     },
   },
