@@ -6,7 +6,7 @@ import { Tag } from './tag';
 export interface RouteGuardPageProps {
   /** The capability the route needs, e.g. `admin:users`. */
   capability: string;
-  /** The route that stays closed, e.g. `/admin/users`. */
+  /** The route that stays closed, e.g. `/settings/admin/users`. */
   route: string;
   /** The viewer's role, from the token. */
   role: string;

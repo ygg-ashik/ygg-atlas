@@ -8,14 +8,14 @@ describe('RouteGuardPage', () => {
     render(
       <RouteGuardPage
         capability="admin:users"
-        route="/admin/users"
+        route="/settings/admin/users"
         role="viewer"
         actions={<button type="button">Go to My access</button>}
       />,
     );
     const page = screen.getByRole('region', { name: 'This area needs admin:users' });
     expect(page).toHaveTextContent('Your role (viewer)');
-    expect(page).toHaveTextContent('/admin/users stays closed');
+    expect(page).toHaveTextContent('/settings/admin/users stays closed');
     expect(page).toHaveTextContent('Nothing you type can widen it.');
     expect(screen.getByText('scope · from your Google sign-in')).toBeInTheDocument();
     expect(screen.getByText('role · viewer')).toBeInTheDocument();

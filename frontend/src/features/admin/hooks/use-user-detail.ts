@@ -7,7 +7,7 @@ export type UserTab = (typeof USER_TABS)[number];
 
 const isTab = (v: string | null): v is UserTab => USER_TABS.includes(v as UserTab);
 
-/** The user detail route: `/admin/users/:id?tab=…`, the user, and whether it is the viewer. */
+/** The user detail route: `/settings/admin/users/:id?tab=…`, the user, and whether it is the viewer. */
 export function useUserDetailView() {
   const { id = '' } = useParams();
   const [params, setParams] = useSearchParams();

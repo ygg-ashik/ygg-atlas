@@ -18,8 +18,8 @@ describe('Toolbar', () => {
   });
 
   it('shows an optional mono route label that hides below 1000px', () => {
-    render(<Toolbar title="Users" route="/admin/users" />);
-    const route = screen.getByText('/admin/users');
+    render(<Toolbar title="Users" route="/settings/admin/users" />);
+    const route = screen.getByText('/settings/admin/users');
     expect(route).toHaveAttribute('data-route-label');
     expect(route).toHaveClass('font-mono', 'max-[999px]:hidden');
   });
@@ -30,7 +30,7 @@ describe('Toolbar', () => {
         title="Karim Nasser"
         crumb={
           <ToolbarCrumb>
-            <a href="/admin/users">Users</a>
+            <a href="/settings/admin/users">Users</a>
           </ToolbarCrumb>
         }
       />,
