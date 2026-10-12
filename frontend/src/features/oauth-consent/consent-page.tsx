@@ -5,6 +5,7 @@ import { Loader2, TriangleAlert } from 'lucide-react';
 import { BrandMark, Button, Glass, materialize, springDefault, withReducedMotion } from '@/ui';
 import type { ConsentPrompt } from './consent-api';
 import { useConsent, type ConsentState } from './use-consent';
+import { consentRequestPath } from '@/lib/routes';
 
 /** What the page needs from the auth feature; App.tsx composes it in (features stay decoupled). */
 export interface ConsentSession {
@@ -14,7 +15,7 @@ export interface ConsentSession {
 }
 
 const START_AGAIN = 'Start again from your MCP client.';
-const REQUEST_ACCESS_HREF = '/account/requests/new?kind=role';
+const REQUEST_ACCESS_HREF = consentRequestPath();
 
 /** One centered glass panel on the canvas wash (DESIGN.md › consent-panel). */
 function ConsentPanel({ children }: { children: ReactNode }) {

@@ -47,7 +47,7 @@ function renderAt(path: string) {
     <Wrapper>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
-          <Route path="/admin/users/:id" element={<UserDetailPage />} />
+          <Route path="/settings/admin/users/:id" element={<UserDetailPage />} />
         </Routes>
       </MemoryRouter>
     </Wrapper>,
@@ -79,28 +79,28 @@ describe('UserDetailPage', () => {
   });
 
   it('titles the page with the user and a Users breadcrumb back to the list', async () => {
-    renderAt('/admin/users/karim');
+    renderAt('/settings/admin/users/karim');
     expect(await screen.findByRole('heading', { level: 1, name: 'Karim Nasser' })).toBeVisible();
     const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(within(crumbs).getByRole('link', { name: 'Users' })).toHaveAttribute(
       'href',
-      '/admin/users',
+      '/settings/admin/users',
     );
   });
 
   it('shows the user with their groups', async () => {
-    renderAt('/admin/users/karim');
+    renderAt('/settings/admin/users/karim');
     expect(
       await screen.findByRole('heading', { level: 2, name: 'Karim Nasser' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Open marketing' })).toHaveAttribute(
       'href',
-      '/admin/groups/g-m',
+      '/settings/admin/groups/g-m',
     );
   });
 
   it('on yourself, role, status and grants are locked with the backend sentences', async () => {
-    renderAt('/admin/users/u1');
+    renderAt('/settings/admin/users/u1');
     expect(await screen.findByRole('combobox', { name: 'Role' })).toBeDisabled();
     await fast().click(screen.getByRole('tab', { name: /Direct grants/ }));
     expect(screen.getByRole('button', { name: '＋ Add grant' })).toBeDisabled();
@@ -110,7 +110,7 @@ describe('UserDetailPage', () => {
   });
 
   it('a direct grant revoke is reviewed first', async () => {
-    renderAt('/admin/users/karim?tab=grants');
+    renderAt('/settings/admin/users/karim?tab=grants');
     await fast().click(
       await screen.findByRole('button', { name: 'Revoke allow demo/checkout/checkout_funnel' }),
     );
@@ -120,7 +120,7 @@ describe('UserDetailPage', () => {
 
   it('tokens tab: no live tokens reads as an empty state', async () => {
     listAdminTokens.mockResolvedValue([]);
-    renderAt('/admin/users/karim?tab=tokens');
+    renderAt('/settings/admin/users/karim?tab=tokens');
     expect(await screen.findByText('No live tokens')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Revoke all' })).toBeDisabled();
   });
@@ -128,7 +128,7 @@ describe('UserDetailPage', () => {
   it('tokens tab: revoke all goes through a review card', async () => {
     listAdminTokens.mockResolvedValue([TOKEN]);
     revokeAllUserTokens.mockResolvedValue({ revoked: 1 });
-    renderAt('/admin/users/karim?tab=tokens');
+    renderAt('/settings/admin/users/karim?tab=tokens');
     await fast().click(await screen.findByRole('button', { name: 'Revoke all' }));
     const card = screen.getByRole('region', { name: 'Revoke all tokens · Karim Nasser' });
     expect(diffLines(card)).toContainEqual([
@@ -144,7 +144,7 @@ describe('UserDetailPage', () => {
   it('tokens tab: a failed revoke-all keeps the card open with the backend sentence', async () => {
     listAdminTokens.mockResolvedValue([TOKEN]);
     revokeAllUserTokens.mockRejectedValue(httpError(404, { detail: 'No such user.' }));
-    renderAt('/admin/users/karim?tab=tokens');
+    renderAt('/settings/admin/users/karim?tab=tokens');
     await fast().click(await screen.findByRole('button', { name: 'Revoke all' }));
     const card = screen.getByRole('region', { name: 'Revoke all tokens · Karim Nasser' });
     expect(diffLines(card)[0]).toEqual(['context', 'tokens.revoked_all  karim@yougotagift.com']);
@@ -157,7 +157,7 @@ describe('UserDetailPage', () => {
     http.put.mockResolvedValue({
       data: { key: 'country', value: 'SA', set_by: 'u1', set_at: '2026-10-10T00:00:00Z' },
     });
-    renderAt('/admin/users/karim?tab=effective');
+    renderAt('/settings/admin/users/karim?tab=effective');
     const section = await screen.findByRole('region', { name: 'Attributes' });
     expect(await within(section).findByText('country = AE')).toBeInTheDocument();
     expect(http.get).toHaveBeenCalledWith('/admin/users/karim/attributes');
@@ -183,7 +183,7 @@ describe('UserDetailPage', () => {
   it('effective tab: removing an attribute is reviewed as attribute.delete', async () => {
     answerGets([{ key: 'csm', value: 'sara', set_by: null, set_at: '2026-10-01T00:00:00Z' }]);
     http.delete.mockResolvedValue({ data: undefined });
-    renderAt('/admin/users/karim?tab=effective');
+    renderAt('/settings/admin/users/karim?tab=effective');
     await fast().click(await screen.findByRole('button', { name: 'Remove csm' }));
     const card = screen.getByRole('region', { name: 'Remove attribute csm' });
     expect(diffLines(card)).toEqual([
@@ -198,7 +198,7 @@ describe('UserDetailPage', () => {
 
   it("effective tab: your own attributes are read-only with the backend's sentence", async () => {
     answerGets([{ key: 'country', value: 'AE', set_by: null, set_at: '2026-10-01T00:00:00Z' }]);
-    renderAt('/admin/users/u1?tab=effective');
+    renderAt('/settings/admin/users/u1?tab=effective');
     const section = await screen.findByRole('region', { name: 'Attributes' });
     expect(await within(section).findByRole('button', { name: 'Remove country' })).toBeDisabled();
     expect(
@@ -209,7 +209,7 @@ describe('UserDetailPage', () => {
 
   it('a missing user is stated with Retry', async () => {
     fetchUserDetail.mockRejectedValue(httpError(404, { detail: 'No such user.' }));
-    renderAt('/admin/users/nope');
+    renderAt('/settings/admin/users/nope');
     expect(await screen.findByText("Couldn't load this user")).toBeInTheDocument();
   });
 
@@ -231,7 +231,7 @@ describe('UserDetailPage', () => {
       ],
       next_cursor: null,
     });
-    renderAt('/admin/users/karim?tab=requests');
+    renderAt('/settings/admin/users/karim?tab=requests');
     const list = await screen.findByRole('list', { name: 'Requests from Karim Nasser' });
     const item = within(list).getByRole('listitem');
     expect(within(item).getByText('demo/checkout/checkout_funnel')).toHaveClass('font-mono');
@@ -243,7 +243,7 @@ describe('UserDetailPage', () => {
 
   it('requests tab: none in scope reads as an empty state', async () => {
     listDecidableRequests.mockResolvedValue({ items: [], next_cursor: null });
-    renderAt('/admin/users/karim?tab=requests');
+    renderAt('/settings/admin/users/karim?tab=requests');
     expect(await screen.findByText('No requests')).toBeInTheDocument();
   });
 
@@ -251,7 +251,7 @@ describe('UserDetailPage', () => {
     listDecidableRequests.mockRejectedValue(
       httpError(403, { detail: 'You have no access requests to decide.' }),
     );
-    renderAt('/admin/users/karim?tab=requests');
+    renderAt('/settings/admin/users/karim?tab=requests');
     expect(await screen.findByText('Not in your queue')).toBeInTheDocument();
     expect(screen.getByText(/You have no access requests to decide\./)).toBeInTheDocument();
   });

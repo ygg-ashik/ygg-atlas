@@ -23,14 +23,25 @@ export interface InitialRequest {
   label: string;
 }
 
-/** `?kind=` (the phase-4 consent link sends `role`) and `?resource=&label=`
- * (a chat denial). A resource alone means the resource kind. */
-export function initialRequest(params: URLSearchParams): InitialRequest {
-  const resource = params.get('resource')?.trim() ?? '';
-  const asked = params.get('kind');
+/** A prefill as it arrives: from the page's query or a dialog opener, untrusted. */
+export interface RawPrefill {
+  kind?: string | null;
+  resource?: string | null;
+  label?: string | null;
+}
+
+/** The new-request page's `?kind=&resource=&label=`. */
+export function prefillFromParams(params: URLSearchParams): RawPrefill {
+  return { kind: params.get('kind'), resource: params.get('resource'), label: params.get('label') };
+}
+
+/** `kind` (the consent link and guards send `role`) and `resource` + `label` (a
+ * chat denial). A resource alone means the resource kind; unknown kinds fall back. */
+export function initialRequest(prefill: RawPrefill): InitialRequest {
+  const resource = prefill.resource?.trim() ?? '';
   const fallback: RequestKind = resource ? 'resource' : 'group';
-  const kind = KINDS.find((k) => k === asked) ?? fallback;
-  return { kind, resource, label: params.get('label')?.trim() ?? '' };
+  const kind = KINDS.find((k) => k === prefill.kind) ?? fallback;
+  return { kind, resource, label: prefill.label?.trim() ?? '' };
 }
 
 /** Null when the note is acceptable; otherwise what to do about it. */

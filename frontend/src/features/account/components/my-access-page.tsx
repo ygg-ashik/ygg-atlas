@@ -1,43 +1,28 @@
 import { Lock } from 'lucide-react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { type MeAccess } from '@/api/access';
 import { useCapabilityCatalog } from '@/api/hooks/use-capability-catalog';
 import { useMyAccess } from '@/api/hooks/use-my-access';
 import { Button, EmptyState, ErrorNotice, Skeleton, SkeletonRegion, SkeletonRows, Tag } from '@/ui';
 import { AccessSummary } from './access-summary';
 import { AccountPage, SectionHeading } from './account-page';
+import { ROUTES, newRequestPath } from '@/lib/routes';
 
 const LIST =
   'overflow-hidden rounded-lg bg-card px-4 py-3 text-[13.5px] text-muted-foreground shadow-[0_0_0_1px_hsl(var(--border)/0.5)]';
-
-/** The greeting name; falls back to the email's local part while the
- * backend's `display_name` is missing or blank. */
-function firstName(access: MeAccess | null): string {
-  if (!access) return '';
-  const name = (access.display_name ?? '').trim();
-  if (name) return name.split(/\s+/)[0] ?? '';
-  return (access.email ?? '').split('@')[0] ?? '';
-}
 
 /** Screen 1 · My access: what Atlas lets the caller do and see, from `/me/access`. */
 export function MyAccessPage() {
   const view = useMyAccess();
   const catalog = useCapabilityCatalog();
-  const { state } = useLocation() as { state: { firstRun?: boolean } | null };
-  const first = state?.firstRun === true && firstName(view.access) !== '';
   const access = view.access;
   return (
     <AccountPage
       title="My access"
-      heading={first ? `Welcome to Atlas, ${firstName(access)}` : 'My access'}
-      sub={
-        first
-          ? 'This is where your access lives. You can ask Atlas questions as soon as a group or grant covers the data.'
-          : 'What Atlas lets you do and see, and where each permission comes from.'
-      }
+      sub="What Atlas lets you do and see, and where each permission comes from."
       action={
         <Button asChild>
-          <Link to="/account/requests/new">＋ Request access</Link>
+          <Link to={ROUTES.newRequest}>＋ Request access</Link>
         </Button>
       }
     >
@@ -73,7 +58,7 @@ function NoDataAccess({ email }: { email: string }) {
       title="No data access yet"
       actions={
         <Button asChild>
-          <Link to="/account/requests/new?kind=group">Request access</Link>
+          <Link to={newRequestPath({ kind: 'group' })}>Request access</Link>
         </Button>
       }
     >
@@ -88,7 +73,7 @@ function PendingLink({ count }: { count: number }) {
   if (count < 1) return null;
   return (
     <p className="mt-3 text-[13.5px] text-body">
-      <Link to="/account/requests" className="font-medium text-primary-text hover:underline">
+      <Link to={ROUTES.requests} className="font-medium text-primary-text hover:underline">
         {count === 1 ? '1 pending request' : `${count} pending requests`} →
       </Link>{' '}
       <span className="text-muted-foreground">waiting on a decision.</span>

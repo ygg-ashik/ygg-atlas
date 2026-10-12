@@ -8,6 +8,7 @@ import { useAdminUsers } from '@/api/hooks/use-admin-users';
 import { describeMutationError } from '@/api/mutation-errors';
 import { Avatar, Button, Input, Select } from '@/ui';
 import { useDebouncedValue } from '../hooks/use-debounced-value';
+import { ROUTES } from '@/lib/routes';
 
 // Same look as the ui `Input` (DESIGN.md › field-input); cmdk needs its own input element.
 const SEARCH =
@@ -180,7 +181,10 @@ export function PickerDenied({ sentence }: { sentence?: string }) {
   return (
     <p className="mb-2.5 text-caption text-muted-foreground">
       {sentence ? `${sentence} ` : ''}People join through their access requests, which you decide in{' '}
-      <Link to="/admin/requests" className="text-primary-text underline-offset-4 hover:underline">
+      <Link
+        to={ROUTES.adminRequests}
+        className="text-primary-text underline-offset-4 hover:underline"
+      >
         Access requests
       </Link>
       .

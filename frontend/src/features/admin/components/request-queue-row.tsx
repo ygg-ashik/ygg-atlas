@@ -111,7 +111,7 @@ function OwnRequestNote({
 const requesterName = (request: AccessRequest) =>
   request.requester?.display_name || request.requester?.email || 'Unknown requester';
 
-function RequestSummary({ row, own }: { row: QueueRow; own: boolean }) {
+export function RequestSummary({ row, own }: { row: QueueRow; own: boolean }) {
   const { request, notice } = row;
   return (
     <div className="min-w-0 flex-1">

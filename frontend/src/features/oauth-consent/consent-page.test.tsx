@@ -141,13 +141,13 @@ describe('ConsentPage', () => {
     expect(submit).toHaveBeenCalledOnce();
   });
 
-  it('ineligible user sees Request access linking to /account/requests/new?kind=role', async () => {
+  it('ineligible user sees Request access linking to /settings/requests/new?kind=role', async () => {
     prompt.mockResolvedValue({ ...PROMPT, eligible: false, ineligible_reason: 'no_mcp_use' });
     renderPage();
     expect(await screen.findByText(/doesn't include MCP access yet/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Request access' })).toHaveAttribute(
       'href',
-      '/account/requests/new?kind=role',
+      '/settings/requests/new?kind=role',
     );
     expect(screen.queryByRole('button')).toBeNull();
     expect(assign).not.toHaveBeenCalled();

@@ -1,16 +1,12 @@
 import { Lock } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import type { DeniedBlock as DeniedBlockData } from '@/api/chat';
-import { Button, Notice, Tag } from '@/ui';
-
-/** The account feature's request form, prefilled. A URL keeps chat and account
- * decoupled (no cross-feature import). */
-export function requestAccessHref(resource: string, label: string): string {
-  return `/account/requests/new?${new URLSearchParams({ resource, label }).toString()}`;
-}
+import { deniedRequestPath } from '@/lib/routes';
+import { Notice, Tag } from '@/ui';
+import { RequestAccessButton } from './request-access-button';
 
 /** A policy denial in an answer (DESIGN.md › notice-denied, guardrail #4): the
- * fact, why it can't be widened here, the exact scope to ask for, and the way to ask. */
+ * fact, why it can't be widened here, the exact scope to ask for, and the way to
+ * ask: the request dialog over the chat, prefilled with this resource. */
 export function DeniedBlock({ block }: { block: DeniedBlockData }) {
   return (
     <Notice
@@ -27,9 +23,11 @@ export function DeniedBlock({ block }: { block: DeniedBlockData }) {
         <Tag dot>scope · from your Google sign-in</Tag>
       </div>
       <div className="mt-3">
-        <Button asChild size="sm">
-          <Link to={requestAccessHref(block.resource, block.label)}>Request access</Link>
-        </Button>
+        <RequestAccessButton
+          size="sm"
+          to={deniedRequestPath(block.resource, block.label)}
+          prefill={{ resource: block.resource, label: block.label }}
+        />
       </div>
     </Notice>
   );

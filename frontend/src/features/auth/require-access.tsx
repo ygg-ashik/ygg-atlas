@@ -13,6 +13,7 @@ import {
 } from '@/ui';
 import { useMyAccess } from '@/api/hooks/use-my-access';
 import { allows, type AccessRule } from './access-rule';
+import { ROUTES, newRequestPath } from '@/lib/routes';
 
 interface RequireAccessProps {
   rule: AccessRule;
@@ -84,10 +85,10 @@ function DeniedActions() {
   return (
     <>
       <Button asChild>
-        <Link to="/account">Go to My access</Link>
+        <Link to={ROUTES.access}>Go to My access</Link>
       </Button>
       <Button asChild variant="pill">
-        <Link to="/account/requests/new?kind=role">Request access</Link>
+        <Link to={newRequestPath({ kind: 'role' })}>Request access</Link>
       </Button>
     </>
   );

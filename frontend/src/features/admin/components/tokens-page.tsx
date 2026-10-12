@@ -20,9 +20,10 @@ import {
 } from '@/ui';
 import { isoDate, plural, seenAt } from '../format';
 import { useReviewedWrite, type ReviewedWrite } from '../hooks/use-reviewed-write';
-import { revokeAllLines, TOKEN_REVOKE, TOKEN_REVOKE_ALL, tokenRevokeLines } from '../review-lines';
+import { revokeAllLines, TOKEN_REVOKE_ALL, tokenRevokeReview } from '../review-lines';
 import { AdminPage } from './admin-page';
 import { ReviewSlot } from './review-slot';
+import { adminUserPath } from '@/lib/routes';
 
 type KindChoice = 'all' | TokenKindFilter;
 
@@ -132,16 +133,7 @@ function UserTokens({ userId, tokens, write, revokeAll: canRevokeAll }: UserToke
   const revokeOne = useRevokeAdminToken();
   const revokeAll = useRevokeAllUserTokens();
   const one = (t: Token) =>
-    write.open({
-      slot: `one:${userId}`,
-      title: 'Revoke token',
-      auditAction: TOKEN_REVOKE,
-      lines: tokenRevokeLines(t),
-      applyLabel: 'Revoke token',
-      appliedLabel: 'Revoked',
-      retryOn409: false,
-      run: () => revokeOne.mutateAsync(t.id),
-    });
+    write.open(tokenRevokeReview(t, `one:${userId}`, () => revokeOne.mutateAsync(t.id)));
   const all = () =>
     write.open({
       slot: `all:${userId}`,
@@ -176,10 +168,7 @@ function UserTokens({ userId, tokens, write, revokeAll: canRevokeAll }: UserToke
     <section aria-label={`Tokens of ${userId}`}>
       <div className="mb-2.5 flex flex-wrap items-center gap-2.5">
         {view.can('admin:users') ? (
-          <Link
-            to={`/admin/users/${encodeURIComponent(userId)}`}
-            className="text-ink underline-offset-2 hover:underline"
-          >
+          <Link to={adminUserPath(userId)} className="text-ink underline-offset-2 hover:underline">
             {owner}
           </Link>
         ) : (

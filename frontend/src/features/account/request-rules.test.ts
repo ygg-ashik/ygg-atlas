@@ -4,6 +4,7 @@ import {
   approverText,
   buildRequest,
   initialRequest,
+  prefillFromParams,
   isResourcePath,
   MAX_NOTE,
   nextRole,
@@ -36,8 +37,19 @@ describe('isResourcePath (mirrors backend patterns.is_resource_path)', () => {
   });
 });
 
+describe('initialRequest (dialog prefill)', () => {
+  it('takes the same prefill a dialog opener passes', () => {
+    expect(initialRequest({ resource: ' demo/order/revenue ', label: 'Revenue' })).toEqual({
+      kind: 'resource',
+      resource: 'demo/order/revenue',
+      label: 'Revenue',
+    });
+    expect(initialRequest({})).toEqual({ kind: 'group', resource: '', label: '' });
+  });
+});
+
 describe('initialRequest (query params)', () => {
-  const parse = (q: string) => initialRequest(new URLSearchParams(q));
+  const parse = (q: string) => initialRequest(prefillFromParams(new URLSearchParams(q)));
 
   it('a resource from a chat denial prefills the resource kind and its label', () => {
     expect(parse('resource=demo%2Fcheckout%2Fcheckout_funnel&label=Checkout+funnel')).toEqual({

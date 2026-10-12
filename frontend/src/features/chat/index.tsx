@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Toolbar } from '@/ui';
 import { useChatSessions, useCreateChatSession } from '@/api/hooks/use-chat-sessions';
 import { ChatPanel } from './components/chat-panel';
+import { threadPath } from '@/lib/routes';
 
 export { ChatThreadList } from './components/chat-thread-list';
 
@@ -33,7 +34,7 @@ export default function ChatPage() {
     const p = createSession
       .mutateAsync(undefined)
       .then((s) => {
-        navigate(`/ask/${s.id}`, { replace: true });
+        navigate(threadPath(s.id), { replace: true });
         ensuringRef.current = null;
         return s.id;
       })

@@ -11,6 +11,7 @@ import { GroupDetailPanel } from './group-detail-page';
 import { GroupForm } from './group-form';
 import { GroupTree } from './group-tree';
 import { LabelClassesPanel } from './label-classes-panel';
+import { adminGroupPath } from '@/lib/routes';
 
 /** `GET /admin/groups`: every group for admin:groups; for a group manager,
  * the groups they manage and their subgroups, with real parent ids (P5-D22).
@@ -55,7 +56,7 @@ function GroupsBody({ groups, selected, creating }: BodyProps) {
       <GroupTree
         groups={groups}
         selectedId={selected}
-        onSelect={(next) => navigate(`/admin/groups/${next}`)}
+        onSelect={(next) => navigate(adminGroupPath(next))}
       />
       {selected && <GroupDetailPanel groupId={selected} groups={groups} />}
     </div>

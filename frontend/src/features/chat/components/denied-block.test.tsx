@@ -1,8 +1,10 @@
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
+import { RequestAccessProvider, type OpenRequestAccess } from '@/lib/request-access';
 import { AnswerBlocks } from './answer-blocks';
-import { DeniedBlock, requestAccessHref } from './denied-block';
+import { DeniedBlock } from './denied-block';
 
 const block = {
   kind: 'denied' as const,
@@ -10,11 +12,16 @@ const block = {
   label: 'Checkout funnel & more',
 };
 
-function renderBlock() {
+function renderBlock(open: OpenRequestAccess | null = null) {
   render(
-    <MemoryRouter>
-      <DeniedBlock block={block} />
-    </MemoryRouter>,
+    <RequestAccessProvider value={open}>
+      <MemoryRouter initialEntries={['/ask/s1']}>
+        <Routes>
+          <Route path="/ask/:id" element={<DeniedBlock block={block} />} />
+          <Route path="/settings/requests/new" element={<p>request page</p>} />
+        </Routes>
+      </MemoryRouter>
+    </RequestAccessProvider>,
   );
 }
 
@@ -27,20 +34,27 @@ describe('DeniedBlock', () => {
     expect(screen.getByText('scope · from your Google sign-in')).toBeInTheDocument();
   });
 
-  it('links to a prefilled request with an encoded query', () => {
+  it('links to the prefilled request page with an encoded query', () => {
     renderBlock();
     const link = screen.getByRole('link', { name: 'Request access' });
     expect(link).toHaveAttribute(
       'href',
-      '/account/requests/new?resource=demo%2Fcheckout%2Fcheckout_funnel&label=Checkout+funnel+%26+more',
+      '/settings/requests/new?resource=demo%2Fcheckout%2Fcheckout_funnel&label=Checkout+funnel+%26+more',
     );
   });
 
-  it('the href round-trips through URLSearchParams', () => {
-    const href = requestAccessHref(block.resource, block.label);
-    const params = new URLSearchParams(href.split('?')[1]);
-    expect(params.get('resource')).toBe(block.resource);
-    expect(params.get('label')).toBe(block.label);
+  it('opens the request dialog in place, prefilled, when the app hosts one', async () => {
+    const open = vi.fn();
+    renderBlock(open);
+    await userEvent.click(screen.getByRole('link', { name: 'Request access' }));
+    expect(open).toHaveBeenCalledWith({ resource: block.resource, label: block.label });
+    expect(screen.queryByText('request page')).not.toBeInTheDocument();
+  });
+
+  it('follows the link to the request page without a dialog host', async () => {
+    renderBlock();
+    await userEvent.click(screen.getByRole('link', { name: 'Request access' }));
+    expect(screen.getByText('request page')).toBeInTheDocument();
   });
 
   it('AnswerBlocks renders a denied block', () => {

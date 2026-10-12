@@ -3,6 +3,7 @@ import { type RequestKind } from '@/api/access-requests';
 import { Button, Field, FieldError, Morph, SegmentedControl, Textarea } from '@/ui';
 import { type RequestFormState } from '../hooks/use-request-form';
 import { GroupChoices, ResourceField, RoleChoices } from './request-choices';
+import { ROUTES } from '@/lib/routes';
 
 const KINDS = [
   { value: 'group', label: 'Group' },
@@ -15,11 +16,18 @@ interface RequestFormProps {
   /** Business label of a prefilled resource ("Checkout funnel"). */
   label: string;
   currentRole: string;
+  /** In a dialog: Cancel closes it, and the form sits on the dialog's own card.
+   * On the page: Cancel goes back to Requests. */
+  onCancel?: () => void;
 }
 
-/** Screen 2 · the request form on a solid card: kind pills, the kind's choice,
- * a required note, and who it goes to. Send morphs to "✓ Sent". */
-export function RequestForm({ form, label, currentRole }: RequestFormProps) {
+const CARD =
+  'rounded-card bg-card px-[22px] py-5 shadow-[0_0_0_1px_hsl(var(--border)/0.6),0_1px_2px_rgba(0,0,0,0.04)]';
+
+/** Screen 2 · the request form: kind pills, the kind's choice, a required note,
+ * and who it goes to. Send morphs to "✓ Sent". One form for the New request
+ * page and the request dialog (⌘K, chat denials, first run). */
+export function RequestForm({ form, label, currentRole, onCancel }: RequestFormProps) {
   return (
     <form
       noValidate
@@ -28,7 +36,7 @@ export function RequestForm({ form, label, currentRole }: RequestFormProps) {
         e.preventDefault();
         form.submit();
       }}
-      className="rounded-card bg-card px-[22px] py-5 shadow-[0_0_0_1px_hsl(var(--border)/0.6),0_1px_2px_rgba(0,0,0,0.04)]"
+      className={onCancel ? undefined : CARD}
     >
       <div className="mb-2 text-label font-medium text-ink">What do you need?</div>
       <SegmentedControl
@@ -69,19 +77,19 @@ export function RequestForm({ form, label, currentRole }: RequestFormProps) {
           onChange={(e) => form.setNote(e.target.value)}
         />
       </Field>
-      <FormFooter form={form} />
+      <FormFooter form={form} onCancel={onCancel} />
     </form>
   );
 }
 
-function FormFooter({ form }: { form: RequestFormState }) {
+function FormFooter({ form, onCancel }: { form: RequestFormState; onCancel?: () => void }) {
   return (
     <div className="mt-[18px] flex flex-wrap items-center gap-2.5">
       {form.sent ? (
         <span role="status" className="flex items-center gap-1.5 text-[12.5px] text-positive">
           <span>Sent to {form.approver}.</span>
-          <Link to="/account/requests" className="font-medium hover:underline">
-            Track it in My requests →
+          <Link to={ROUTES.requests} className="font-medium hover:underline">
+            Track it in Requests →
           </Link>
         </span>
       ) : (
@@ -89,11 +97,7 @@ function FormFooter({ form }: { form: RequestFormState }) {
       )}
       {form.errors.form && <FieldError>{form.errors.form}</FieldError>}
       <span className="flex-1" />
-      {!form.sent && (
-        <Button asChild variant="pill">
-          <Link to="/account">Cancel</Link>
-        </Button>
-      )}
+      {!form.sent && <CancelButton onCancel={onCancel} />}
       <Button
         type="submit"
         disabled={form.sent || form.sending}
@@ -103,5 +107,20 @@ function FormFooter({ form }: { form: RequestFormState }) {
         <Morph done={form.sent} from="Send request" to="✓ Sent" />
       </Button>
     </div>
+  );
+}
+
+function CancelButton({ onCancel }: { onCancel?: () => void }) {
+  if (onCancel) {
+    return (
+      <Button type="button" variant="pill" onClick={onCancel}>
+        Cancel
+      </Button>
+    );
+  }
+  return (
+    <Button asChild variant="pill">
+      <Link to={ROUTES.requests}>Cancel</Link>
+    </Button>
   );
 }

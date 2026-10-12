@@ -4,6 +4,7 @@ import { type CapabilityCatalog, type MeAccess } from '@/api/access';
 import { Avatar, cn, ErrorNotice, RolePill } from '@/ui';
 import { addedCapabilities, nextRole } from '../request-rules';
 import { GroupList } from './group-list';
+import { newRequestPath } from '@/lib/routes';
 
 interface AccessSummaryProps {
   access: MeAccess;
@@ -80,7 +81,7 @@ export function AccessSummary({
       </ul>
       {next && adds.length > 0 && (
         <Link
-          to="/account/requests/new?kind=role"
+          to={newRequestPath({ kind: 'role' })}
           className="mt-2 inline-block text-label font-medium text-primary-text hover:underline"
         >
           Request {next}

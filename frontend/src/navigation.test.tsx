@@ -1,95 +1,122 @@
-// Shell navigation per persona: the admin section and both badges come from `/me/access`.
-import { render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+// Settings navigation per persona: the rail's Organization group, the account
+// menu's Admin entry and the palette's pages all come from `/me/access`.
 import { describe, expect, it, vi } from 'vitest';
 import { type MyAccessView } from '@/api/hooks/use-my-access';
 import { accessView, PERSONAS } from '@/test/access-view';
-import { Shell } from '@/features/layout';
-import { ThemeProvider } from '@/lib/theme-provider';
-import { ACCOUNT_MENU, buildNav } from './navigation';
+import { adminEntry, buildPalettePages, buildSettingsNav, PRIMARY_NAV } from './navigation';
 
 // The auth barrel pulls in the Firebase SDK; nothing here signs in.
 vi.mock('@/lib/firebase', () => ({ auth: {}, googleProvider: {} }));
 
-function renderNav(view: MyAccessView) {
-  render(
-    <ThemeProvider>
-      <MemoryRouter initialEntries={['/ask']}>
-        <Shell user={null} onSignOut={() => {}} nav={buildNav(view)} menuItems={ACCOUNT_MENU}>
-          <p>page</p>
-        </Shell>
-      </MemoryRouter>
-    </ThemeProvider>,
-  );
-  return screen.getByRole('complementary');
-}
+const paths = (view: MyAccessView, title: string) =>
+  buildSettingsNav(view)
+    .find((s) => s.title === title)
+    ?.items.map((i) => i.to);
 
-const adminLinks = (side: HTMLElement) =>
-  within(within(side).getByRole('group', { name: 'Admin' }))
-    .getAllByRole('link')
-    .map((l) => l.getAttribute('href'));
+const YOU = ['/settings', '/settings/access', '/settings/requests', '/settings/tokens'];
 
-describe('Shell navigation per persona', () => {
-  it('new viewer: Account section, no Admin section, no badges', () => {
-    const side = renderNav(PERSONAS.newViewer);
-    expect(within(side).getByRole('group', { name: 'Account' })).toBeInTheDocument();
-    expect(within(side).queryByRole('group', { name: 'Admin' })).not.toBeInTheDocument();
-    expect(within(side).queryByText(/pending request|to decide/)).not.toBeInTheDocument();
+describe('primary nav', () => {
+  it('holds only the work: Overview, Ask Atlas, Metrics', () => {
+    expect(PRIMARY_NAV.map((i) => i.to)).toEqual(['/', '/ask', '/metrics']);
+  });
+});
+
+describe('settings rail per persona', () => {
+  it('new viewer: You only, no Organization', () => {
+    expect(paths(PERSONAS.newViewer, 'You')).toEqual(YOU);
+    expect(paths(PERSONAS.newViewer, 'Organization')).toBeUndefined();
   });
 
-  it('viewer with data: their own pending requests badge My requests', () => {
-    const side = renderNav(PERSONAS.viewer);
-    expect(within(side).queryByRole('group', { name: 'Admin' })).not.toBeInTheDocument();
-    expect(within(side).getByRole('link', { name: /My requests/ })).toHaveTextContent(
-      '2 pending requests',
-    );
-  });
-
-  it('manager: Groups and Access requests only, badged with pending_approvals', () => {
-    const side = renderNav(PERSONAS.manager);
-    expect(adminLinks(side)).toEqual(['/admin/groups', '/admin/requests']);
-    expect(within(side).getByRole('link', { name: /Access requests/ })).toHaveTextContent(
-      '3 requests to decide',
-    );
-  });
-
-  it('admin: every admin entry; both badges from their own counts', () => {
-    const side = renderNav(PERSONAS.admin);
-    expect(adminLinks(side)).toEqual([
-      '/admin/users',
-      '/admin/groups',
-      '/admin/requests',
-      '/admin/audit',
+  it('manager: Groups and Access requests, the queue badged with pending_approvals', () => {
+    expect(paths(PERSONAS.manager, 'Organization')).toEqual([
+      '/settings/admin/groups',
+      '/settings/admin/requests',
     ]);
-    expect(within(side).getByRole('link', { name: /Access requests/ })).toHaveTextContent(
-      '5 requests to decide',
+    const queue = buildSettingsNav(PERSONAS.manager)[1]?.items[1];
+    expect(queue?.badge).toEqual({ count: 3, label: 'requests to decide' });
+  });
+
+  it('admin: every Organization page their capabilities open', () => {
+    expect(paths(PERSONAS.admin, 'Organization')).toEqual([
+      '/settings/admin/users',
+      '/settings/admin/groups',
+      '/settings/admin/requests',
+      '/settings/admin/audit',
+    ]);
+  });
+
+  it('admin:tokens and admin:clients each open only their own page', () => {
+    expect(
+      paths(accessView({ capabilities: ['chat:use', 'admin:tokens'] }), 'Organization'),
+    ).toEqual(['/settings/admin/tokens']);
+    expect(
+      paths(accessView({ capabilities: ['chat:use', 'admin:clients'] }), 'Organization'),
+    ).toEqual(['/settings/admin/clients']);
+  });
+
+  it('one request to decide reads in the singular', () => {
+    const view = accessView({ is_manager: true, pending_approvals: 1 });
+    expect(buildSettingsNav(view)[1]?.items[1]?.badge?.label).toBe('request to decide');
+  });
+
+  it.each(['loading', 'unavailable'] as const)('%s access: no Organization (fail closed)', (s) => {
+    expect(paths(accessView({}, s), 'Organization')).toBeUndefined();
+    expect(paths(accessView({}, s), 'You')).toEqual(YOU);
+  });
+});
+
+describe('account menu Admin entry', () => {
+  it('is absent for viewers and for capabilities outside admin', () => {
+    expect(adminEntry(PERSONAS.newViewer)).toBeUndefined();
+    expect(adminEntry(PERSONAS.viewer)).toBeUndefined();
+    expect(
+      adminEntry(accessView({ capabilities: ['chat:use', 'mcp:use', 'tokens:create'] })),
+    ).toBeUndefined();
+  });
+
+  it('opens the queue when something waits, with the count', () => {
+    expect(adminEntry(PERSONAS.manager)).toEqual({
+      to: '/settings/admin/requests',
+      pendingApprovals: 3,
+    });
+    expect(adminEntry(PERSONAS.admin)).toEqual({
+      to: '/settings/admin/requests',
+      pendingApprovals: 5,
+    });
+  });
+
+  it('otherwise opens the first Organization page', () => {
+    expect(adminEntry({ ...PERSONAS.admin, pendingApprovals: 0 })?.to).toBe(
+      '/settings/admin/users',
     );
-    expect(within(side).getByRole('link', { name: /My requests/ })).toHaveTextContent(
-      '1 pending request',
-    );
-    expect(within(side).getByRole('link', { name: /My requests/ })).not.toHaveTextContent(
-      '1 pending requests',
+    expect(adminEntry(accessView({ is_manager: true }))?.to).toBe('/settings/admin/groups');
+    expect(adminEntry(accessView({ capabilities: ['chat:use', 'admin:audit'] }))?.to).toBe(
+      '/settings/admin/audit',
     );
   });
 
-  it('admin:tokens only: the Admin section holds just Tokens', () => {
-    const side = renderNav(accessView({ capabilities: ['chat:use', 'admin:tokens'] }));
-    expect(adminLinks(side)).toEqual(['/admin/tokens']);
+  it.each(['loading', 'unavailable'] as const)('is absent while access is %s', (s) => {
+    expect(adminEntry(accessView({ capabilities: ['admin:users'] }, s))).toBeUndefined();
+  });
+});
+
+describe('palette pages', () => {
+  it('offers the primary pages and Settings pages the viewer can open', () => {
+    const pages = buildPalettePages(PERSONAS.viewer);
+    expect(pages.map((p) => p.label)).toEqual([
+      'Overview',
+      'Ask Atlas',
+      'Metrics',
+      'Settings › General',
+      'Settings › My access',
+      'Settings › Requests',
+      'Settings › Tokens & apps',
+    ]);
   });
 
-  it('admin:clients only: the Admin section holds just OAuth clients', () => {
-    const side = renderNav(accessView({ capabilities: ['chat:use', 'admin:clients'] }));
-    expect(adminLinks(side)).toEqual(['/admin/clients']);
-  });
-
-  it('an admin capability outside the admin pages opens no section', () => {
-    const side = renderNav(accessView({ capabilities: ['chat:use', 'mcp:use', 'tokens:create'] }));
-    expect(within(side).queryByRole('group', { name: 'Admin' })).not.toBeInTheDocument();
-  });
-
-  it.each(['loading', 'unavailable'] as const)('%s access shows no admin section', (status) => {
-    const side = renderNav(accessView({}, status));
-    expect(within(side).queryByRole('group', { name: 'Admin' })).not.toBeInTheDocument();
-    expect(within(side).getByRole('link', { name: 'My access' })).toBeInTheDocument();
+  it('adds Organization pages for an admin', () => {
+    const labels = buildPalettePages(PERSONAS.admin).map((p) => p.label);
+    expect(labels).toContain('Settings › Users');
+    expect(labels).not.toContain('Settings › OAuth clients');
   });
 });

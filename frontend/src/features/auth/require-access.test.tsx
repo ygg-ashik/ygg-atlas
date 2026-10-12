@@ -19,7 +19,7 @@ const REQUESTS: AccessRule = {
   need: 'admin:users',
 };
 
-function renderAt(rule: AccessRule, path = '/admin/users') {
+function renderAt(rule: AccessRule, path = '/settings/admin/users') {
   render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
@@ -80,23 +80,25 @@ describe('RequireAccess', () => {
     renderAt(USERS);
     const page = deniedPage('admin:users');
     expect(page).toHaveTextContent('Your role (viewer)');
-    expect(page).toHaveTextContent('/admin/users stays closed');
+    expect(page).toHaveTextContent('/settings/admin/users stays closed');
     expect(screen.queryByText('secret admin page')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Go to My access' })).toHaveAttribute(
       'href',
-      '/account',
+      '/settings/access',
     );
     expect(screen.getByRole('link', { name: 'Request access' })).toHaveAttribute(
       'href',
-      '/account/requests/new?kind=role',
+      '/settings/requests/new?kind=role',
     );
   });
 
   it('labels the toolbar with the title and the mono route', () => {
     view = PERSONAS.viewer;
-    renderAt(USERS, '/admin/users/u-9');
+    renderAt(USERS, '/settings/admin/users/u-9');
     expect(screen.getByRole('heading', { level: 1, name: 'Users' })).toBeInTheDocument();
-    expect(document.querySelector('[data-route-label]')).toHaveTextContent('/admin/users/u-9');
+    expect(document.querySelector('[data-route-label]')).toHaveTextContent(
+      '/settings/admin/users/u-9',
+    );
   });
 
   it('fails closed to the denied page when access is unavailable, with a retry', async () => {
@@ -125,19 +127,19 @@ describe('RequireAccess', () => {
 
   it('accepts any one capability of the set, or manager standing', () => {
     view = accessView({ capabilities: ['admin:groups'] });
-    renderAt(REQUESTS, '/admin/requests');
+    renderAt(REQUESTS, '/settings/admin/requests');
     expect(screen.getByText('secret admin page')).toBeInTheDocument();
   });
 
   it('lets a manager in where managers count', () => {
     view = PERSONAS.manager;
-    renderAt(REQUESTS, '/admin/requests');
+    renderAt(REQUESTS, '/settings/admin/requests');
     expect(screen.getByText('secret admin page')).toBeInTheDocument();
   });
 
   it('denies a manager where only the capability counts', () => {
     view = PERSONAS.manager;
-    renderAt({ anyOf: ['admin:audit'], need: 'admin:audit' }, '/admin/audit');
+    renderAt({ anyOf: ['admin:audit'], need: 'admin:audit' }, '/settings/admin/audit');
     expect(deniedPage('admin:audit')).toHaveTextContent('Your role (analyst)');
   });
 });

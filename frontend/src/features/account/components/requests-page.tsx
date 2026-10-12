@@ -4,6 +4,7 @@ import { useMyRequests } from '@/api/hooks/use-access-requests';
 import { Button, EmptyState, ErrorNotice, SkeletonRegion, SkeletonRows } from '@/ui';
 import { AccountPage } from './account-page';
 import { RequestCard } from './request-card';
+import { ROUTES } from '@/lib/routes';
 
 /** Screen 3 · My requests: everything the caller asked for, newest first. */
 export function MyRequestsPage() {
@@ -11,11 +12,11 @@ export function MyRequestsPage() {
   const reload = () => void requests.refetch();
   return (
     <AccountPage
-      title="My requests"
+      title="Requests"
       sub="Everything you've asked for, and what was decided."
       action={
         <Button asChild>
-          <Link to="/account/requests/new">＋ New request</Link>
+          <Link to={ROUTES.newRequest}>＋ New request</Link>
         </Button>
       }
     >
@@ -42,7 +43,7 @@ export function MyRequestsPage() {
           title="Nothing requested yet"
           actions={
             <Button asChild>
-              <Link to="/account/requests/new">Request access</Link>
+              <Link to={ROUTES.newRequest}>Request access</Link>
             </Button>
           }
         >

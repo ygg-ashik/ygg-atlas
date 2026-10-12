@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import { Loader2 } from 'lucide-react';
 import { BrandMark, Button, Glass, materialize, springDefault, withReducedMotion } from '@/ui';
 import { useAuth } from './auth-context';
+import { ROUTES } from '@/lib/routes';
 
 /* eslint-disable no-restricted-syntax -- official Google "G" brand colors, not design tokens */
 const GoogleMark = () => (
@@ -47,7 +48,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [signingIn, setSigningIn] = useState(false);
 
-  if (!isLoading && isAuthenticated) return <Navigate to="/" replace />;
+  if (!isLoading && isAuthenticated) return <Navigate to={ROUTES.home} replace />;
 
   const handleSignIn = async () => {
     setError(null);

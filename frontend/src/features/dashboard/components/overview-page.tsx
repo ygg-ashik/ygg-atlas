@@ -5,6 +5,7 @@ import { PresetCard, type PresetPreview, Toolbar } from '@/ui';
 import { BreakdownCard } from './breakdown-card';
 import { KpiCard } from './kpi-card';
 import { RangeSwitch } from './range-switch';
+import { askPath } from '@/lib/routes';
 
 interface Preset {
   title: string;
@@ -110,7 +111,7 @@ export function OverviewPage({ userName }: { userName: string }) {
                 title={p.title}
                 description={p.description}
                 preview={p.preview}
-                onSelect={() => navigate(`/ask?q=${encodeURIComponent(p.question)}`)}
+                onSelect={() => navigate(askPath(p.question))}
               />
             ))}
           </div>

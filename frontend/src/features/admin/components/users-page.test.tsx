@@ -17,10 +17,10 @@ function renderPage() {
   const { wrapper: Wrapper } = createQueryWrapper();
   render(
     <Wrapper>
-      <MemoryRouter initialEntries={['/admin/users']}>
+      <MemoryRouter initialEntries={['/settings/admin/users']}>
         <Routes>
-          <Route path="/admin/users" element={<UsersPage />} />
-          <Route path="/admin/users/:id" element={<p>detail page</p>} />
+          <Route path="/settings/admin/users" element={<UsersPage />} />
+          <Route path="/settings/admin/users/:id" element={<p>detail page</p>} />
         </Routes>
       </MemoryRouter>
     </Wrapper>,

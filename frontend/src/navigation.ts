@@ -1,7 +1,8 @@
 // src/navigation.ts
 // App-level composition: which routes need what, and the navigation built from
-// the backend's `/me/access` answer. The route guards (App.tsx), the
-// sidebar and the command palette all read these, so they never disagree.
+// the backend's `/me/access` answer. The route guards (App.tsx), the sidebar,
+// the settings rail, the account menu and the command palette all read these,
+// so they never disagree. Paths come from `lib/routes`.
 import {
   ArrowLeftRight,
   History,
@@ -13,12 +14,14 @@ import {
   MessageCircle,
   Network,
   Plug,
+  Settings2,
   ShieldCheck,
   Users,
 } from 'lucide-react';
 import { type MyAccessView } from '@/api/hooks/use-my-access';
 import { allows, type AccessRule } from '@/features/auth';
-import { type AccountMenuItem, type NavBadge, type NavItem } from '@/features/layout';
+import { type AdminEntry, type NavItem, type NavSection } from '@/features/layout';
+import { ROUTES } from '@/lib/routes';
 
 /** Route access rules (backend capabilities; managers where the backend lets them act). */
 export const ACCESS = {
@@ -33,68 +36,68 @@ export const ACCESS = {
   clients: { anyOf: ['admin:clients'], need: 'admin:clients' },
 } as const satisfies Record<string, AccessRule>;
 
-const PRIMARY: NavItem[] = [
-  { to: '/', label: 'Overview', icon: LayoutDashboard },
-  { to: '/ask', label: 'Ask Atlas', icon: MessageCircle },
-  { to: '/metrics', label: 'Metrics', icon: Library },
+export const PRIMARY_NAV: NavItem[] = [
+  { to: ROUTES.home, label: 'Overview', icon: LayoutDashboard },
+  { to: ROUTES.ask, label: 'Ask Atlas', icon: MessageCircle },
+  { to: ROUTES.metrics, label: 'Metrics', icon: Library },
 ];
 
-export const ACCOUNT_MENU: AccountMenuItem[] = [
-  { to: '/account', label: 'My access', icon: ShieldCheck },
-  { to: '/account/tokens', label: 'Tokens & apps', icon: KeyRound },
+const YOU: NavItem[] = [
+  { to: ROUTES.settings, label: 'General', icon: Settings2 },
+  { to: ROUTES.access, label: 'My access', icon: ShieldCheck },
+  { to: ROUTES.requests, label: 'Requests', icon: ArrowLeftRight },
+  { to: ROUTES.tokens, label: 'Tokens & apps', icon: KeyRound },
 ];
 
-/** Screen-reader meaning of a count badge, singular or plural ("1 pending request"). */
-function countBadge(count: number, one: string, many: string): NavBadge {
-  return { count, label: count === 1 ? one : many };
-}
-
-function accountItems(view: MyAccessView): NavItem[] {
-  const section = 'Account';
-  return [
-    { to: '/account', label: 'My access', icon: ShieldCheck, section, end: true },
-    {
-      to: '/account/requests',
-      label: 'My requests',
-      icon: ArrowLeftRight,
-      section,
-      badge: countBadge(view.pendingRequests, 'pending request', 'pending requests'),
-    },
-    { to: '/account/tokens', label: 'Tokens & apps', icon: KeyRound, section },
-  ];
-}
-
-function adminItems(view: MyAccessView): NavItem[] {
-  const section = 'Admin';
+function organization(view: MyAccessView): NavItem[] {
+  const n = view.pendingApprovals;
   const candidates: { rule: AccessRule; item: NavItem }[] = [
-    { rule: ACCESS.users, item: { to: '/admin/users', label: 'Users', icon: Users, section } },
-    { rule: ACCESS.groups, item: { to: '/admin/groups', label: 'Groups', icon: Network, section } },
+    { rule: ACCESS.users, item: { to: ROUTES.adminUsers, label: 'Users', icon: Users } },
+    { rule: ACCESS.groups, item: { to: ROUTES.adminGroups, label: 'Groups', icon: Network } },
     {
       rule: ACCESS.requests,
       item: {
-        to: '/admin/requests',
+        to: ROUTES.adminRequests,
         label: 'Access requests',
         icon: Inbox,
-        section,
         // Requests the viewer can decide, never their own: the same set as the queue's tab.
-        badge: countBadge(view.pendingApprovals, 'request to decide', 'requests to decide'),
+        badge: { count: n, label: n === 1 ? 'request to decide' : 'requests to decide' },
       },
     },
-    { rule: ACCESS.audit, item: { to: '/admin/audit', label: 'Audit', icon: History, section } },
-    {
-      rule: ACCESS.tokens,
-      item: { to: '/admin/tokens', label: 'Tokens', icon: KeySquare, section },
-    },
+    { rule: ACCESS.audit, item: { to: ROUTES.adminAudit, label: 'Audit', icon: History } },
+    { rule: ACCESS.tokens, item: { to: ROUTES.adminTokens, label: 'Tokens', icon: KeySquare } },
     {
       rule: ACCESS.clients,
-      item: { to: '/admin/clients', label: 'OAuth clients', icon: Plug, section },
+      item: { to: ROUTES.adminClients, label: 'OAuth clients', icon: Plug },
     },
   ];
   return candidates.filter(({ rule }) => allows(view, rule)).map(({ item }) => item);
 }
 
-/** Primary, Account, then the Admin section with only the entries the viewer
- * can open. No admin entries while access is loading or unavailable (fail closed). */
-export function buildNav(view: MyAccessView): NavItem[] {
-  return [...PRIMARY, ...accountItems(view), ...adminItems(view)];
+/** The settings rail: You, then Organization with only the pages the viewer can
+ * open. No Organization group while access is loading or unavailable (fail closed). */
+export function buildSettingsNav(view: MyAccessView): NavSection[] {
+  const org = organization(view);
+  const you: NavSection = { title: 'You', items: YOU };
+  return org.length ? [you, { title: 'Organization', items: org }] : [you];
+}
+
+/** Every page the palette may offer: the primary nav, then "Settings › …". */
+export function buildPalettePages(view: MyAccessView): { label: string; to: string }[] {
+  const settings = buildSettingsNav(view).flatMap((s) => s.items);
+  return [
+    ...PRIMARY_NAV.map(({ label, to }) => ({ label, to })),
+    ...settings.map(({ label, to }) => ({ label: `Settings › ${label}`, to })),
+  ];
+}
+
+/** The account menu's Admin item: managers and holders of any `admin:*`
+ * capability. It opens the queue when something waits, else the first page. */
+export function adminEntry(view: MyAccessView): AdminEntry | undefined {
+  const admin = view.capabilities.some((c) => c.startsWith('admin:'));
+  if (view.status !== 'ready' || !(admin || view.isManager)) return undefined;
+  const pages = organization(view);
+  const queue = pages.find((p) => p.to === ROUTES.adminRequests);
+  const to = view.pendingApprovals > 0 && queue ? queue.to : pages[0]?.to;
+  return to ? { to, pendingApprovals: view.pendingApprovals } : undefined;
 }

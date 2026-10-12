@@ -12,6 +12,7 @@ import { GroupGrants } from './group-grants';
 import { MembersPanel } from './members-panel';
 import { ReviewSlot } from './review-slot';
 import { CARD } from './surfaces';
+import { ROUTES } from '@/lib/routes';
 
 /** The backend's refusal for deleting a group in use (`delete_group`). */
 const IN_USE = "Remove the group's subgroups, members and grants first.";
@@ -43,7 +44,7 @@ function GroupHeader({ group, subgroups, groups, canEdit }: HeaderProps) {
       retryOn409: false,
       run: async () => {
         await remove.mutateAsync(group.id);
-        navigate('/admin/groups');
+        navigate(ROUTES.adminGroups);
       },
     });
   };

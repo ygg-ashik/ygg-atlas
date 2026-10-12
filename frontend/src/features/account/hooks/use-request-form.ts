@@ -13,6 +13,7 @@ import {
   type DraftErrors,
   type InitialRequest,
 } from '../request-rules';
+import { ROUTES } from '@/lib/routes';
 
 const BAD_PATH = 'Enter one resource path like demo/order/revenue.';
 /** The backend's blank-note sentence (requests.py); it belongs under the note. */
@@ -98,7 +99,7 @@ export function useRequestForm(initial: InitialRequest, currentRole: string) {
         if (info.kind === 'conflict') {
           actionToast(info.message, {
             actionLabel: 'View',
-            onAction: () => navigate('/account/requests'),
+            onAction: () => navigate(ROUTES.requests),
           });
           return;
         }

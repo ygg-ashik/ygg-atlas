@@ -1,5 +1,5 @@
 // src/features/command/use-palette-open.ts
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /** Fired by `CommandTrigger` so the button and the hotkey share one code path. */
 export const OPEN_PALETTE_EVENT = 'atlas:open-command-palette';
@@ -8,9 +8,15 @@ function isPaletteHotkey(e: KeyboardEvent): boolean {
   return (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k';
 }
 
-/** Palette open state: ⌘K / Ctrl+K toggles it, the trigger event opens it. */
-export function usePaletteOpen() {
+/** Palette open state: ⌘K / Ctrl+K toggles it, the trigger event opens it.
+ * `notify` hears every change (App.tsx loads quick-action data while open). */
+export function usePaletteOpen(notify?: (open: boolean) => void) {
   const [open, setOpen] = useState(false);
+  const notifyRef = useRef(notify);
+  notifyRef.current = notify;
+  useEffect(() => {
+    notifyRef.current?.(open);
+  }, [open]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
