@@ -153,9 +153,10 @@ anatomy, where code goes, limits, enforcement). Machines enforce it; CI is the f
   `main > api|mcp > agent > atlas > sources`, never upward.
 - Frontend: thin pages, data through hooks, features never import features, shared components
   only in `ui/` when generic and used by two or more features.
-- One topic per file: backend modules ≤ 500 lines, test modules ≤ 800, classes ≤ 20 methods
-  (`backend/scripts/check_module_size.py`). A layer that outgrows one file becomes a package with
-  one file per topic (ARCHITECTURE.md §2.2); compose services, never subclass them for reuse.
+- **One topic per file, by design from the first commit** (ARCHITECTURE.md §2.2): name a module's
+  topics before writing it; with 2+ topics every layer is a package with one file per topic. Compose
+  services, never subclass them for reuse. Backstop limits: modules ≤ 500 lines, test modules ≤ 800,
+  classes ≤ 20 methods (`backend/scripts/check_module_size.py`).
 - No `utils.py` / `utils.ts` grab-bags. Something moves to `core/` only with a stable, generic
   responsibility and several real consumers.
 - Python: Ruff at 88 columns, annotations on every function, no `Any` shortcuts, timezone-aware

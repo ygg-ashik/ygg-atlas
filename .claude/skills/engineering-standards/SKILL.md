@@ -50,7 +50,7 @@ applying them. Machines are the final authority: if `make check` fails, the work
 | An agent tool behavior | `app/atlas/tools.py` (the one door to data) |
 | A helper used only here | The same module, in a file named for what it does |
 | A truly cross-cutting helper | `app/core/<topic>.py`, only with a stable, generic job and several real consumers |
-| More code in a layer file that is past ~400 lines or holds several topics | Split that layer into a package with one file per topic (`routers/`, `services/`, `repositories/`, `schemas/`), per ARCHITECTURE.md §2.2; the package `__init__.py` re-exports |
+| A new topic (domain noun) in a module | Its own file in each layer it touches: when the module has 2+ topics, every layer is a package with one file per topic (`routers/`, `services/`, `repositories/`, `schemas/`), per ARCHITECTURE.md §2.2. Name the topics before writing code; never add a second topic to a single-topic file |
 
 ### Frontend
 
