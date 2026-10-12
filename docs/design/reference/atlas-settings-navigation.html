@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Atlas · Settings navigation (review)</title>
+<!-- Design-review mockup (decision gate): move Account and Admin out of the sidebar into an
+     account menu plus a dedicated Settings page. Built on DESIGN.md "Atlas Hybrid Glass" tokens and
+     the approved phase-5 mockup (atlas-admin-self-service.html): same tokens, dock, data and screen
+     content. DESIGN.md stays authoritative. Not production code. Deep-link with
+     #layout=A&screen=settings&page=users&persona=admin&pending=3&width=desktop -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300..700&family=Source+Serif+4:opsz,wght@8..60,400..600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═════════ TOKENS · DESIGN.md (light default) ═════════ */
+body{
+  --canvas:#faf9f5;--card:#ffffff;--card-2:#f7f3ec;--ink:#141413;--body:#3d3d3a;--muted:#6c6a64;--muted-2:#8e8b82;
+  --hair:#14141314;--hair-2:#1414130d;--accent:#b45536;--accent-text:#b45536;--accent-soft:#b455361f;--on-accent:#ffffff;
+  --pos:#3f7d4e;--neg:#b4452f;--warn:#b7791f;--scrim:#0000002e;
+  --glass:#ffffff9e;--glass-heavy:#ffffffb8;--glass-edge:#ffffffcc;
+  --glass-shadow:0 1px 1px rgba(0,0,0,.04),0 10px 30px rgba(0,0,0,.08);--glass-spec:inset 0 1px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(0,0,0,.03);
+  --wash:radial-gradient(60% 50% at 15% -10%,rgba(232,165,90,.16),transparent 70%),radial-gradient(50% 40% at 95% 0%,rgba(180,85,54,.10),transparent 70%);
+  --blur:saturate(180%) blur(22px);
+  --sans:Inter,-apple-system,BlinkMacSystemFont,system-ui,sans-serif;--serif:"Source Serif 4",Georgia,serif;--mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  --ease:cubic-bezier(.22,1,.36,1);--sheet:cubic-bezier(.32,.72,0,1);
+}
+body[data-theme=dark]{
+  --canvas:#1a1917;--card:#252320;--card-2:#2b2925;--ink:#f3f0ea;--body:#d6d2ca;--muted:#a09d96;--muted-2:#7d7a73;
+  --hair:#ffffff14;--hair-2:#ffffff0d;--accent-text:#d97a57;--accent-soft:#d97a5733;
+  --pos:#7cc28c;--neg:#e48a72;--warn:#e0a84a;
+  --glass:#28262291;--glass-heavy:#242320b3;--glass-edge:#ffffff1a;
+  --glass-shadow:0 1px 1px rgba(0,0,0,.3),0 12px 36px rgba(0,0,0,.5);--glass-spec:inset 0 1px 0 rgba(255,255,255,.12),inset 0 -1px 0 rgba(0,0,0,.2);
+  --wash:radial-gradient(60% 50% at 15% -10%,rgba(232,165,90,.09),transparent 70%),radial-gradient(50% 40% at 95% 0%,rgba(180,85,54,.07),transparent 70%);
+}
+/* accessibility layers: forced by the dock, or by the OS media queries */
+body.hc{--hair:color-mix(in srgb,var(--ink) 35%,transparent);--hair-2:color-mix(in srgb,var(--ink) 22%,transparent);--muted:var(--body);--muted-2:var(--body)}
+
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{font-family:var(--sans);background:var(--canvas);color:var(--ink);-webkit-font-smoothing:antialiased;font-size:15px;line-height:1.5;transition:background-color .45s var(--ease),color .45s var(--ease)}
+button,input,select,textarea{font:inherit;color:inherit}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}
+.serif{font-family:var(--serif);font-weight:400;letter-spacing:-.01em}
+h1,h2,h3{font-family:var(--serif);font-weight:400;letter-spacing:-.01em;margin:0}
+a{color:var(--accent-text);text-decoration:none;cursor:pointer}a:hover{text-decoration:underline}
+.muted{color:var(--muted)}.cap{font-size:11.5px;color:var(--muted);letter-spacing:.005em}
+
+/* glass: floating chrome only */
+.glass{background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-edge);box-shadow:var(--glass-shadow),var(--glass-spec)}
+.spec::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(180px 100px at var(--x,50%) var(--y,-30%),rgba(255,255,255,.55),transparent 65%);mix-blend-mode:soft-light}
+body.rt .glass,body.hc .glass{background:var(--card);backdrop-filter:none;-webkit-backdrop-filter:none}
+body.rt .spec::after,body.hc .spec::after{display:none}
+body.hc .glass{border:1px solid var(--ink)}
+body.rt .edge-top,body.hc .edge-top{display:none}
+
+/* solid surfaces */
+.card{background:var(--card);border-radius:18px;box-shadow:0 0 0 1px var(--hair-2),0 1px 2px rgba(0,0,0,.04)}
+body.hc .card{box-shadow:0 0 0 1px var(--hair)}
+.pad{padding:16px 18px}
+
+/* buttons */
+.btn{border:0;border-radius:99px;padding:8px 16px;background:var(--accent);color:var(--on-accent);font-size:13px;font-weight:500;cursor:pointer;transition:transform .1s ease-out,filter .2s,opacity .2s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{filter:brightness(1.06)}.btn:active{transform:scale(.96)}.btn[disabled]{opacity:.45;cursor:not-allowed;transform:none;filter:none}
+.pill{border:1px solid var(--hair);background:var(--card);color:var(--body);padding:7px 13px;border-radius:99px;font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:transform .1s ease-out,background .2s,border-color .2s,color .2s}
+.pill:hover{border-color:var(--accent-text);color:var(--ink)}.pill:active{transform:scale(.96)}
+.pill.sel{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.pill.sm{padding:4px 10px;font-size:12px}
+.pill[disabled]{opacity:.45;cursor:not-allowed;transform:none}.pill[disabled]:hover{border-color:var(--hair);color:var(--body)}
+.ibtn{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;border:0;background:transparent;color:var(--ink);cursor:pointer;transition:transform .1s ease-out,background .2s;font-size:16px;flex-shrink:0}
+.ibtn:hover{background:var(--hair)}.ibtn:active{transform:scale(.92)}
+:focus-visible{outline:none;box-shadow:0 0 0 4px var(--accent-soft)!important}
+.link{background:none;border:0;padding:0;color:var(--accent-text);cursor:pointer;font-size:13px;font-weight:500}
+
+/* status: always dot + text, never colour alone */
+.st{--c:var(--muted);display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:2px 9px 2px 8px;border-radius:99px;color:var(--c);background:color-mix(in srgb,var(--c) 11%,transparent);white-space:nowrap;line-height:1.5}
+.st i{width:6px;height:6px;border-radius:50%;background:var(--c);flex-shrink:0}
+.st.pos{--c:var(--pos)}.st.neg{--c:var(--neg)}.st.warn{--c:var(--warn)}.st.acc{--c:var(--accent-text)}.st.mute{--c:var(--muted)}
+.st.deny i{border-radius:1px;transform:rotate(45deg);width:6px;height:6px}
+.role{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:2px 10px;border-radius:99px;border:1px solid var(--hair);background:var(--card-2);color:var(--ink);white-space:nowrap}
+.role b{width:6px;height:6px;border-radius:2px;background:var(--accent);transform:rotate(45deg);display:inline-block}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted);padding:2px 9px;border-radius:99px;background:var(--card-2);border:1px solid var(--hair-2);white-space:nowrap}
+.tag.mono{font-size:11px}
+.prov{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);padding:3px 10px;border-radius:99px;background:var(--card-2);border:1px solid var(--hair-2);white-space:nowrap}
+.fresh{width:6px;height:6px;border-radius:50%;background:var(--pos)}
+.badge{min-width:20px;height:20px;padding:0 6px;border-radius:99px;background:var(--accent);color:var(--on-accent);font-size:11px;font-weight:600;display:inline-grid;place-items:center;font-variant-numeric:tabular-nums;margin-left:auto}
+.av{width:30px;height:30px;border-radius:50%;background:var(--accent-soft);color:var(--accent-text);display:grid;place-items:center;font-size:11px;font-weight:600;flex-shrink:0;letter-spacing:.02em}
+.av.lg{width:48px;height:48px;font-size:16px}
+.av.svc{background:var(--card-2);color:var(--muted);border-radius:10px}
+
+/* ═════════ ORIGIN OVERLAY ═════════ */
+body.show-o [data-o]{outline:1.5px dashed var(--oc);outline-offset:3px}
+body.show-o [data-o]:not(.pos){position:relative}
+body.show-o [data-o]::before{content:attr(data-o-label);position:absolute;top:-10px;left:10px;z-index:40;font:600 9.5px/1 var(--sans);letter-spacing:.05em;text-transform:uppercase;color:#fff;background:var(--oc);padding:3px 6px;border-radius:5px;white-space:nowrap;pointer-events:none}
+body.show-o .side[data-o]::before{top:6px;left:auto;right:10px}
+[data-o=apple]{--oc:#2f6fdb}[data-o=claude]{--oc:#c2552f}[data-o=codex]{--oc:#3a3a3c}[data-o=atlas]{--oc:#7d4cdb}
+
+/* ═════════ FRAME (width simulation) + SHELL ═════════ */
+#frame{height:100vh;position:relative;margin:0 auto;background:var(--wash),var(--canvas);transition:max-width .45s var(--sheet)}
+body.sim{background:var(--card-2)}
+body.sim #frame{box-shadow:0 0 0 1px var(--hair),0 20px 60px rgba(0,0,0,.10)}
+.simlabel{position:absolute;top:-1px;right:24px;z-index:50;font:500 10.5px/1 var(--mono);color:var(--muted);background:var(--card);padding:4px 8px;border-radius:0 0 6px 6px;box-shadow:0 0 0 1px var(--hair);display:none}
+body.sim .simlabel{display:block}
+.app{display:flex;height:100%;padding:10px;gap:10px;position:relative;overflow:hidden}
+.side{width:236px;flex-shrink:0;border-radius:22px;padding:14px 10px;display:flex;flex-direction:column;gap:2px;position:relative;background:var(--glass-heavy);overflow-y:auto;transition:transform .5s var(--sheet)}
+body.rt .side,body.hc .side{background:var(--card)}
+.brand{font-family:var(--serif);font-size:21px;padding:4px 10px 12px;display:flex;align-items:center;gap:9px}.brand i{width:10px;height:10px;border-radius:3px;background:var(--accent);transform:rotate(45deg)}
+.nav{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:12px;color:var(--body);font-size:14px;cursor:pointer;transition:background .2s,transform .1s ease-out;border:0;background:transparent;width:100%;text-align:left}
+.nav .ic{width:18px;display:grid;place-items:center;color:var(--muted)}
+.nav:hover{background:var(--hair-2)}.nav:active{transform:scale(.97)}
+.nav.on{background:var(--card);color:var(--ink);box-shadow:0 0 0 1px var(--hair-2),0 1px 3px rgba(0,0,0,.06)}.nav.on .ic{color:var(--accent-text)}
+.sec{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-2);padding:14px 10px 5px;display:flex;align-items:center;gap:6px}
+.me{margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px;border-radius:14px}
+.me .nm{font-size:13px;color:var(--ink);font-weight:500;line-height:1.2}.me .em{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px}
+.main{flex:1;position:relative;overflow:hidden;border-radius:22px;min-width:0}
+.scroller{position:absolute;inset:0;overflow-y:auto}
+.topbar{position:absolute;top:10px;left:14px;right:14px;height:52px;border-radius:26px;z-index:10;display:flex;align-items:center;gap:8px;padding:0 8px 0 18px}
+.topbar .t{font-family:var(--serif);font-size:19px;letter-spacing:-.005em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:8px;min-width:0}
+.topbar .t .crumb{color:var(--muted);cursor:pointer}.topbar .t .crumb:hover{color:var(--ink)}
+.topbar .route{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46%}
+.menubtn{display:none}
+.edge-top{position:absolute;top:0;left:0;right:0;height:80px;z-index:5;pointer-events:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);mask-image:linear-gradient(#000 30%,transparent);-webkit-mask-image:linear-gradient(#000 30%,transparent)}
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:30;opacity:0;pointer-events:none;transition:opacity .3s var(--ease)}.scrim.on{opacity:1;pointer-events:auto}
+
+/* responsive (driven by the dock's width control, defaults to the real window) */
+body.w-narrow .side{position:absolute;z-index:35;top:10px;bottom:10px;left:10px;transform:translateX(calc(-100% - 24px))}
+body.w-narrow.drawer .side{transform:none}
+body.w-narrow .menubtn{display:grid}
+body.w-narrow .route{display:none}
+body.w-narrow .srch{margin-left:auto}
+body.w-mid .hide-mid,body.w-narrow .hide-mid,body.w-narrow .hide-narrow{display:none}
+
+/* ═════════ PAGE ═════════ */
+.page{max-width:var(--w,1080px);margin:0 auto;padding:84px 28px 140px}
+.enter{animation:enter .45s var(--ease)}@keyframes enter{from{opacity:0;transform:translateY(6px)}}
+.hello{font-size:32px;line-height:1.15;margin:6px 0 4px}
+.sub{color:var(--muted);margin:0 0 20px;max-width:640px}
+.head-row{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.head-row .sub{margin:0}
+.head-row>div:first-child{flex:1;min-width:min(100%,320px)}
+.sh{font-size:19px;line-height:1.3;margin:26px 0 10px;display:flex;align-items:center;gap:10px}
+.sh .cap{font-family:var(--sans);margin-left:auto}
+.stack{display:grid;gap:12px}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.spacer{flex:1}
+
+/* inset list (Apple grouped) */
+.list{background:var(--card);border-radius:16px;box-shadow:0 0 0 1px var(--hair-2);overflow:hidden}
+body.hc .list{box-shadow:0 0 0 1px var(--hair)}
+.li{padding:12px 16px;border-bottom:1px solid var(--hair-2);display:flex;align-items:center;gap:12px;min-height:52px}
+.li:last-child{border-bottom:0}
+.li .grow{flex:1;min-width:0}
+.li .t1{font-size:14.5px;font-weight:500;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.li .t2{font-size:12.5px;color:var(--muted);margin-top:1px}
+.li.click{cursor:pointer;transition:background .2s}.li.click:hover{background:var(--hair-2)}
+.li.sel{background:var(--accent-soft)}
+.radio{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--hair);flex-shrink:0;display:grid;place-items:center;transition:border-color .2s}
+.li.sel .radio,.radio.on{border-color:var(--accent)}.li.sel .radio::after,.radio.on::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
+
+/* data table on a solid card */
+.tw{overflow-x:auto;border-radius:18px}
+table.dt{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+.dt th{font-weight:500;color:var(--muted);font-size:12px;text-align:left;padding:12px 12px 8px;border-bottom:1px solid var(--hair);white-space:nowrap}
+.dt td{padding:11px 12px;border-bottom:1px solid var(--hair-2);vertical-align:middle;color:var(--body)}
+.dt tr:last-child td{border-bottom:0}
+.dt td.num{white-space:nowrap}
+.dt th:first-child,.dt td:first-child{padding-left:18px}.dt th:last-child,.dt td:last-child{padding-right:18px}
+.dt tbody tr.click{cursor:pointer;transition:background .2s}.dt tbody tr.click:hover{background:var(--hair-2)}
+.dt .r{text-align:right}.dt .who{display:flex;align-items:center;gap:10px}.dt .who b{font-weight:500;color:var(--ink);display:block;font-size:13.5px}.dt .who span{font-size:12px;color:var(--muted)}
+.dt tr.open td{background:var(--card-2)}
+.dt td.xp{padding:0 18px 14px;background:var(--card-2)}
+body.w-narrow table.dt{min-width:760px}
+
+/* filter bar */
+.filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.search{position:relative;flex:1;min-width:220px;max-width:360px}
+.search input{padding-left:34px}.search .ic{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px;pointer-events:none}
+
+/* fields */
+.field{display:grid;gap:6px}
+.field>label,.lbl{font-size:13px;font-weight:500;color:var(--ink)}
+.field .hint{font-size:12px;color:var(--muted)}
+.inp,.dd{width:100%;background:var(--card);border:1px solid var(--hair);border-radius:12px;padding:9px 12px;font-size:14px;color:var(--ink);transition:border-color .2s,box-shadow .2s;outline:none}
+.dd{appearance:none;-webkit-appearance:none;padding-right:30px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 15px) 52%,calc(100% - 10px) 52%;background-size:5px 5px;background-repeat:no-repeat;cursor:pointer;width:auto}
+.inp:focus,.dd:focus{border-color:var(--accent-text);box-shadow:0 0 0 4px var(--accent-soft)}
+.inp.mono{font-family:var(--mono);font-size:13px}
+.inp[disabled],.dd[disabled]{opacity:.55;cursor:not-allowed;background-color:var(--card-2)}
+textarea.inp{resize:vertical;min-height:84px;line-height:1.5}
+.inp.bad{border-color:var(--neg)}
+.err{font-size:12.5px;color:var(--neg);display:flex;gap:6px;align-items:center}
+.err::before{content:"!";width:15px;height:15px;border-radius:50%;background:var(--neg);color:var(--card);font-size:10px;font-weight:700;display:grid;place-items:center;flex-shrink:0}
+.ok-line{font-size:12.5px;color:var(--pos);display:flex;gap:6px;align-items:center}
+
+/* segmented control (kind pills, tabs) */
+.seg{display:inline-flex;gap:2px;padding:3px;border-radius:99px;background:var(--card-2);box-shadow:inset 0 0 0 1px var(--hair-2);flex-wrap:wrap}
+.seg button{border:0;background:transparent;padding:6px 14px;border-radius:99px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;transition:background .25s var(--ease),color .2s,transform .1s ease-out;display:inline-flex;gap:6px;align-items:center}
+.seg button:active{transform:scale(.96)}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:0 0 0 1px var(--hair-2),0 1px 3px rgba(0,0,0,.08)}
+.seg .n{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* review card (Codex) + diff */
+.review{padding:14px 16px;border-radius:18px;background:var(--card);box-shadow:0 0 0 1px var(--hair),0 6px 20px rgba(0,0,0,.06);margin:10px 0;animation:enter .4s var(--ease)}
+.review .rh{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin-bottom:8px}
+.review .rh b{color:var(--ink);font-weight:500}
+.review .rf{display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap}
+.diff{font-family:var(--mono);font-size:12px;border-radius:8px;background:var(--card-2);padding:8px 10px;line-height:1.8;overflow-x:auto;white-space:pre}
+.diff .a{color:var(--pos)}.diff .rm{color:var(--neg);text-decoration:line-through;text-decoration-thickness:1px}.diff .c{color:var(--muted)}
+.diff .a::before{content:"+ "}.diff .rm::before{content:"− ";display:inline-block;text-decoration:none}.diff .c::before{content:"  "}
+.morph{position:relative;display:inline-grid;place-items:center}.morph>*{grid-area:1/1;transition:opacity .3s var(--ease),transform .3s var(--ease),filter .3s var(--ease)}
+.morph .b{opacity:0;transform:scale(.5);filter:blur(3px)}.morph.done .a{opacity:0;transform:scale(.5);filter:blur(3px)}.morph.done .b{opacity:1;transform:none;filter:none}
+
+/* notices */
+.notice{display:flex;gap:12px;padding:14px 16px;border-radius:18px;align-items:flex-start;background:var(--card);box-shadow:0 0 0 1px var(--hair)}
+.notice .ni{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;background:var(--hair);color:var(--ink)}
+.notice .nt{font-weight:600;margin-bottom:2px;color:var(--ink)}
+.notice .nb{font-size:14px;color:var(--body);line-height:1.55}
+.notice.warn{background:color-mix(in srgb,var(--warn) 9%,var(--card));box-shadow:0 0 0 1px color-mix(in srgb,var(--warn) 28%,transparent)}.notice.warn .ni{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.notice .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+
+/* empty state */
+.empty{text-align:center;padding:44px 24px 40px}
+.empty .ei{width:52px;height:52px;border-radius:50%;margin:0 auto 14px;background:var(--accent-soft);color:var(--accent-text);display:grid;place-items:center}
+.empty h3{font-size:23px;line-height:1.25;margin-bottom:6px}
+.empty p{color:var(--muted);margin:0 auto 18px;max-width:440px;font-size:14.5px}
+.empty .row{justify-content:center}
+
+/* skeletons */
+.sk{--sk:color-mix(in srgb,var(--ink) 7%,var(--card));background:linear-gradient(90deg,var(--sk) 0%,color-mix(in srgb,var(--sk) 35%,var(--card)) 50%,var(--sk) 100%);background-size:200% 100%;animation:skel 1.4s linear infinite;border-radius:8px;height:12px}
+@keyframes skel{from{background-position:150% 0}to{background-position:-50% 0}}
+.sk.h{height:30px;width:40%;border-radius:10px}.sk.c{width:30px;height:30px;border-radius:50%;flex-shrink:0}
+
+/* capabilities */
+.caps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 18px}
+.capr{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--hair-2)}
+.capr .ck{width:18px;height:18px;border-radius:6px;background:color-mix(in srgb,var(--pos) 14%,transparent);color:var(--pos);display:grid;place-items:center;font-size:11px;flex-shrink:0;margin-top:1px}
+.capr .ck.no{background:var(--card-2);color:var(--muted-2)}
+.capr .cd{font-size:12.5px;color:var(--muted)}
+body.w-narrow .caps{grid-template-columns:1fr}
+
+/* tree list */
+.tree{padding:8px}
+.tn{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:12px;cursor:pointer;font-size:13.5px;color:var(--body);transition:background .2s,transform .1s ease-out;position:relative}
+.tn:hover{background:var(--hair-2)}.tn:active{transform:scale(.98)}
+.tn.on{background:var(--accent-soft);color:var(--ink)}
+.tn .cnt{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.tn .tw-ic{color:var(--muted-2);width:12px;text-align:center;font-size:11px}
+.tn.lock{cursor:default;opacity:.55}.tn.lock:hover{background:transparent}
+.ctree .tn{cursor:default}.ctree .tn:hover{background:transparent}.ctree .tn:active{transform:none}
+.ctree .tn .lab{color:var(--muted);font-size:12.5px}
+.ctree .src{font-weight:600;color:var(--ink)}
+.guide{border-left:1px solid var(--hair);margin-left:16px;padding-left:4px}
+
+/* groups split */
+.gsplit{display:grid;grid-template-columns:270px minmax(0,1fr);gap:12px;align-items:start}
+body.w-mid .gsplit{grid-template-columns:220px minmax(0,1fr)}
+body.w-narrow .gsplit{grid-template-columns:1fr}
+
+/* disabled-future block */
+.future{position:relative;border-radius:14px;border:1px dashed var(--hair);padding:12px 14px;background:var(--card-2)}
+.future .fz{opacity:.45;pointer-events:none;filter:grayscale(.4)}
+.future .fl{font-size:12px;color:var(--muted);margin-top:8px;display:flex;align-items:center;gap:6px}
+
+/* picker popover (glass chrome over a solid card) */
+.picker{position:absolute;left:0;right:0;top:calc(100% + 6px);border-radius:22px;padding:8px;z-index:20;transform-origin:30% -10px;animation:mat .35s var(--ease)}
+@keyframes mat{from{opacity:0;transform:scale(.94);filter:blur(6px)}}
+.pk{padding:8px 10px;border-radius:12px;display:flex;gap:10px;align-items:center;cursor:pointer;font-size:13.5px}
+.pk:hover,.pk.on{background:var(--accent-soft)}.pk .mono{margin-left:auto;color:var(--muted);font-size:11px}
+.pk .kd{font-size:11px;color:var(--muted);width:46px}
+
+/* token reveal */
+.secret{display:flex;align-items:center;gap:10px;padding:10px 10px 10px 14px;border-radius:12px;background:var(--card-2);box-shadow:inset 0 0 0 1px var(--hair)}
+.secret code{font-family:var(--mono);font-size:13px;color:var(--ink);flex:1;word-break:break-all}
+
+/* dialog (solid panel + scrim) */
+.dialog{position:absolute;left:50%;top:14%;width:min(480px,calc(100% - 40px));transform:translateX(-50%);z-index:32;background:var(--card);border-radius:22px;padding:22px 22px 18px;box-shadow:0 0 0 1px var(--hair),0 20px 60px rgba(0,0,0,.14);animation:dlg .4s var(--ease)}
+@keyframes dlg{from{opacity:0;transform:translateX(-50%) scale(.96);filter:blur(6px)}}
+.dialog h3{font-size:23px;margin-bottom:4px}
+
+/* toasts */
+.toasts{position:absolute;bottom:22px;right:22px;width:360px;max-width:calc(100% - 44px);z-index:40;display:grid;gap:8px}
+.toast{border-radius:16px;padding:12px 14px;font-size:13px;display:flex;gap:10px;align-items:center;animation:tin .4s var(--ease);color:var(--ink)}
+@keyframes tin{from{opacity:0;transform:translateY(16px) scale(.96);filter:blur(4px)}}
+.toast .ti{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;flex-shrink:0;background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn);font-weight:700}
+
+/* chat (screen 5) */
+.chat{max-width:740px;margin:0 auto;padding:88px 24px 200px}
+.u{display:flex;justify-content:flex-end;margin:6px 0 20px}.u div{background:var(--card-2);padding:10px 15px;border-radius:16px 16px 6px 16px;max-width:80%;line-height:1.5}
+.ans{line-height:1.65;color:var(--body);font-size:15.5px}.ans p{margin:0 0 12px}.ans strong{color:var(--ink)}
+.plan{border-radius:16px;padding:10px 14px;margin-bottom:14px;background:var(--card);box-shadow:0 0 0 1px var(--hair-2);font-size:13px;color:var(--muted);display:flex;gap:8px;align-items:center}
+.composer{position:absolute;left:0;right:0;bottom:16px;z-index:10;display:flex;justify-content:center;padding:0 24px;pointer-events:none}
+.composer>div{pointer-events:auto;width:100%;max-width:740px;border-radius:26px;padding:12px 12px 10px 18px;position:relative}
+.composer textarea{width:100%;border:0;outline:0;resize:none;background:transparent;font-size:15.5px;height:26px}
+.composer textarea::placeholder{color:var(--muted-2)}
+.send{margin-left:auto;width:36px;height:36px;border-radius:50%;border:0;background:var(--accent);color:#fff;display:grid;place-items:center}
+
+/* audit bars */
+.bars{display:grid;gap:10px}
+.bar-row{display:grid;grid-template-columns:76px 1fr;gap:12px;align-items:center;font-size:12.5px}
+.bar-row .d{color:var(--muted);font-variant-numeric:tabular-nums}
+.bar-track{display:grid;gap:3px}
+.bar{display:flex;align-items:center;gap:8px}
+.bar i{display:block;height:10px;border-radius:4px;background:var(--accent-text);transform-origin:left;animation:grow .8s var(--ease) both}
+.bar.dn i{opacity:.45;background-image:repeating-linear-gradient(135deg,transparent 0 3px,rgba(255,255,255,.35) 3px 5px)}
+.bar span{font-size:11.5px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+@keyframes grow{from{transform:scaleX(0)}}
+.legend-i{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.legend-i i{width:14px;height:10px;border-radius:3px;background:var(--accent-text)}
+.legend-i.dn i{opacity:.45;background-image:repeating-linear-gradient(135deg,transparent 0 3px,rgba(255,255,255,.35) 3px 5px)}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:12px}
+body.w-narrow .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+.kpi{padding:14px 16px}.kpi .l{font-size:12.5px;color:var(--muted)}.kpi .v{font-size:27px;font-weight:600;letter-spacing:-.025em;line-height:1.1;margin:6px 0 8px;font-variant-numeric:tabular-nums;color:var(--ink)}
+.split2{display:grid;grid-template-columns:1.6fr 1fr;gap:12px}
+body.w-narrow .split2{grid-template-columns:1fr}
+.reason-r{display:grid;grid-template-columns:1fr auto;gap:4px 10px;padding:9px 0;border-bottom:1px solid var(--hair-2);font-size:13px}
+.reason-r:last-child{border:0}
+.reason-r .rb{grid-column:1/-1;height:6px;border-radius:3px;background:var(--accent-soft);overflow:hidden}.reason-r .rb i{display:block;height:100%;background:var(--accent-text);animation:grow .8s var(--ease) both;transform-origin:left}
+
+/* guard page */
+.guard{max-width:560px;margin:0 auto;padding:18vh 24px 80px}
+.guard .notice{padding:22px 22px 20px}
+.guard h2{font-size:23px;line-height:1.25;margin:2px 0 6px}
+
+/* ═════════ REVIEW DOCK (not part of the design) ═════════ */
+.dock{position:fixed;left:18px;bottom:18px;z-index:60;width:236px;max-height:calc(100vh - 36px);overflow-y:auto;border-radius:18px;padding:10px 11px;font-size:12px;display:grid;gap:5px}
+.dock .lbl{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.dock .title{display:flex;align-items:center;gap:6px;font-family:var(--serif);font-size:15px;color:var(--ink);text-transform:none;letter-spacing:0}
+.dock .title i{width:8px;height:8px;border-radius:2px;background:var(--accent);transform:rotate(45deg)}
+.dock .modes{display:grid;grid-template-columns:1fr 1fr;gap:3px}
+.dock .mode{text-align:left;font-size:11.5px;border:0;background:transparent;color:var(--ink);padding:4px 7px;border-radius:9px;cursor:pointer;line-height:1.3}.dock .mode:hover{background:var(--hair-2)}.dock .mode.on{background:var(--accent);color:var(--on-accent)}
+.dock .layers{display:flex;flex-wrap:wrap;gap:4px}
+.dock .lay{font-size:11.5px;border:1px solid var(--hair);background:transparent;color:var(--muted);padding:3px 8px;border-radius:99px;cursor:pointer}.dock .lay.on{color:var(--ink);border-color:var(--ink)}
+.dock select{font-size:12px;width:100%;padding:3px 6px;border-radius:9px;border:1px solid var(--hair);background:var(--card);color:var(--ink)}
+.dock .two{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.dock .two>div{display:grid;gap:3px}
+.legend{display:flex;flex-wrap:wrap;gap:4px}.legend span{font:600 9.5px/1 var(--sans);letter-spacing:.05em;text-transform:uppercase;color:#fff;padding:3px 6px;border-radius:5px}
+.dock .min{position:absolute;top:8px;right:8px;border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:14px;width:24px;height:24px;border-radius:50%}
+.dock.collapsed{width:auto}.dock.collapsed>*:not(.min):not(.title){display:none!important}.dock.collapsed .title{padding-right:26px}
+
+/* ═════════ SETTINGS-NAVIGATION ADDITIONS (this review) ═════════ */
+.dock{left:auto;right:18px}
+.hello.sm{font-size:26px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+
+/* sidebar: threads + user chip */
+.nav .kbd{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--muted-2)}
+.thr{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:10px;font-size:13px;color:var(--body);cursor:pointer;transition:background .2s,transform .1s ease-out;border:0;background:transparent;width:100%;text-align:left}
+.thr:hover{background:var(--hair-2)}.thr:active{transform:scale(.98)}
+.thr.on{background:var(--card);color:var(--ink);box-shadow:0 0 0 1px var(--hair-2)}
+.thr .tt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thr .tm{font-family:var(--mono);font-size:10.5px;color:var(--muted-2);flex-shrink:0}
+.run{width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0;animation:pulse 1.6s var(--ease) infinite}
+@keyframes pulse{50%{opacity:.35;transform:scale(.8)}}
+.foot{margin-top:auto;border-top:1px solid var(--hair-2);padding-top:6px}
+.chip{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:14px;border:0;background:transparent;width:100%;text-align:left;cursor:pointer;transition:background .2s,transform .1s ease-out}
+.chip:hover{background:var(--hair-2)}.chip:active{transform:scale(.98)}
+.chip.open{background:var(--card);box-shadow:0 0 0 1px var(--hair-2),0 1px 3px rgba(0,0,0,.06)}
+.chip .nm{font-size:13px;color:var(--ink);font-weight:500;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.chip .em{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.avw{position:relative;display:inline-grid;flex-shrink:0}
+.cdot{position:absolute;top:-1px;right:-1px;width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--card)}
+.empty-thr{font-size:12.5px;color:var(--muted);padding:6px 10px}
+
+/* rail swap (sidebar content changes in place) */
+.swap-in>*{animation:swapin .42s var(--sheet) both}.swap-back>*{animation:swapback .42s var(--sheet) both}
+@keyframes swapin{from{opacity:0;transform:translateX(16px)}}@keyframes swapback{from{opacity:0;transform:translateX(-16px)}}
+.rail-title{font-family:var(--serif);font-size:21px;padding:2px 10px 2px;color:var(--ink)}
+.nav.back{color:var(--muted);font-size:13.5px}.nav.back:hover{color:var(--ink)}
+.rail-foot{margin-top:auto;padding:10px;font-size:11.5px;color:var(--muted-2)}
+
+/* account menu (glass popover anchored to the chip) */
+.amenu{position:absolute;left:20px;bottom:84px;width:276px;border-radius:22px;padding:6px;z-index:36;transform-origin:40px calc(100% + 40px);animation:mat .35s var(--ease)}
+.amh{padding:10px 10px 12px;display:flex;gap:10px;align-items:center}
+.amh .nm{font-size:14px;font-weight:500;color:var(--ink);line-height:1.25}.amh .em{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mi{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;font-size:13.5px;color:var(--ink);cursor:pointer;border:0;background:transparent;width:100%;text-align:left;transition:background .2s,transform .1s ease-out}
+.mi:hover{background:var(--hair-2)}.mi:active{transform:scale(.98)}
+.mi.cur{background:var(--accent-soft)}
+.mi .ic{color:var(--muted);width:18px;display:grid;place-items:center}
+.mi .kbd{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.mi .badge{margin-left:auto}
+.msep{height:1px;background:var(--hair-2);margin:5px 8px}
+.mrow{display:flex;align-items:center;gap:10px;padding:6px 6px 6px 10px;font-size:13.5px;color:var(--ink)}
+.mrow.col{flex-direction:column;align-items:stretch;gap:6px;padding:4px 10px 6px}.mrow.col .seg{display:flex}.mrow.col .seg button{flex:1;justify-content:center}
+.seg.xs{flex-wrap:nowrap}.seg.xs button{padding:4px 9px;font-size:12px;gap:4px}
+
+/* bottom sheet (mobile) */
+.sheet{position:absolute;left:8px;right:8px;bottom:8px;border-radius:28px;padding:6px 8px 12px;z-index:36;animation:sheetin .5s var(--sheet)}
+@keyframes sheetin{from{transform:translateY(110%)}}
+.grab{width:38px;height:5px;border-radius:3px;background:var(--hair);margin:4px auto 6px}
+.sheet .mi{min-height:48px;font-size:15px}
+.sheet .mrow{min-height:48px;font-size:15px}
+
+/* ⌘K palette */
+.palette{position:absolute;left:50%;top:11%;width:min(620px,calc(100% - 32px));transform:translateX(-50%);border-radius:22px;z-index:38;overflow:hidden;animation:pal .35s var(--ease)}
+@keyframes pal{from{opacity:0;transform:translateX(-50%) scale(.96);filter:blur(6px)}}
+.palette .pin{display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--hair-2)}
+.palette input{flex:1;border:0;background:transparent;padding:16px 0;font-size:16px;outline:none;color:var(--ink)}
+.palette input::placeholder{color:var(--muted-2)}
+.plist{max-height:380px;overflow-y:auto;padding:4px 8px 8px}
+.pg{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-2);padding:10px 10px 4px}
+.pr{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;cursor:pointer;font-size:13.5px;color:var(--ink)}
+.pr .ic{color:var(--muted);width:18px;display:grid;place-items:center}
+.pr .mono{margin-left:auto;color:var(--muted);font-size:11px}
+.pr.on{background:var(--accent-soft)}.pr.on .ic{color:var(--accent-text)}
+.pfoot{display:flex;gap:14px;padding:9px 16px;border-top:1px solid var(--hair-2);font-size:11.5px;color:var(--muted)}
+.pfoot .mono{font-size:11px}
+
+/* B · dual rail */
+.dual{display:grid;grid-template-columns:200px minmax(0,1fr);gap:26px;max-width:1260px;margin:0 auto;padding:84px 24px 120px}
+.irail{position:sticky;top:84px;align-self:start;display:grid;gap:2px}
+.irail .ttl{font-family:var(--serif);font-size:23px;padding:2px 10px 8px}
+.dual .page{padding:0;max-width:none}
+
+/* C · settings modal, D · personal modal (solid panels over the scrim) */
+.smodal,.pmodal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--card);border-radius:22px;z-index:34;overflow:hidden;box-shadow:0 0 0 1px var(--hair),0 30px 80px rgba(0,0,0,.18);animation:mdl .4s var(--ease)}
+@keyframes mdl{from{opacity:0;transform:translate(-50%,-50%) scale(.96);filter:blur(6px)}}
+.smodal{width:min(1000px,calc(100% - 48px));height:min(700px,calc(100% - 60px));display:grid;grid-template-columns:212px minmax(0,1fr)}
+.smodal .tabs{background:var(--card-2);padding:16px 8px;overflow-y:auto;border-right:1px solid var(--hair-2);display:flex;flex-direction:column;gap:2px}
+.smodal .tabs .rail-title{padding:0 10px 6px}
+.smodal .mc,.pmodal .mc{overflow:auto;padding:22px 26px 40px;position:relative}
+.smodal .x,.pmodal .x{position:absolute;top:12px;right:12px;z-index:3;background:var(--card)}
+.smodal table.dt{min-width:880px}
+.squeeze{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:6px;margin:8px 0 0}
+.pmodal{width:min(680px,calc(100% - 48px));height:min(640px,calc(100% - 60px));display:flex;flex-direction:column}
+.pmodal .ph{padding:18px 22px 12px;border-bottom:1px solid var(--hair-2);display:grid;gap:10px}
+
+/* D · admin console header (replaces the app shell) */
+body.noside .side{display:none}
+.ctop{gap:12px}
+.ctop .brand{font-size:19px;padding:0}
+.ctop .seg{flex-wrap:nowrap}
+
+/* mobile drill-down */
+.mset{padding:76px 16px 60px;max-width:560px;margin:0 auto}
+.mset .big{font-family:var(--serif);font-size:32px;margin:4px 4px 14px;font-weight:400}
+.mset .grp{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-2);margin:20px 8px 6px}
+.li .chev{color:var(--muted-2);font-size:20px;line-height:1}
+.lic{width:30px;height:30px;border-radius:9px;background:var(--accent-soft);color:var(--accent-text);display:grid;place-items:center;flex-shrink:0}
+.tav{display:none;border:0;background:transparent;padding:0;cursor:pointer;border-radius:50%}
+body.w-narrow .tav{display:inline-grid}
+body.w-mobile .page{padding:76px 16px 110px}
+body.w-mobile .hello{font-size:26px}
+body.w-mobile .composer{padding:0 12px}
+body.w-mobile .chat{padding:80px 16px 180px}
+body.w-mobile .topbar{left:10px;right:10px}
+body.w-mobile .app{padding:8px}
+body.w-mobile .topbar .t{font-size:17px}
+.mback{font-size:22px}
+
+/* first run */
+.fr{max-width:620px;margin:0 auto;padding:15vh 24px 200px}
+.fr .greet{font-size:32px;line-height:1.15;margin:0 0 6px;text-align:center}
+.fr .gsub{text-align:center;color:var(--muted);margin:0 0 22px}
+
+/* general page rows */
+.setr{display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:1px solid var(--hair-2);min-height:60px;flex-wrap:wrap}
+.setr:last-child{border-bottom:0}
+.setr .grow{flex:1;min-width:200px}
+.setr .t1{font-size:14.5px;font-weight:500;color:var(--ink)}.setr .t2{font-size:12.5px;color:var(--muted);margin-top:1px}
+kbd{font-family:var(--mono);font-size:11.5px;padding:2px 7px;border-radius:7px;background:var(--card-2);box-shadow:inset 0 0 0 1px var(--hair);color:var(--ink)}
+
+/* dock additions */
+.dock .verdict{font-size:11.5px;color:var(--body);line-height:1.45;background:var(--card-2);border-radius:10px;padding:7px 9px}
+.dock .verdict b{color:var(--ink);font-weight:600}
+.dock .modes.one{grid-template-columns:1fr}
+.dock .link-out{font:400 10.5px/1.4 var(--mono);color:var(--muted);word-break:break-all}
+.scrim.clear{background:transparent}
+
+/* reduced motion: instant swaps */
+body.rm *,body.rm *::before,body.rm *::after{animation-duration:1ms!important;animation-iteration-count:1!important;transition-duration:1ms!important}
+body.rm .morph *{filter:none!important}
+</style>
+</head>
+<body data-theme="light">
+
+<div id="frame">
+  <div class="simlabel" id="simlabel"></div>
+  <div class="app" id="app">
+    <aside class="side glass spec pos" id="side" data-o="apple" data-o-label="Apple · floating glass sidebar"></aside>
+    <main class="main">
+      <div class="edge-top pos" data-o="apple" data-o-label="Apple · scroll-edge blur"></div>
+      <div class="topbar glass spec pos" id="topbar" data-o="apple" data-o-label="Apple · floating glass toolbar"></div>
+      <div class="scroller" id="sc"><div id="stage"></div></div>
+      <div id="composerHost"></div>
+      <div class="toasts" id="toasts"></div>
+    </main>
+    <div class="scrim" id="scrim"></div>
+    <div id="overlay"></div>
+  </div>
+</div>
+
+<!-- REVIEW DOCK (not part of the design) -->
+<div class="dock glass" id="dock">
+  <button class="min" id="dmin" aria-label="Collapse dock">–</button>
+  <div class="lbl title"><i></i>Settings nav review</div>
+  <div class="lbl">Layout</div>
+  <div class="modes one" id="dLayout"></div>
+  <div class="verdict" id="dVerdict"></div>
+  <div class="lbl">Screen</div>
+  <select id="dScreen"></select>
+  <div class="lbl">Persona</div>
+  <div class="modes" id="dPersona" style="grid-template-columns:1fr 1fr 1fr"></div>
+  <div class="two">
+    <div><div class="lbl">Pending</div><select id="dPending"><option value="0">0 approvals</option><option value="3">3 approvals</option></select></div>
+    <div><div class="lbl">Theme</div><select id="dTheme"><option value="light">Light</option><option value="dark">Dark</option><option value="system">System</option></select></div>
+  </div>
+  <div class="lbl">Width</div>
+  <select id="dWidth"><option value="auto">Auto (window)</option><option value="desktop">Desktop ≥ 1200</option><option value="tablet">Tablet 1000–1199</option><option value="mobile">Mobile &lt; 600</option></select>
+  <div class="lbl">Reduce · overlay</div>
+  <div class="layers" id="dA11y">
+    <button class="lay" data-a="rm" title="Reduced motion: instant swaps">Motion</button><button class="lay" data-a="rt" title="Reduced transparency: glass renders solid">Transparency</button><button class="lay" data-a="o">⌗ Origins</button>
+  </div>
+  <div class="legend"><span style="background:#2f6fdb">Apple</span><span style="background:#c2552f">Claude</span><span style="background:#3a3a3c">Codex</span><span style="background:#7d4cdb">Atlas</span></div>
+  <div class="lbl">Deep link</div>
+  <div class="link-out" id="dLink"></div>
+</div>
+
+<script>
+(function(){
+"use strict";
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];const B=document.body;
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ═════════ DATA (from the phase-5 mockup; mirrors the real backend) ═════════ */
+const CAPS={'chat:use':'Use the atlas web chat and dashboard','mcp:use':'Connect MCP clients such as Claude Code, claude.ai or Claude Desktop','tokens:create':'Create personal access tokens','export:data':'Export results as files','sandbox:run':'Run analyses in the sandbox','alerts:manage':'Create and manage alerts','schedules:manage':'Create and manage schedules','analyses:save':'Save analyses for reuse','admin:users':'Manage users, roles, status and direct grants','admin:groups':'Manage groups, members and group grants','admin:audit':'Read the audit and access-change logs','admin:tokens':"Manage everyone's tokens",'admin:clients':'Manage connected OAuth clients'};
+const ROLES=['viewer','analyst','builder','admin'];
+const ADDS={viewer:['chat:use'],analyst:['mcp:use','tokens:create','export:data','sandbox:run'],builder:['alerts:manage','schedules:manage','analyses:save'],admin:['admin:users','admin:groups','admin:audit','admin:tokens','admin:clients']};
+const roleCaps=r=>ROLES.slice(0,ROLES.indexOf(r)+1).flatMap(x=>ADDS[x]);
+const CATALOG=[
+ {src:'demo',name:'Demo commerce',ents:[{id:'order',name:'Orders',items:[['revenue','Total revenue'],['orders_count','Paid orders'],['aov','Average order value'],['refund_amount','Refunded amount'],['b2b_revenue','Corporate (B2B) revenue']]},{id:'customer',name:'Customers',items:[['customers_total','Total customers'],['new_customers','New customers']]},{id:'checkout',name:'Checkout journey',items:[['checkout_funnel','Checkout funnel']]}]},
+ {src:'deepsales',name:'DeepSales',ents:[{id:'ds_account',name:'Portfolio accounts',items:[['ds_total_accounts','Analyzed portfolio accounts'],['ds_at_risk_accounts','At-risk accounts']]},{id:'ds_revenue',name:'Corporate revenue (monthly)',items:[['ds_revenue_aed','Corporate revenue (AED)']]},{id:'ds_task',name:'CSM tasks',items:[['ds_open_tasks','Open tasks']]}]}];
+const LABEL={};CATALOG.forEach(s=>{LABEL[s.src+'/*']=s.name+' · everything';s.ents.forEach(e=>{LABEL[s.src+'/'+e.id+'/*']=e.name+' · all';e.items.forEach(([i,n])=>LABEL[s.src+'/'+e.id+'/'+i]=n)})});LABEL['*']='Everything';
+const lab=p=>LABEL[p]||'';
+const U0=[
+ ['ashik','Ashik Babu','admin','active','human','just now','2026-09-23','ashik@yougotagift.com'],
+ ['rania','Rania Aziz','analyst','active','human','09 Oct 09:12','2026-09-24'],
+ ['omar','Omar Khalil','viewer','active','human','09 Oct 09:47','2026-09-24'],
+ ['sara','Sara Mansour','viewer','active','human','09 Oct 08:52','2026-10-08'],
+ ['karim','Karim Nasser','analyst','active','human','09 Oct 07:55','2026-09-25'],
+ ['dana','Dana Youssef','viewer','active','human','08 Oct 14:06','2026-09-29'],
+ ['mira','Mira Saleh','builder','active','human','08 Oct 18:40','2026-09-24'],
+ ['yousef','Yousef Darwish','analyst','active','human','06 Oct 11:15','2026-09-24'],
+ ['lina','Lina Haddad','viewer','active','human','09 Oct 09:30','2026-10-09'],
+ ['nour','Nour Al-Amin','viewer','active','human','05 Oct 16:44','2026-09-30'],
+ ['hassan','Hassan Farouk','analyst','disabled','human','21 Aug 10:03','2026-09-24'],
+ ['svc','MCP shared identity','analyst','active','service','09 Oct 09:40','2026-09-23','svc-mcp@yougotagift.com'],
+ ['tariq','Tariq Odeh','viewer','active','human','02 Oct 12:10','2026-09-26'],
+ ['reem','Reem Kassab','analyst','active','human','30 Sep 15:22','2026-09-24'],
+ ['faisal','Faisal Rahman','viewer','active','human','never','2026-10-06'],
+ ['huda','Huda Al-Mansoori','builder','active','human','29 Sep 09:01','2026-09-24']];
+const USERS={},UORDER=[];
+U0.forEach(([id,name,role,status,kind,last,created,email])=>{USERS[id]={id,name,role,status,kind,last,created,email:email||name.toLowerCase().replace(/[^a-z ]/g,'').replace(' ','.').replace(/ /g,'')+'@yougotagift.com'};UORDER.push(id)});
+const short=e=>e.split('@')[0]+'@';
+const G=(id,effect,target,reason,exp,by)=>({id,effect,target,reason:reason||'',exp:exp||'',by:by||'Ashik Babu'});
+const GROUPS=[
+ {id:'atlas-admins',parent:null,desc:'Atlas operators. Holds the catch-all grant.',members:[['ashik','member']],grants:[G('a01f3c','allow','*','Operators see everything')]},
+ {id:'leadership',parent:null,desc:'Exec team: company-wide commerce and corporate sales.',members:[['mira','manager'],['huda','member']],grants:[G('5d2a81','allow','demo/*'),G('5d2a90','allow','deepsales/*')]},
+ {id:'marketing',parent:null,desc:'Growth and brand marketing: orders and customer metrics.',members:[['rania','manager'],['omar','member'],['nour','member'],['dana','member'],['tariq','member']],grants:[G('4c2e91','allow','demo/order/*','Campaign and revenue reporting'),G('4c2ea7','allow','demo/customer/*'),G('9b07e3','deny','demo/order/refund_amount','Refund data stays with risk-ops')]},
+ {id:'marketing-paid',parent:'marketing',desc:'Paid acquisition. Adds the checkout journey on top of marketing.',members:[['yousef','manager'],['karim','member']],grants:[G('61f0d4','allow','demo/checkout/*','Paid funnel optimisation')]},
+ {id:'csm',parent:null,desc:'Customer success: portfolio accounts and CSM tasks.',members:[['reem','manager'],['hassan','member']],grants:[G('2a77c0','allow','deepsales/ds_account/*'),G('2a77c8','allow','deepsales/ds_task/*')]},
+ {id:'risk-ops',parent:null,desc:'Refunds, chargebacks and fraud review.',members:[],grants:[G('3e1f52','allow','demo/order/*','Refund and chargeback review')]},
+ {id:'engineering',parent:null,desc:'Platform and data engineering.',members:[['ashik','manager'],['karim','member'],['svc','member']],grants:[G('8d4b16','allow','demo/*','Platform QA on demo data','2026-12-31')]}];
+const GBY=Object.fromEntries(GROUPS.map(g=>[g.id,g]));
+const USERGRANTS={omar:[G('c5e019','allow','deepsales/ds_revenue/*','Q4 corporate revenue planning','2026-12-31')],karim:[G('c61d77','allow','demo/checkout/checkout_funnel','Funnel QA for the paid team','2026-11-30')],hassan:[G('c4a2b0','deny','*','Offboarding; access paused until HR confirms')]};
+const groupsOf=uid=>GROUPS.filter(g=>g.members.some(m=>m[0]===uid)).map(g=>({g:g.id,standing:g.members.find(m=>m[0]===uid)[1]}));
+const ancestors=gid=>{const out=[];let g=GBY[gid];while(g){out.push(g.id);g=g.parent?GBY[g.parent]:null}return out};
+const subtree=gid=>[gid,...GROUPS.filter(g=>g.parent===gid).flatMap(g=>subtree(g.id))];
+const managersOf=gid=>{const out=[];ancestors(gid).forEach(a=>GBY[a].members.filter(m=>m[1]==='manager').forEach(m=>out.push({u:m[0],via:a})));return out};
+function rulesFor(uid){const rules=[];const seen=new Set();
+  groupsOf(uid).forEach(({g})=>ancestors(g).forEach(a=>{if(seen.has(a))return;seen.add(a);GBY[a].grants.forEach(gr=>rules.push({...gr,origin:'group:'+a}))}));
+  (USERGRANTS[uid]||[]).forEach(gr=>rules.push({...gr,origin:'user'}));
+  if(USERS[uid]&&USERS[uid].status!=='active')return [];return rules}
+
+const REQS=[
+ {id:'r-7f1c',u:'omar',kind:'resource',target:'demo/checkout/checkout_funnel',note:'Reviewing checkout drop-off for the Q4 redesign.',at:'09 Oct 09:46',status:'pending'},
+ {id:'r-7f21',u:'sara',kind:'group',target:'csm',note:'Joining the CSM team on Monday; I need portfolio accounts for onboarding.',at:'09 Oct 08:52',status:'pending'},
+ {id:'r-7e90',u:'karim',kind:'role',target:'builder',from:'analyst',note:'I want to save the weekly ROAS analysis and schedule it for Mondays.',at:'08 Oct 17:30',status:'pending'},
+ {id:'r-7e55',u:'dana',kind:'group',target:'marketing-paid',note:'Running paid social for Q4 and need the checkout journey.',at:'08 Oct 14:05',status:'pending'},
+ {id:'r-7f33',u:'faisal',kind:'group',target:'marketing',note:'Starting on the brand team next week; I report on campaigns.',at:'09 Oct 09:20',status:'pending'},
+ {id:'r-7f34',u:'lina',kind:'group',target:'marketing',note:'New on growth marketing; I need orders and customers.',at:'09 Oct 09:31',status:'pending'},
+ {id:'r-7e31',u:'rania',kind:'group',target:'marketing-paid',note:"Covering Yousef's paid campaigns while he's on leave.",at:'08 Oct 11:20',status:'pending'},
+ {id:'r-7d02',u:'ashik',kind:'group',target:'risk-ops',note:'Auditing the refund grant before Q4 close.',at:'07 Oct 10:00',status:'pending'},
+ {id:'r-7a10',u:'omar',kind:'role',target:'analyst',from:'viewer',note:'I want to use Atlas from Claude Code.',at:'30 Sep 10:12',status:'declined',by:'Ashik Babu',dAt:'30 Sep 15:40',dNote:'MCP sign-in for analysts lands with phase 4. Ask again once it is enabled.'},
+ {id:'r-79c4',u:'omar',kind:'group',target:'marketing',note:'New on the growth team.',at:'24 Sep 09:05',status:'approved',by:'Rania Aziz',dAt:'24 Sep 09:31',dNote:'Welcome aboard.'},
+ {id:'r-7b51',u:'rania',kind:'role',target:'analyst',from:'viewer',note:'Need MCP for the campaign notebook.',at:'05 Oct 12:00',status:'approved',by:'Ashik Babu',dAt:'06 Oct 09:15',dNote:'Approved for the campaign notebook.'}];
+const QUEUE={admin:['r-7f1c','r-7f21','r-7e90'],manager:['r-7e55','r-7f33','r-7f34']};
+const TOKENS={omar:[],rania:[['Claude Code · laptop','atl_pat_3f9a','2026-09-30','2026-12-29','2 h ago'],['CI evals runner','atl_pat_b71c','2026-08-14','2026-11-12','yesterday']],
+ ashik:[['Claude Code · laptop','atl_pat_5e2d','2026-09-23','2026-12-22','12 min ago'],['Eval harness','atl_pat_a804','2026-09-28','2026-12-27','09 Oct 08:00']]};
+const APPS=[['Claude Code','oc_8f3a1c','09 Oct 09:40','2026-09-30'],['claude.ai','oc_21d9e7','08 Oct 16:02','2026-10-02'],['Claude Desktop','oc_5b6e04','05 Oct 11:30','2026-10-05']];
+const CHANGES=[
+ {t:'09 Oct 09:41',actor:'Ashik Babu',act:'grant.create',obj:'group:marketing-paid',diff:[['c','subject   group:marketing-paid'],['a','effect    allow'],['a','target    demo/checkout/*'],['a','reason    Paid funnel optimisation']]},
+ {t:'09 Oct 09:12',actor:'Rania Aziz',act:'member.put',obj:'nour.alamin@ → marketing',diff:[]},
+ {t:'08 Oct 17:05',actor:'Ashik Babu',act:'request.approve',obj:'r-7b51 · rania.aziz@',diff:[]},
+ {t:'06 Oct 09:15',actor:'Ashik Babu',act:'user.role',obj:'yousef.darwish@',diff:[]},
+ {t:'04 Oct 15:30',actor:'Ashik Babu',act:'user.status',obj:'hassan.farouk@',diff:[]},
+ {t:'02 Oct 10:00',actor:'Yousef Darwish',act:'member.remove',obj:'tariq.odeh@ ← marketing-paid',diff:[]},
+ {t:'23 Sep 07:00',actor:'CLI · operator',act:'group.create',obj:'marketing-paid',diff:[]}];
+const DECISIONS=[
+ ['09:47','Omar Khalil','chat','query_metric','demo/checkout/checkout_funnel','deny','no grant allows it',38],
+ ['09:46','Omar Khalil','chat','query_metric','demo/order/revenue','allow','',412],
+ ['09:40','MCP shared identity','mcp','query_metric','demo/order/refund_amount','deny','denied by grant 9b07e3 (group:marketing)',21],
+ ['09:38','Karim Nasser','mcp','metric_breakdown','demo/order/orders_count','allow','',655],
+ ['09:12','Rania Aziz','chat','compare_periods','demo/order/aov','allow','',731]];
+const THREADS=[['Revenue in September','7b2e','2 min'],['Weekly ROAS by campaign','7a91','0:42',1],['B2B revenue YTD','79f0','yesterday'],['At-risk accounts in the UAE','78c3','Mon'],['Checkout funnel question','9c41','Fri'],['New customers by country','76aa','02 Oct']];
+
+/* ═════════ PAGES ═════════ */
+const PAGES={
+ general:{t:'General',grp:'you',r:'/settings',er:'/account',ic:'general',w:760},
+ access:{t:'My access',grp:'you',r:'/settings/access',er:'/account',ic:'account',w:760},
+ requests:{t:'Requests',grp:'you',r:'/settings/requests',er:'/account/requests',ic:'myRequests',w:760},
+ tokens:{t:'Tokens & apps',grp:'you',r:'/settings/tokens',er:'/account/tokens',ic:'tokens',w:760},
+ users:{t:'Users',grp:'org',r:'/settings/admin/users',er:'/admin/users',ic:'users',need:'admin',cap:'admin:users',w:1080},
+ groups:{t:'Groups',grp:'org',r:'/settings/admin/groups',er:'/admin/groups',ic:'groups',need:'mgr',cap:'admin:groups',w:1080},
+ queue:{t:'Access requests',grp:'org',r:'/settings/admin/requests',er:'/admin/requests',ic:'adminRequests',need:'mgr',cap:'admin:users',w:1080},
+ audit:{t:'Audit',grp:'org',r:'/settings/admin/audit',er:'/admin/audit',ic:'audit',need:'admin',cap:'admin:audit',w:1080}};
+const YOU=['general','access','requests','tokens'],ORG=['users','groups','queue','audit'];
+const LAYOUTS={
+ A:['A · Account menu + Settings ★','<b>Recommended.</b> Sidebar stays a chat tool. Settings take the full width, so phase-5 admin tables keep their 1080px. The same tree drills down on mobile.'],
+ B:['B · Dual rail','claude.ai-web style. Chat threads stay visible, but two rails eat about 460px, and admin tables scroll sideways below 1300px.'],
+ C:['C · Settings modal','Fine for General, Tokens and the like. The admin tables are cramped: the users table scrolls inside a modal over the chat, and there are no deep links per page.'],
+ D:['D · Separate admin console','Clean split, but it creates two products: personal settings in a modal and admin in another shell with its own header. Managers bounce between them.'],
+ E:['E · Current (before)','The phase-5 baseline. Account (3) and Admin (4) items push the recent threads below the fold, and the chip menu repeats Account links.']};
+const SCREENS=[['chat','Chat'],['menu','Account menu open'],...Object.keys(PAGES).map(p=>['settings.'+p,'Settings › '+PAGES[p].t]),['settings.index','Settings › list (mobile)'],['palette','⌘K palette open'],['firstrun','First run · new viewer']];
+const PERSONAS={viewer:{u:'omar',label:'Viewer'},manager:{u:'rania',label:'Manager'},admin:{u:'ashik',label:'Admin'}};
+
+/* ═════════ STATE ═════════ */
+const S={layout:'A',screen:'chat',page:'general',persona:'admin',pending:3,theme:'light',width:'auto',rm:false,rt:false,o:false,dock:'open'};
+const U={decided:{},rvOpen:null,rvDone:{},gSel:'marketing',auditTab:'changes',uq:'',density:'comfortable',landing:'chat',drawer:false,palQ:'',palSel:0,frOpen:false,frSent:false,frGroup:'marketing',lastSide:'app'};
+
+/* ═════════ HELPERS ═════════ */
+const first=()=>S.screen==='firstrun';
+const me=()=>first()?USERS.lina:USERS[PERSONAS[S.persona].u];
+const isAdmin=()=>!first()&&S.persona==='admin';
+const isMgr=()=>!first()&&S.persona==='manager';
+const has=c=>roleCaps(me().role).includes(c);
+const canSee=p=>{const n=PAGES[p].need;return !n||(n==='admin'?isAdmin():(isAdmin()||isMgr()))};
+const visible=list=>list.filter(canSee);
+const isOrg=p=>PAGES[p].grp==='org';
+const pending=()=>(isAdmin()||isMgr())?S.pending:0;
+const isMob=()=>B.classList.contains('w-mobile');
+const managed=()=>groupsOf(me().id).filter(x=>x.standing==='manager').flatMap(x=>subtree(x.g));
+const route=p=>{if(S.layout==='E')return PAGES[p].er;if(S.layout==='D'&&isOrg(p))return PAGES[p].er;return PAGES[p].r};
+const ini=n=>n.split(/[\s-]+/).filter(Boolean).map(s=>s[0]).join('').slice(0,2).toUpperCase();
+const av=(u,lg)=>`<span class="av${lg?' lg':''}${u.kind==='service'?' svc':''}">${u.kind==='service'?'⌁':ini(u.name)}</span>`;
+const avDot=u=>`<span class="avw">${av(u)}${pending()?`<span class="cdot" data-o="atlas" data-o-label="Atlas · clay dot = pending approvals" role="img" aria-label="${pending()} pending approvals"></span>`:''}</span>`;
+const stPlain=(k,t,extra='')=>`<span class="st ${k} ${extra}"><i></i>${t}</span>`;
+const st=(k,t,extra='')=>`<span class="st ${k} ${extra}" data-o="atlas" data-o-label="Atlas · status = dot + text"><i></i>${t}</span>`;
+const eff=e=>e==='allow'?stPlain('pos','allow'):stPlain('neg','deny','deny');
+const role=r=>`<span class="role"><b></b>${r}</span>`;
+const standing=s=>s==='manager'?stPlain('acc','manager'):stPlain('mute','member');
+const reqSt=s=>({pending:stPlain('warn','pending'),approved:stPlain('pos','approved'),declined:stPlain('neg','declined'),cancelled:stPlain('mute','cancelled')})[s];
+const mono=t=>`<span class="mono">${esc(t)}</span>`;
+const prov=t=>`<span class="prov" data-o="atlas" data-o-label="Atlas · provenance"><span class="fresh"></span>${t}</span>`;
+const kindTag=k=>`<span class="tag">${k}</span>`;
+const target=r=>r.kind==='role'?`${r.from} → ${r.target}`:r.target;
+const lock=n=>`<svg width="${n}" height="${n}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`;
+const LOCK=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`;
+const IC={chat:'<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',metrics:'<path d="M4 19V5M9 19V9M14 19v-6M19 19V7"/>',account:'<path d="M12 3l7 3v5c0 4.4-3 8.3-7 10-4-1.7-7-5.6-7-10V6z"/><path d="M9 12l2 2 4-4"/>',myRequests:'<path d="M7 7h11l-3-3M17 17H6l3 3"/>',tokens:'<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/>',users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>',groups:'<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/><path d="M6.5 10v4a3 3 0 0 0 3 3H14"/>',adminRequests:'<path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1 3h6l1-3h5"/>',audit:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',app:'<path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/>',
+ general:'<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+ settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>',
+ shield:'<path d="M12 3l7 3v5c0 4.4-3 8.3-7 10-4-1.7-7-5.6-7-10V6z"/>',signout:'<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l-4-4 4-4M6 12h10"/>',
+ back:'<path d="M15 6l-6 6 6 6"/>',sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',moon:'<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',monitor:'<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+ search:'<circle cx="11" cy="11" r="6"/><path d="M20 20l-4-4"/>',ext:'<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',plus:'<path d="M12 5v14M5 12h14"/>'};
+const icon=(k,s)=>`<svg width="${s||16}" height="${s||16}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k]||''}</svg>`;
+
+function toast(msg){const z=$('#toasts');const t=document.createElement('div');t.className='toast glass pos';t.dataset.o='apple';t.dataset.oLabel='Apple · toast';
+  t.innerHTML=`<span class="ti" style="background:color-mix(in srgb,var(--pos) 16%,transparent);color:var(--pos)">✓</span><span>${msg}</span>`;
+  z.appendChild(t);setTimeout(()=>{t.style.transition='opacity .3s,transform .3s';t.style.opacity=0;t.style.transform='translateY(8px)';setTimeout(()=>t.remove(),320)},3200);
+  while(z.children.length>3)z.firstChild.remove()}
+function emptyBlock(ic,title,text,actions=''){return `<div class="card empty" data-o="claude" data-o-label="Claude · editorial empty state"><div class="ei">${ic}</div><h3>${title}</h3><p>${text}</p><div class="row">${actions}</div></div>`}
+function guard(p){const u=me();const cap=PAGES[p].cap;const r=route(p);return `<div class="guard" style="padding-top:12vh"><div class="notice" data-o="atlas" data-o-label="Atlas · route guard (deep link without the capability)">
+  <div class="ni">${LOCK}</div><div style="flex:1"><h2>This area needs ${mono(cap)}</h2>
+  <div class="nb">Access comes from your sign-in, not from the page you open. Your role (<b>${u.role}</b>) doesn't include ${mono(cap)}, so ${mono(r)} stays closed. Nothing you type can widen it.</div>
+  <div class="chips">${prov('scope · from your Google sign-in')}${prov('role · '+u.role)}</div>
+  <div class="row" style="margin-top:16px"><button class="btn" data-page="access">Go to My access</button><button class="pill" data-act="back">Back to Atlas</button></div></div></div></div>`}
+const head=(t,sub,act,c)=>`<div class="head-row"><div><h1 class="hello${c?' sm':''}" data-o="claude" data-o-label="Claude · serif title">${t}</h1><p class="sub">${sub}</p></div>${act||''}</div>`;
+
+/* ═════════ SETTINGS PAGES ═════════ */
+const PG={};
+PG.general=c=>{const tp=S.theme;const seg=(cur,list,act)=>`<div class="seg xs" role="radiogroup">${list.map(([v,t,ic])=>`<button class="${cur===v?'on':''}" data-act="${act}" data-v="${v}" role="radio" aria-checked="${cur===v}">${ic?icon(ic,13):''}${t}</button>`).join('')}</div>`;
+  return head('General','How Atlas looks and where it opens. Saved to your account.','',c)+
+  `<h2 class="sh" style="margin-top:4px">Appearance</h2><div class="list" data-o="apple" data-o-label="Apple · grouped settings list">
+   <div class="setr"><div class="grow"><div class="t1">Theme</div><div class="t2">System follows your device. The account menu has the same switch.</div></div>${seg(tp,[['light','Light','sun'],['dark','Dark','moon'],['system','System','monitor']],'theme')}</div>
+   <div class="setr"><div class="grow"><div class="t1">Density</div><div class="t2">Compact tightens tables and lists; chat answers stay the same size.</div></div>${seg(U.density,[['comfortable','Comfortable'],['compact','Compact']],'density')}</div></div>
+  <h2 class="sh">Start</h2><div class="list">
+   <div class="setr"><div class="grow"><div class="t1">Default landing</div><div class="t2">What opens when you sign in.</div></div><select class="dd" data-act-change="landing" aria-label="Default landing">${[['chat','Ask Atlas · new chat'],['metrics','Metrics'],['last','Last conversation']].map(([v,t])=>`<option value="${v}" ${U.landing===v?'selected':''}>${t}</option>`).join('')}</select></div></div>
+  <h2 class="sh">Keyboard</h2><div class="list">
+   <div class="setr"><div class="grow"><div class="t1">Command palette</div><div class="t2">Pages, metrics, threads and actions.</div></div><kbd>⌘K</kbd></div>
+   <div class="setr"><div class="grow"><div class="t1">Open Settings</div></div><kbd>⌘,</kbd></div>
+   <div class="setr"><div class="grow"><div class="t1">Back to Atlas</div><div class="t2">From any settings page.</div></div><kbd>Esc</kbd></div></div>
+  <h2 class="sh">Session</h2><div class="list">
+   <div class="setr"><div class="grow"><div class="t1">Signed in as ${esc(me().email)}</div><div class="t2">Google sign-in · @yougotagift.com only · sessions last 24 hours</div></div><button class="pill" data-act="signout">Sign out</button></div></div>`};
+PG.access=c=>{const u=me();const rules=rulesFor(u.id);const caps=roleCaps(u.role);const next=ROLES[ROLES.indexOf(u.role)+1];const grps=groupsOf(u.id);
+  return head('My access','What Atlas lets you do and see, and where each permission comes from.',`<button class="btn" data-act="toast" data-v="Request form opens (phase-5 flow)">＋ Request access</button>`,c)+
+  `<div class="card pad" style="padding:18px 20px" data-o="apple" data-o-label="Apple · solid summary card">
+    <div class="row" style="gap:14px">${av(u,1)}<div style="flex:1;min-width:0"><div class="serif" style="font-size:19px">${u.name}</div><div class="muted" style="font-size:13px">${u.email}</div></div>
+    <div style="text-align:right">${role(u.role)}<div class="cap" style="margin-top:4px">Role · set by an admin</div></div></div>
+    <div class="lbl" style="margin:18px 0 4px;display:flex;align-items:center">Capabilities <span class="cap" style="margin-left:8px;font-weight:400">${caps.length} from role ${u.role}</span></div>
+    <div class="caps">${caps.slice(0,6).map(x=>`<div class="capr"><span class="ck">✓</span><div><span class="mono" style="color:var(--ink)">${x}</span><div class="cd">${CAPS[x]}</div></div></div>`).join('')}
+    ${next?ADDS[next].slice(0,2).map(x=>`<div class="capr" style="opacity:.75"><span class="ck no">·</span><div><span class="mono">${x}</span><div class="cd">Comes with ${next}. <a>Request ${next}</a></div></div></div>`).join(''):''}</div>
+    <div class="lbl" style="margin:18px 0 8px">Groups</div>
+    ${grps.length?`<div class="row" style="gap:8px">${grps.map(x=>`<span class="tag" style="padding:4px 6px 4px 10px;gap:8px;font-size:12.5px;color:var(--ink)"><span class="mono">${x.g}</span>${standing(x.standing)}</span>`).join('')}</div>`:`<div class="muted" style="font-size:13.5px">None yet. Groups decide what data you can see.</div>`}</div>
+  <h2 class="sh">What I can see <span class="cap">${rules.length} rules · deny wins over allow</span></h2>
+  <div class="list" data-o="apple" data-o-label="Apple · inset grouped list">${rules.map(r=>`<div class="li">${eff(r.effect)}<div class="grow"><div class="t1"><span class="mono" style="font-size:12.5px">${esc(r.target)}</span></div><div class="t2">${lab(r.target)||'—'}${r.reason?' · '+esc(r.reason):''}</div></div>
+   <div style="text-align:right;display:grid;gap:3px;justify-items:end"><span class="tag mono">${r.origin}</span>${r.exp?`<span class="cap num">until ${r.exp}</span>`:''}</div></div>`).join('')}</div>`};
+PG.requests=c=>{const u=me();const mine=REQS.filter(r=>r.u===u.id);
+  const h=head('Requests',"Everything you've asked for, and what was decided.",`<button class="btn" data-act="toast" data-v="Request form opens (phase-5 flow)">＋ New request</button>`,c);
+  if(!mine.length)return h+emptyBlock(icon('adminRequests',20),'Nothing requested yet','When you ask for a group, a role or a resource, it shows up here with its status and the decision note.');
+  return h+`<div class="stack">${mine.map(r=>`<div class="card pad">
+    <div class="row"><div style="flex:1;min-width:0"><div class="row" style="gap:8px">${kindTag(r.kind)}<span class="mono" style="color:var(--ink);font-size:13px">${esc(target(r))}</span>${r.kind==='resource'?`<span class="cap">${lab(r.target)}</span>`:''}</div>
+     <div class="cap num" style="margin-top:4px">Sent ${r.at}</div></div>${reqSt(r.status)}</div>
+    <div style="margin-top:10px;font-size:14px;color:var(--body)">“${esc(r.note)}”</div>
+    ${r.status!=='pending'&&r.by?`<div class="diff" style="margin-top:10px;white-space:normal;font-family:var(--sans);font-size:13px;line-height:1.5"><b style="color:var(--ink);font-weight:500">${r.by}</b> <span class="cap num">· ${r.dAt}</span>${r.dNote?`<div style="margin-top:2px">${esc(r.dNote)}</div>`:''}</div>`:''}
+    ${r.status==='pending'?`<div class="row" style="margin-top:12px"><span class="cap">Waiting on ${r.kind==='role'?'an admin':(managersOf(r.target).map(m=>USERS[m.u].name).join(' or ')||'an admin')}</span><span class="spacer"></span><button class="pill sm">Cancel request</button></div>`:''}</div>`).join('')}</div>`};
+PG.tokens=c=>{const u=me();const can=has('tokens:create');const toks=TOKENS[u.id]||[];
+  let h=head('Tokens & apps','Personal tokens and apps that act as you over MCP. Each sees exactly what you see, never more.',can?`<button class="btn" data-act="toast" data-v="New token dialog (phase-5 flow)">＋ New token</button>`:'',c);
+  h+=`<h2 class="sh" style="margin-top:4px">Personal access tokens</h2>`;
+  if(!can)h+=`<div class="notice"><div class="ni">${LOCK}</div><div style="flex:1"><div class="nt">Personal tokens need ${mono('tokens:create')}</div><div class="nb">It comes with the <b>analyst</b> role. Your role is ${u.role}.</div></div><button class="pill">Request analyst</button></div>`;
+  else h+=`<div class="card tw" data-o="apple" data-o-label="Apple · data table on a solid card"><table class="dt"><thead><tr><th>Name</th><th>Token</th><th>Created</th><th>Expires</th><th>Last used</th><th></th></tr></thead><tbody>
+   ${toks.map(t=>`<tr><td style="color:var(--ink);font-weight:500">${esc(t[0])}</td><td><span class="mono" data-o="codex" data-o-label="Codex · mono prefix">${t[1]}…</span></td><td class="num">${t[2]}</td><td class="num">${t[3]}</td><td class="num">${t[4]}</td><td class="r"><button class="pill sm">Revoke</button></td></tr>`).join('')}</tbody></table></div>`;
+  h+=`<h2 class="sh">Connected apps</h2><div class="list">${APPS.map(a=>`<div class="li"><span class="av svc">${icon('app')}</span><div class="grow"><div class="t1">${a[0]}<span class="mono cap">${a[1]}</span></div><div class="t2 num">Authorized ${a[3]} · last used ${a[2]} · scope <span class="mono">mcp:use</span></div></div><button class="pill sm">Revoke</button></div>`).join('')}</div>`;
+  return h};
+function usersRows(){const q=U.uq.trim().toLowerCase();return UORDER.slice(0,12).map(i=>USERS[i]).filter(u=>!q||u.name.toLowerCase().includes(q)||u.email.includes(q))}
+function usersTable(){const list=usersRows();if(!list.length)return emptyBlock(icon('search',20),`No users match “${esc(U.uq)}”`,'Try a shorter search, or clear the filters.');
+  return `<div class="card tw" data-o="apple" data-o-label="Apple · 1080px data table on a solid card"><table class="dt"><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Status</th><th class="hide-mid">Kind</th><th>Last seen</th><th class="r">Groups</th></tr></thead><tbody>
+   ${list.map(u=>`<tr class="click" tabindex="0"><td><div class="who">${av(u)}<span style="color:var(--ink)">${u.email}</span></div></td><td>${u.name}${u.id===me().id?' <span class="tag">you</span>':''}</td><td>${role(u.role)}</td><td>${u.status==='active'?stPlain('pos','active'):stPlain('mute','disabled')}</td><td class="hide-mid">${u.kind==='service'?'<span class="tag">service</span>':'<span class="cap">human</span>'}</td><td class="num">${u.last}</td><td class="r num mono">${groupsOf(u.id).length}</td></tr>`).join('')}
+   </tbody></table></div><div class="row" style="justify-content:center;margin-top:14px"><span class="cap num">Showing ${list.length} of ${UORDER.length}</span><button class="pill">Load more</button></div>`}
+PG.users=c=>{const sel=(label,opts)=>`<select class="dd" aria-label="${label}"><option value="">${label}: any</option>${opts.map(o=>`<option>${o}</option>`).join('')}</select>`;
+  return head('Users','Everyone who has signed in, plus service identities. Roles say what people can do; groups say what they can see.','',c)+
+  `<div class="filters" data-o="apple" data-o-label="Apple · filter bar"><div class="search"><span class="ic">⌕</span><input class="inp" id="uq" placeholder="Search name or email" value="${esc(U.uq)}"></div>
+   ${sel('Role',ROLES)}${sel('Status',['active','disabled'])}${sel('Kind',['human','service'])}<span class="spacer"></span><span class="cap num">${UORDER.length} users · 1 service</span></div>
+   ${S.layout==='C'?`<div class="squeeze" data-o="atlas" data-o-label="Atlas · wide admin table cramped in a modal">⇠ The table scrolls sideways inside the modal ⇢</div>`:''}
+   <div id="usersTable" style="margin-top:8px">${usersTable()}</div>`};
+PG.groups=c=>{const mgr=isMgr();const vis=mgr?managed():GROUPS.map(g=>g.id);if(!vis.includes(U.gSel))U.gSel=vis[0];const g=GBY[U.gSel];const canGrants=isAdmin();const meId=me().id;
+  const node=(x,d)=>{const v=vis.includes(x.id);const kids=GROUPS.filter(k=>k.parent===x.id);
+    return `<div class="tn ${U.gSel===x.id?'on':''} ${v?'':'lock'}" ${v?`data-act="gsel" data-v="${x.id}"`:''} style="padding-left:${10+d*18}px"><span class="tw-ic">${kids.length?'▾':'·'}</span><span class="mono" style="font-size:12.5px;color:${v?'var(--ink)':'var(--muted)'}">${x.id}</span>${v?'':`<span class="cap">${lock(10)}</span>`}<span class="cnt">${x.members.length} · ${x.grants.length}</span></div>${kids.map(k=>node(k,d+1)).join('')}`};
+  const members=g.members.map(([uid,s])=>{const u=USERS[uid];const self=uid===meId;return `<div class="li">${av(u)}<div class="grow"><div class="t1">${u.name}${self?'<span class="tag">you</span>':''}</div><div class="t2">${u.email}</div></div>${standing(s)}${self&&mgr?'<span class="cap">can\'t change own membership</span>':(canGrants||(mgr&&s==='member'))?'<button class="pill sm">Remove</button>':''}</div>`}).join('');
+  const grants=g.grants.map(x=>`<div class="li">${eff(x.effect)}<div class="grow"><div class="t1"><span class="mono">${x.target}</span><span class="cap">${lab(x.target)}</span></div><div class="t2">${x.reason||'No reason'} · by ${x.by} · <span class="mono">${x.id}</span></div></div>${canGrants?'<button class="pill sm">Revoke</button>':''}</div>`).join('');
+  return head('Groups',mgr?'Groups you manage. You can add and remove plain members; grants are managed by admins.':'Groups hold data grants; members inherit them and everything from parent groups.',canGrants?'<button class="btn">＋ New group</button>':'',c)+
+  `<div class="gsplit"><div class="card" style="padding:6px 0" data-o="apple" data-o-label="Apple · tree list with mono counts"><div class="lbl" style="padding:10px 18px 2px;display:flex">Groups<span class="cap" style="margin-left:auto;font-weight:400">members · grants</span></div><div class="tree">${GROUPS.filter(x=>!x.parent).map(x=>node(x,0)).join('')}</div></div>
+   <div class="stack"><div class="card" style="padding:18px 20px"><span style="font-family:var(--mono);font-size:19px;color:var(--ink)">${g.id}</span><div class="muted" style="font-size:14px;margin-top:2px">${g.desc}</div>
+     <div class="row" style="gap:6px;margin-top:10px"><span class="tag">parent ${g.parent?mono(g.parent):'none · top level'}</span><span class="tag num">${g.members.length} members</span><span class="tag num">${g.grants.length} grants</span></div></div>
+    <div><h2 class="sh" style="margin-top:6px">Members</h2>${g.members.length?`<div class="list">${members}</div>`:`<div class="list"><div class="li"><div class="t2">No members yet.</div></div></div>`}</div>
+    <div><h2 class="sh" style="margin-top:12px">Grants</h2>${canGrants?'':`<div class="cap" style="margin-bottom:8px">${lock(11)} Managing grants needs ${mono('admin:groups')}.</div>`}${g.grants.length?`<div class="list">${grants}</div>`:''}</div></div></div>`};
+function approveLines(r){const u=USERS[r.u];
+  if(r.kind==='group')return[['c',`request ${r.id}  ${u.email}`],['a',`member ${short(u.email)} in ${r.target}`],['c',`inherits ${GBY[r.target].grants.map(g=>g.effect+' '+g.target).join(', ')}`]];
+  if(r.kind==='role')return[['c',`request ${r.id}  ${u.email}`],['rm',`role ${r.from}`],['a',`role ${r.target}`]];
+  return[['c',`request ${r.id}  ${u.email}`],['a',`grant allow ${r.target} for ${short(u.email)} until 2027-01-07`]]}
+PG.queue=c=>{const ids=(isAdmin()?QUEUE.admin:QUEUE.manager).slice(0,S.pending);const list=ids.map(i=>REQS.find(r=>r.id===i));
+  const card=r=>{const u=USERS[r.u];const done=U.decided[r.id];const open=U.rvOpen===r.id;
+   return `<div class="card pad"><div class="row" style="align-items:flex-start;gap:12px">${av(u)}<div style="flex:1;min-width:0">
+     <div class="row" style="gap:8px"><b style="font-weight:500;color:var(--ink)">${u.name}</b><span class="cap">${u.email}</span></div>
+     <div class="row" style="gap:8px;margin-top:4px">${kindTag(r.kind)}<span class="mono" style="color:var(--ink)">${esc(target(r))}</span>${r.kind==='resource'?`<span class="cap">${lab(r.target)}</span>`:''}<span class="cap num">· ${r.at}</span></div>
+     <div style="margin-top:8px;font-size:14px">“${esc(r.note)}”</div></div>
+     <div style="display:grid;justify-items:end;gap:8px">${done?st('pos','approved'):st('warn','pending')}
+     ${!done&&!open?`<div class="row" style="gap:6px"><button class="pill sm">Decline</button><button class="btn" style="padding:6px 14px" data-act="approve" data-v="${r.id}">Approve</button></div>`:''}</div></div>
+     ${open||done?`<div class="review" data-o="codex" data-o-label="Codex · review diff before apply"><div class="rh">◇ <b>Approve request ${r.id}</b> · ${done?'applied':'needs your approval'}</div><div class="diff">${approveLines(r).map(([k,t])=>`<span class="${k}">${esc(t)}</span>`).join('\n')}</div>
+      <div class="rf"><button class="btn" data-act="apply" data-v="${r.id}" ${done?'disabled':''}><span class="morph ${done?'done':''}" ${U.anim===r.id?'data-anim':''}><span class="a">Approve</span><span class="b">✓ Approved</span></span></button>${done?'':'<button class="pill" data-act="rvx">Dismiss</button>'}<span class="cap" style="margin-left:auto">Recorded as ${mono('request.approve')}</span></div></div>`:''}</div>`};
+  return head('Access requests',isMgr()?'Group requests for marketing and its subgroups. Role and resource requests go to admins.':'Requests from everyone. Approving applies the exact change shown in the review.','',c)+
+   `<div style="margin-bottom:14px"><div class="seg" data-o="apple" data-o-label="Apple · segmented tabs"><button class="on">Pending <span class="n">${list.length}</span></button><button>Decided <span class="n">4</span></button></div></div>`+
+   (list.length?`<div class="stack">${list.map(card).join('')}</div>`:emptyBlock('✓','No pending requests',"You're all caught up. New requests show here, as a count in the account menu and as a clay dot on your avatar."))};
+PG.audit=c=>{const tab=U.auditTab;let body;
+  if(tab==='changes')body=`<div class="card tw" data-o="apple" data-o-label="Apple · data table, expandable rows"><table class="dt"><thead><tr><th style="width:24px"></th><th>Time</th><th>Actor</th><th>Action</th><th>Object</th></tr></thead><tbody>
+    ${CHANGES.map((x,i)=>`<tr class="click ${i===0?'open':''}"><td style="color:var(--muted)">${i===0?'▾':'▸'}</td><td class="num">${x.t}</td><td>${x.actor}</td><td><span class="mono" style="color:var(--ink)">${x.act}</span></td><td>${x.obj.replace(/([a-z.]+@)/,'<span class="mono">$1</span>')}</td></tr>${i===0?`<tr><td></td><td colspan="4" class="xp" style="padding-left:12px"><div class="diff" data-o="codex" data-o-label="Codex · diff block">${x.diff.map(([k,t])=>`<span class="${k}">${esc(t)}</span>`).join('\n')}</div></td></tr>`:''}`).join('')}</tbody></table></div>`;
+  else body=`<div class="card tw"><table class="dt"><thead><tr><th>Time</th><th>User</th><th>Surface</th><th>Tool · resource</th><th>Decision</th><th>Deny reason</th><th class="r">Duration</th></tr></thead><tbody>
+    ${DECISIONS.map(d=>`<tr><td class="num">${d[0]}</td><td>${d[1]}</td><td><span class="tag">${d[2]}</span></td><td><span class="mono" style="color:var(--ink)">${d[3]}</span><div class="mono cap">${d[4]}</div></td><td>${d[5]==='allow'?stPlain('pos','allow'):stPlain('neg','deny','deny')}</td><td>${d[6]?mono(d[6]):'<span class="cap">—</span>'}</td><td class="r num">${d[7]} ms</td></tr>`).join('')}</tbody></table></div>`;
+  return head('Audit','Who changed access, and every allow or deny the atlas tools made. Times are UTC.','<button class="pill">Last 7 days ▾</button>',c)+
+   `<div style="margin-bottom:14px"><div class="seg">${[['changes','Changes',CHANGES.length],['decisions','Decisions',DECISIONS.length]].map(([v,t,n])=>`<button class="${tab===v?'on':''}" data-act="auditTab" data-v="${v}">${t} <span class="n">${n}</span></button>`).join('')}</div></div>${body}`};
+
+function pageBody(p,c){return canSee(p)?PG[p](c):guard(p)}
+function wrapPage(p){return `<div class="page ${U.enter?'enter':''}" style="--w:${PAGES[p].w}px">${pageBody(p)}</div>`}
+
+/* ═════════ SHELL PIECES ═════════ */
+function chip(){const u=me();const open=S.screen==='menu';return `<div class="foot"><button class="chip ${open?'open':''}" data-act="menu" aria-haspopup="menu" aria-expanded="${open}" data-o="apple" data-o-label="Apple · user chip opens the account menu">${avDot(u)}<div style="min-width:0;flex:1"><div class="nm">${u.name}</div><div class="em">${u.email}</div></div>${role(u.role)}</button></div>`}
+function navBtn(k,t,on,extra='',attr=''){return `<button class="nav ${on?'on':''}" ${attr}><span class="ic">${icon(k)}</span>${t}${extra}</button>`}
+function threads(){if(first())return `<div class="sec">Recents</div><div class="empty-thr">No conversations yet</div>`;
+  return `<div class="sec" data-o="codex" data-o-label="Codex · threads with status + mono time">Recents</div>${THREADS.map((t,i)=>`<button class="thr ${i===0&&S.screen!=='settings'?'on':''}" data-act="back">${t[3]?'<span class="run" aria-label="running"></span>':''}<span class="tt">${t[0]}</span><span class="tm">${t[2]}</span></button>`).join('')}`}
+function sideApp(){const onChat=S.screen!=='settings'||S.layout==='C'||(S.layout==='D'&&!isOrg(S.page));
+  return `<div class="brand"><i aria-hidden="true"></i>Atlas</div>${navBtn('chat','Ask Atlas',onChat,'','data-act="back"')}${navBtn('metrics','Metrics',false)}${threads()}${chip()}`}
+function sideE(cur){const acct=[['access','account','My access'],['requests','myRequests','My requests'],['tokens','tokens','Tokens & apps']];
+  const adm=visible(ORG).map(p=>[p,PAGES[p].ic,PAGES[p].t]);
+  const n=([p,ic,t])=>navBtn(ic,t,cur===p,p==='queue'&&pending()?`<span class="badge" data-o="atlas" data-o-label="Atlas · pending-approval badge">${pending()}</span>`:'',`data-page="${p}"`);
+  return `<div class="brand"><i aria-hidden="true"></i>Atlas</div>${navBtn('chat','Ask Atlas',!cur,'','data-act="back"')}${navBtn('metrics','Metrics',false)}
+   <div class="sec" data-o="atlas" data-o-label="Atlas · phase-5 Account section (before)">Account</div>${acct.map(n).join('')}
+   ${adm.length?`<div class="sec">Admin</div>${adm.map(n).join('')}`:''}${threads()}
+   <div class="foot"><button class="chip ${S.screen==='menu'?'open':''}" data-act="menu">${av(me())}<div style="min-width:0;flex:1"><div class="nm">${me().name}</div><div class="em">${me().email}</div></div>${role(me().role)}</button></div>`}
+function railItems(cur,cls){const n=p=>navBtn(PAGES[p].ic,PAGES[p].t,cur===p,p==='queue'&&pending()?`<span class="badge" data-o="atlas" data-o-label="Atlas · pending-approval count">${pending()}</span>`:'',`data-page="${p}" ${cur===p?'aria-current="page"':''}`);
+  const org=visible(ORG);
+  return `<div class="sec">You</div>${YOU.map(n).join('')}${org.length?`<div class="sec" data-o="atlas" data-o-label="Atlas · ORGANIZATION: admins all, managers Groups + Requests">Organization</div>${org.map(n).join('')}`:''}`}
+function sideSettings(cur){return `<button class="nav back" data-act="back" data-o="claude" data-o-label="Claude · rail swap: Linear/Slack/Claude-desktop pattern"><span class="ic">${icon('back')}</span>Back to Atlas<span class="kbd">esc</span></button>
+  <div class="rail-title" style="margin-top:6px">Settings</div>${railItems(cur)}<div class="rail-foot">Signed in as <span class="mono" style="font-size:11px">${esc(short(me().email))}</span></div>`}
+function topBar(title,rt,opt={}){const u=me();const lead=opt.back?`<button class="ibtn mback" data-act="${opt.back}" aria-label="Back">${icon('back',20)}</button>`:`<button class="ibtn menubtn" data-act="drawer" aria-label="Open navigation">☰</button>`;
+  return `${lead}<div class="t">${opt.crumb?`<span class="crumb" data-act="back">${opt.crumb}</span><span class="muted">›</span>`:''}<span>${title}</span></div>
+   <span class="route" data-o="codex" data-o-label="Codex · mono route">${esc(rt)}</span><button class="ibtn srch" title="Search ⌘K" aria-label="Search" data-act="palette">⌕</button><button class="tav" data-act="menu" aria-label="Account menu">${avDot(u)}</button>`}
+function consoleTop(cur){const tabs=visible(ORG);return `<div class="brand"><i aria-hidden="true"></i>Atlas</div><span class="tag" data-o="atlas" data-o-label="Atlas · separate admin console surface">Admin console</span>
+  <div class="seg" style="margin-left:8px">${tabs.map(p=>`<button class="${cur===p?'on':''}" data-page="${p}">${PAGES[p].t}${p==='queue'&&pending()?` <span class="n">${pending()}</span>`:''}</button>`).join('')}</div>
+  <span class="route">${esc(route(cur))}</span><button class="pill sm" data-act="back">← Back to Atlas</button>`}
+
+/* account menu: recommended (A–D) and current (E) */
+function themeSeg(){return `<div class="seg xs" role="radiogroup" aria-label="Theme" data-o="apple" data-o-label="Apple · compact segmented theme">${[['light','Light','sun'],['dark','Dark','moon'],['system','System','monitor']].map(([v,t,ic])=>`<button class="${S.theme===v?'on':''}" data-act="theme" data-v="${v}" role="radio" aria-checked="${S.theme===v}" title="${t}">${icon(ic,13)}${t}</button>`).join('')}</div>`}
+function menuItems(){const u=me();const L=S.layout;const n=pending();
+  const hdr=`<div class="amh">${av(u,0)}<div style="flex:1;min-width:0"><div class="nm">${u.name}</div><div class="em">${u.email}</div></div>${role(u.role)}</div><div class="msep"></div>`;
+  if(L==='E')return hdr+`<button class="mi" data-page="access"><span class="ic">${icon('account')}</span>My access</button><button class="mi" data-page="tokens"><span class="ic">${icon('tokens')}</span>Tokens & apps</button><div class="msep"></div>
+    ${[['light','Light','sun'],['dark','Dark','moon'],['system','System','monitor']].map(([v,t,ic])=>`<button class="mi ${S.theme===v?'cur':''}" data-act="theme" data-v="${v}"><span class="ic">${icon(ic)}</span>${t}</button>`).join('')}<div class="msep"></div>
+    <button class="mi" data-act="signout"><span class="ic">${icon('signout')}</span>Sign out</button>`;
+  const adminItem=(isAdmin()||isMgr())?`<button class="mi" data-act="admin" data-o="atlas" data-o-label="Atlas · Admin item: managers + admins only"><span class="ic">${icon('shield')}</span>${L==='D'?'Admin console':'Admin'}${n?`<span class="badge" aria-label="${n} pending approvals">${n}</span>`:(L==='D'?`<span class="kbd">${icon('ext',12)}</span>`:'')}</button>`:'';
+  return hdr+`<button class="mi" data-act="settings"><span class="ic">${icon('settings')}</span>Settings${isMob()?'':'<span class="kbd">⌘,</span>'}</button>${adminItem}<div class="msep"></div>
+   <div class="mrow col"><span class="cap">Theme</span>${themeSeg()}</div><div class="msep"></div>
+   <button class="mi" data-act="signout"><span class="ic">${icon('signout')}</span>Sign out</button>`}
+function popMenu(){return `<div class="amenu glass pos" role="menu" data-o="claude" data-o-label="Claude · Claude-style account menu">${menuItems()}</div>`}
+function sheetMenu(){return `<div class="sheet glass pos" role="menu" data-o="apple" data-o-label="Apple · bottom sheet (Claude-style account menu)"><div class="grab"></div>${menuItems()}</div>`}
+
+/* palette */
+function palItems(){const out=[];
+  (S.layout==='E'?['access','requests','tokens',...ORG]:[...YOU,...ORG]).filter(canSee).forEach(p=>out.push({g:'Settings',t:(S.layout==='E'?'':'Settings › ')+PAGES[p].t,m:route(p),ic:PAGES[p].ic,k:'page',v:p,n:p==='queue'?pending():0}));
+  out.push({g:'Actions',t:S.theme==='dark'?'Switch to light theme':'Switch to dark theme',ic:S.theme==='dark'?'sun':'moon',k:'theme',v:S.theme==='dark'?'light':'dark'},{g:'Actions',t:'New chat',ic:'plus',k:'back'},{g:'Actions',t:'Sign out',ic:'signout',k:'signout'});
+  THREADS.slice(0,3).forEach(t=>out.push({g:'Recent threads',t:t[0],m:'/ask/t/'+t[1],ic:'chat',k:'back'}));
+  const q=U.palQ.trim().toLowerCase();return out.filter(i=>!q||i.t.toLowerCase().includes(q)||(i.m||'').includes(q))}
+function palList(){const items=palItems();if(U.palSel>=items.length)U.palSel=Math.max(0,items.length-1);let g='';
+  return items.length?items.map((it,i)=>{const h=it.g!==g?`<div class="pg">${it.g}</div>`:'';g=it.g;return h+`<div class="pr ${i===U.palSel?'on':''}" data-pal="${i}" role="option" aria-selected="${i===U.palSel}"><span class="ic">${icon(it.ic)}</span>${it.t}${it.n?`<span class="badge" style="margin-left:8px">${it.n}</span>`:''}${it.m?`<span class="mono">${esc(it.m)}</span>`:''}</div>`}).join(''):`<div class="pr" style="color:var(--muted);cursor:default">No page or action matches “${esc(U.palQ)}”</div>`}
+function palette(){return `<div class="palette glass pos" role="dialog" aria-label="Command palette" data-o="apple" data-o-label="Apple · ⌘K glass palette (cmdk)"><div class="pin">${icon('search',18)}<input id="palIn" placeholder="Search settings, threads and actions…" value="${esc(U.palQ)}" autocomplete="off" aria-label="Search"></div><div class="plist" id="palList" role="listbox">${palList()}</div><div class="pfoot"><span><span class="mono">↑↓</span> move</span><span><span class="mono">↵</span> open</span><span><span class="mono">esc</span> close</span><span style="margin-left:auto" class="mono">⌘,  settings</span></div></div>`}
+
+/* chat + first run */
+function chatView(){return `<div class="chat ${U.enter?'enter':''}">
+  <div class="u"><div>How did revenue do in September, and which channel drove it?</div></div>
+  <div class="ans">
+   <div class="plan" data-o="claude" data-o-label="Claude · Worked for Ns (Codex plan collapsed)">▸ Worked for 4s · 3 steps <span class="mono" style="margin-left:auto">search_atlas · query_metric · metric_breakdown</span></div>
+   <div class="card kpi" style="max-width:360px;margin-bottom:14px"><div class="l">Total revenue · Sep 2026</div><div class="v">AED 4.82M</div><div class="row" style="gap:6px">${stPlain('pos','+6.1% vs Aug')}${prov('<span class="mono" style="font-size:11px">revenue</span> · demo · synced 12 min ago')}</div></div>
+   <p>Revenue in September was <strong>AED 4.82M</strong>, up <strong>6.1%</strong> on August. Paid social drove most of the gain at <strong>AED 1.31M</strong>, up 18% month on month; email and organic were flat.</p>
+   <div class="chips" style="margin-top:0">${prov('<span class="mono" style="font-size:11px">revenue</span> · demo · fresh')}${prov('breakdown by channel · demo · fresh')}</div>
+  </div></div>`}
+function firstRun(){const u=me();const opts=['marketing','csm','leadership'];
+  return `<div class="fr ${U.enter?'enter':''}"><h1 class="greet serif">Good morning, ${u.name.split(' ')[0]}</h1><p class="gsub">You're signed in. One step before Atlas can answer.</p>
+  <div class="card empty" style="padding:30px 24px 26px" data-o="claude" data-o-label="Claude · editorial empty state, in the chat"><div class="ei">${lock(20)}</div><h3>No data access yet</h3>
+   <p>No group or grant covers any data for <b>${u.email}</b> yet, so metric questions would be denied. Ask for the group your team uses; its managers decide.</p>
+   <div class="row">${U.frOpen?'':`<button class="btn" data-act="frOpen" data-o="atlas" data-o-label="Atlas · request access without leaving chat">Request access</button>`}<button class="pill" data-act="palette">What can Atlas cover?</button></div>
+   <div class="chips" style="justify-content:center;margin-top:14px">${prov('scope · from your Google sign-in')}</div></div>
+  ${U.frOpen?`<div class="card" style="padding:18px 20px;margin-top:12px;text-align:left" data-o="codex" data-o-label="Codex · inline request card (stays in chat)">
+   <div class="lbl" style="margin-bottom:8px">Which team are you on?</div>
+   <div class="list">${opts.map(g=>{const ms=managersOf(g);return `<div class="li click ${U.frGroup===g?'sel':''}" data-act="frPick" data-v="${g}"><span class="radio"></span><div class="grow"><div class="t1"><span class="mono">${g}</span></div><div class="t2">${GBY[g].desc}</div></div><span class="cap">${ms.length?'Decided by '+USERS[ms[0].u].name:'An admin decides'}</span></div>`}).join('')}</div>
+   <div class="field" style="margin-top:14px"><label for="frNote">Why do you need it? <span class="cap">required</span></label><textarea class="inp" id="frNote" style="min-height:64px" ${U.frSent?'disabled':''}>New on growth marketing; I need orders and customers.</textarea></div>
+   <div class="row" style="margin-top:14px">${U.frSent?`<span class="ok-line">Sent to ${managersOf(U.frGroup).map(m=>USERS[m.u].name).join(' and ')||'an admin'}. You'll see the answer in Settings › Requests.</span>`:`<span class="cap">Goes to ${managersOf(U.frGroup).map(m=>USERS[m.u].name).join(' and ')||'an admin'}</span>`}<span class="spacer"></span>
+    <button class="btn" data-act="frSend" ${U.frSent?'disabled':''}><span class="morph ${U.frSent?'done':''}" ${U.frAnim?'data-anim':''}><span class="a">Send request</span><span class="b">✓ Sent</span></span></button></div></div>`:''}</div>`}
+function composer(){return `<div class="composer"><div class="glass spec pos" data-o="apple" data-o-label="Apple · glass composer"><textarea placeholder="${first()?'Ask about Atlas or your access…':'Ask Atlas about revenue, campaigns, accounts…'}"></textarea><div class="row" style="margin-top:6px"><button class="pill sm" style="background:transparent">＋ Source</button><button class="send" aria-label="Send">↑</button></div></div></div>`}
+
+/* settings surfaces per layout */
+function dual(p){return `<div class="dual ${U.enter?'enter':''}"><nav class="irail" aria-label="Settings" data-o="claude" data-o-label="Claude · claude.ai web dual rail"><div class="ttl">Settings</div>${railItems(p)}</nav><div class="page" style="--w:${PAGES[p].w}px">${pageBody(p)}</div></div>`}
+function modalC(p){return `<div class="smodal pos" role="dialog" aria-label="Settings" data-o="apple" data-o-label="Apple · System Settings-style modal (solid)"><nav class="tabs" aria-label="Settings"><div class="rail-title">Settings</div>${railItems(p)}</nav>
+  <div class="mc"><button class="ibtn x" data-act="back" aria-label="Close settings">✕</button><div class="cap mono" style="margin-bottom:6px">${esc(route(p))} · no own URL in a modal</div>${pageBody(p,1)}</div></div>`}
+function modalD(p){return `<div class="pmodal pos" role="dialog" aria-label="Settings"><div class="ph"><div class="row"><h3 class="serif" style="font-size:23px">Settings</h3><span class="cap mono">${esc(route(p))}</span><span class="spacer"></span><button class="ibtn" data-act="back" aria-label="Close settings">✕</button></div>
+  <div class="seg" data-o="apple" data-o-label="Apple · personal settings only">${YOU.map(x=>`<button class="${p===x?'on':''}" data-page="${x}">${PAGES[x].t}</button>`).join('')}</div></div><div class="mc">${pageBody(p,1)}</div></div>`}
+function mobIndex(){const u=me();const row=p=>`<div class="li click" data-page="${p}"><span class="lic">${icon(PAGES[p].ic)}</span><div class="grow"><div class="t1">${PAGES[p].t}</div></div>${p==='queue'&&pending()?`<span class="badge" style="margin-left:0">${pending()}</span>`:''}<span class="chev">›</span></div>`;const org=visible(ORG);
+  return `<div class="mset ${U.enter?'enter':''}" data-o="apple" data-o-label="Apple · iOS Settings drill-down"><h1 class="big">Settings</h1>
+  <div class="list"><div class="li">${av(u,1)}<div class="grow"><div class="t1">${u.name}</div><div class="t2">${u.email}</div></div>${role(u.role)}</div></div>
+  <div class="grp">You</div><div class="list">${YOU.map(row).join('')}</div>
+  ${org.length?`<div class="grp">Organization</div><div class="list">${org.map(row).join('')}</div>`:''}
+  <div class="list" style="margin-top:22px"><div class="li click" data-act="signout"><div class="grow"><div class="t1" style="color:var(--neg)">Sign out</div></div></div></div></div>`}
+
+/* ═════════ RENDER ═════════ */
+let lastKey='';
+function render(){
+  applyFlags();
+  const L=S.layout,mob=isMob(),scr=S.screen;
+  let p=S.page;if(L==='E'&&(p==='general'||p==='index'))p='access';if(!mob&&p==='index')p='general';if(mob&&L==='E'&&p==='index')p='access';
+  const inSet=scr==='settings';
+  const key=[L,scr,p,S.persona,S.width].join('|');U.enter=key!==lastKey;
+  /* sidebar */
+  const sideMode=(inSet&&L==='A'&&!mob)?'settings':'app';
+  const side=$('#side');side.innerHTML=sideMode==='settings'?sideSettings(p):(L==='E'?sideE(inSet?p:null):sideApp());
+  side.classList.remove('swap-in','swap-back');if(sideMode!==U.lastSide){void side.offsetWidth;side.classList.add(sideMode==='settings'?'swap-in':'swap-back')}U.lastSide=sideMode;
+  B.classList.toggle('noside',L==='D'&&inSet&&isOrg(p)&&!mob);
+  /* main */
+  let top,stage,comp=false,over='',scrim='';
+  const chatTop=()=>topBar(first()?'New conversation':'Revenue in September',first()?'/ask':'/ask/t/7b2e');
+  if(inSet){
+    if(mob&&L!=='E'){if(p==='index'){top=topBar('Settings','/settings',{back:'back'});stage=mobIndex()}else{top=topBar(PAGES[p].t,route(p),{back:'mindex'});stage=wrapPage(p)}}
+    else if(L==='A'||L==='E'){top=topBar(PAGES[p].t,route(p),L==='A'?{}:{});stage=wrapPage(p)}
+    else if(L==='B'){top=topBar('Settings',route(p),{});stage=dual(p)}
+    else if(L==='C'){top=chatTop();stage=chatView();comp=true;over=modalC(p);scrim='on'}
+    else if(L==='D'){if(isOrg(p)){top=consoleTop(p);stage=wrapPage(p)}else{top=chatTop();stage=chatView();comp=true;over=modalD(p);scrim='on'}}
+  }else if(scr==='firstrun'){top=chatTop();stage=firstRun();comp=true}
+  else{top=chatTop();stage=chatView();comp=true;
+    if(scr==='menu'){over=mob?sheetMenu():popMenu();scrim=mob?'on':'on clear'}
+    if(scr==='palette'){over=palette();scrim='on'}}
+  const tb=$('#topbar');tb.innerHTML=top;tb.classList.toggle('ctop',L==='D'&&inSet&&isOrg(p)&&!mob);
+  $('#stage').innerHTML=stage;
+  $('#composerHost').innerHTML=comp?composer():'';
+  $('#overlay').innerHTML=over;
+  const sc=$('#scrim');sc.className='scrim'+(scrim?' '+scrim:'')+(U.drawer?' on':'');
+  B.classList.toggle('drawer',U.drawer);
+  if(U.enter)$('#sc').scrollTop=0;lastKey=key;
+  $$('.morph[data-anim]').forEach(m=>{m.classList.remove('done');requestAnimationFrame(()=>requestAnimationFrame(()=>m.classList.add('done')))});U.anim=null;U.frAnim=false;
+  if(scr==='palette'){const i=$('#palIn');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}}
+  bindSpec();syncDock();writeHash()}
+function bindSpec(){$$('.spec').forEach(g=>{if(g._spec)return;g._spec=1;g.addEventListener('pointermove',e=>{const r=g.getBoundingClientRect();g.style.setProperty('--x',(e.clientX-r.left)+'px');g.style.setProperty('--y',(e.clientY-r.top)+'px')})})}
+
+/* ═════════ FLAGS, WIDTH, HASH ═════════ */
+function resolvedTheme(){if(S.theme!=='system')return S.theme;try{return matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}catch(_){return 'light'}}
+function applyFlags(){B.dataset.theme=resolvedTheme();B.classList.toggle('rm',S.rm);B.classList.toggle('rt',S.rt);B.classList.toggle('show-o',S.o);
+  const W=window.innerWidth;let m=S.width;if(m==='auto')m=W<600?'mobile':W<1200?'tablet':'desktop';
+  const max={desktop:'none',tablet:'1100px',mobile:'430px'}[m];$('#frame').style.maxWidth=max;
+  const frameW=m==='desktop'?W:Math.min(W,parseInt(max,10));
+  const phone=m==='mobile'&&W<600;$('#frame').style.margin=phone?'0':'0 auto';
+  B.classList.toggle('sim',m!=='desktop'&&frameW<W&&!phone);$('#simlabel').textContent=m==='desktop'?'':(m==='tablet'?'tablet · 1100px':'mobile · 430px');
+  B.classList.toggle('w-wide',m==='desktop');B.classList.toggle('w-mid',m==='tablet');B.classList.toggle('w-narrow',m==='mobile');B.classList.toggle('w-mobile',m==='mobile');
+  $('#dock').classList.toggle('collapsed',S.dock==='min');const dk=$('#dock');dk.style.left=phone?'10px':'';dk.style.right=phone?'auto':''}
+function writeHash(){const q=new URLSearchParams();q.set('layout',S.layout);q.set('screen',S.screen==='settings'?'settings.'+S.page:S.screen);q.set('persona',S.persona);q.set('pending',S.pending);
+  if(S.theme!=='light')q.set('theme',S.theme);if(S.width!=='auto')q.set('width',S.width);if(S.rm)q.set('rm','1');if(S.rt)q.set('rt','1');if(S.o)q.set('origins','1');if(S.dock==='min')q.set('dock','min');
+  const h='#'+q.toString().replace(/%2C/g,',');if(location.hash!==h)try{history.replaceState(null,'',h)}catch(_){}
+  $('#dLink').textContent=h}
+function readHash(){try{const q=new URLSearchParams(location.hash.slice(1));
+  const l=(q.get('layout')||'').toUpperCase();if(LAYOUTS[l])S.layout=l;
+  let s=q.get('screen');if(s){if(s==='menu-open')s='menu';const [a,b]=s.split(/[.:/]/);if(a==='settings'){S.screen='settings';const pg=b||q.get('page');if(pg&&(PAGES[pg]||pg==='index'))S.page=pg}else if(['chat','menu','palette','firstrun'].includes(a))S.screen=a}
+  const pg=q.get('page');if(pg&&(PAGES[pg]||pg==='index'))S.page=pg;
+  const pe=q.get('persona');if(PERSONAS[pe])S.persona=pe;
+  const pn=q.get('pending');if(pn!=null)S.pending=+pn>0?3:0;
+  const th=q.get('theme');if(['light','dark','system'].includes(th))S.theme=th;
+  const w=q.get('width');if(['auto','desktop','tablet','mobile'].includes(w))S.width=w;
+  if(q.get('rm')==='1')S.rm=true;if(q.get('rt')==='1')S.rt=true;if(q.get('origins')==='1')S.o=true;if(q.get('dock'))S.dock=q.get('dock')==='min'?'min':'open'}catch(_){}}
+
+/* ═════════ DOCK ═════════ */
+function buildDock(){
+  $('#dLayout').innerHTML=Object.entries(LAYOUTS).map(([k,v])=>`<button class="mode" data-layout="${k}">${v[0]}</button>`).join('');
+  $('#dScreen').innerHTML=SCREENS.map(([v,t])=>`<option value="${v}">${t}</option>`).join('');
+  $('#dPersona').innerHTML=Object.entries(PERSONAS).map(([k,v])=>`<button class="mode" data-persona="${k}" style="text-align:center">${v.label}</button>`).join('')}
+function syncDock(){$$('#dLayout .mode').forEach(b=>b.classList.toggle('on',b.dataset.layout===S.layout));$('#dVerdict').innerHTML=LAYOUTS[S.layout][1];
+  $('#dScreen').value=S.screen==='settings'?'settings.'+S.page:S.screen;
+  $$('#dPersona .mode').forEach(b=>b.classList.toggle('on',b.dataset.persona===S.persona));
+  $('#dPending').value=String(S.pending);$('#dTheme').value=S.theme;$('#dWidth').value=S.width;
+  $$('#dA11y .lay').forEach(b=>b.classList.toggle('on',!!S[b.dataset.a]))}
+
+/* ═════════ NAVIGATION ═════════ */
+function goSettings(p){S.screen='settings';S.page=p;U.drawer=false;render()}
+function settingsEntry(){goSettings(isMob()&&S.layout!=='E'?'index':(S.layout==='E'?'access':'general'))}
+function adminEntry(){const p=pending()?'queue':(isAdmin()?'users':'groups');goSettings(p)}
+function back(){S.screen='chat';U.drawer=false;U.palQ='';U.palSel=0;render()}
+function setTheme(v){S.theme=v;render()}
+function runPal(i){const it=palItems()[i];if(!it)return;U.palQ='';U.palSel=0;
+  if(it.k==='page')goSettings(it.v);else if(it.k==='theme'){S.screen='chat';setTheme(it.v)}else if(it.k==='signout'){back();toast('Signed out (mockup)')}else back()}
+
+document.addEventListener('click',e=>{
+  if(e.target.closest('#dock')){const d=e.target.closest('[data-layout],[data-persona],[data-a],#dmin');if(!d)return;
+    if(d.id==='dmin'){S.dock=S.dock==='min'?'open':'min';d.textContent=S.dock==='min'?'+':'–'}
+    else if(d.dataset.layout)S.layout=d.dataset.layout;else if(d.dataset.persona){S.persona=d.dataset.persona;U.decided={};U.rvOpen=null}else if(d.dataset.a)S[d.dataset.a]=!S[d.dataset.a];
+    render();return}
+  if(e.target.id==='scrim'){if(U.drawer){U.drawer=false;render()}else back();return}
+  const pal=e.target.closest('[data-pal]');if(pal){runPal(+pal.dataset.pal);return}
+  const pg=e.target.closest('[data-page]');if(pg){goSettings(pg.dataset.page);return}
+  const a=e.target.closest('[data-act]');if(!a)return;const act=a.dataset.act,v=a.dataset.v;
+  switch(act){
+   case 'menu':S.screen=S.screen==='menu'?'chat':'menu';U.drawer=false;render();break;
+   case 'settings':settingsEntry();break;
+   case 'admin':adminEntry();break;
+   case 'back':back();break;
+   case 'mindex':goSettings('index');break;
+   case 'palette':S.screen='palette';U.drawer=false;render();break;
+   case 'drawer':U.drawer=true;render();break;
+   case 'theme':setTheme(v);break;
+   case 'density':U.density=v;render();break;
+   case 'signout':toast('Signed out (mockup)');break;
+   case 'toast':toast(v);break;
+   case 'gsel':U.gSel=v;render();break;
+   case 'auditTab':U.auditTab=v;render();break;
+   case 'approve':U.rvOpen=v;render();break;
+   case 'rvx':U.rvOpen=null;render();break;
+   case 'apply':U.decided[v]=true;U.anim=v;render();toast('Approved · recorded in the audit log');break;
+   case 'frOpen':U.frOpen=true;render();break;
+   case 'frPick':if(!U.frSent){U.frGroup=v;render()}break;
+   case 'frSend':U.frSent=true;U.frAnim=true;render();break;
+  }});
+document.addEventListener('change',e=>{const t=e.target;
+  if(t.id==='dScreen'){const [a,b]=t.value.split('.');if(a==='settings'){S.screen='settings';S.page=b}else S.screen=a;U.drawer=false;render()}
+  else if(t.id==='dPending'){S.pending=+t.value;render()}
+  else if(t.id==='dTheme'){S.theme=t.value;render()}
+  else if(t.id==='dWidth'){S.width=t.value;U.drawer=false;render()}
+  else if(t.dataset.actChange==='landing'){U.landing=t.value;toast('Default landing saved')}});
+document.addEventListener('input',e=>{
+  if(e.target.id==='palIn'){U.palQ=e.target.value;U.palSel=0;$('#palList').innerHTML=palList()}
+  if(e.target.id==='uq'){U.uq=e.target.value;$('#usersTable').innerHTML=usersTable()}});
+document.addEventListener('keydown',e=>{const mod=e.metaKey||e.ctrlKey;
+  if(mod&&e.key.toLowerCase()==='k'){e.preventDefault();if(S.screen==='palette')back();else{S.screen='palette';render()}return}
+  if(mod&&e.key===','){e.preventDefault();settingsEntry();return}
+  if(S.screen==='palette'){const n=palItems().length;
+    if(e.key==='ArrowDown'){e.preventDefault();U.palSel=(U.palSel+1)%Math.max(n,1);$('#palList').innerHTML=palList();return}
+    if(e.key==='ArrowUp'){e.preventDefault();U.palSel=(U.palSel-1+n)%Math.max(n,1);$('#palList').innerHTML=palList();return}
+    if(e.key==='Enter'){e.preventDefault();runPal(U.palSel);return}}
+  if(e.key==='Escape'){if(U.drawer){U.drawer=false;render()}else if(S.screen!=='chat'&&S.screen!=='firstrun')back()}});
+window.addEventListener('resize',()=>{if(S.width==='auto')render()});
+window.addEventListener('hashchange',()=>{readHash();render()});
+
+/* ═════════ INIT ═════════ */
+try{if(matchMedia('(prefers-reduced-motion: reduce)').matches)S.rm=true;if(matchMedia('(prefers-reduced-transparency: reduce)').matches)S.rt=true}catch(_){}
+if(window.innerWidth<600)S.dock='min';
+readHash();buildDock();render();
+if(S.dock==='min')$('#dmin').textContent='+';
+})();
+</script>
+</body>
+</html>
