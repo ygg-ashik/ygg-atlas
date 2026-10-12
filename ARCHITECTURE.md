@@ -82,6 +82,42 @@ async def create_group(
     return await service.create_group(principal, payload)
 ```
 
+#### When a module grows: split each layer by topic
+
+A module that covers several topics (for example `access`: groups, members, grants, users,
+requests, audit, row and field) keeps the same layers, but a layer that outgrows one file
+becomes a **package with one file per topic**. Split by domain topic, never by phase, ticket or
+author.
+
+```
+app/access/
+    __init__.py            public interface (unchanged when files move)
+    routers/               one APIRouter per resource; __init__.py composes them
+        __init__.py        router = APIRouter(); router.include_router(groups.router) ...
+        groups.py  users.py  requests.py  audit.py  row_field.py  me.py
+    services/              one service per topic
+        writer.py          the shared write discipline (lock, stale-actor check, audit row,
+                           version bump); every write service uses it, none re-implements it
+        groups.py  members.py  grants.py  users.py  requests.py  row_field.py
+    repositories/          queries grouped by the tables they read and write
+    schemas/               request/response models per topic
+    models.py  evaluator.py  policy.py  ...   (single files stay single while they fit)
+```
+
+- **Two router levels, no more.** `main.py` mounts each module's router; the module's
+  `routers/__init__.py` composes its resource routers. Never chain routers deeper.
+- **Composition over inheritance.** Services share behaviour by calling a collaborator (the
+  writer, another topic's service), never by subclassing another service to reuse its methods.
+- **A package's `__init__.py` re-exports its public names**, so moving code between files
+  inside a module never changes what other modules import.
+- **Layer contracts stay valid.** A layer that becomes a package keeps its place in the module's
+  import-linter `layers` contract; add the package name, not each file.
+- **Section-comment banners are a smell.** A comment like `# ---- groups ----` inside a long
+  file means the file holds several topics; split it instead. Comments say what code does,
+  never which phase or spec section it came from (history lives in git and `docs/`).
+- **Don't over-split.** Thirty 30-line files are as hard to read as one 1,000-line file.
+  A file is one cohesive topic, typically 150 to 400 lines.
+
 ### 2.3 Where code goes
 
 | Situation | Place |
@@ -100,6 +136,11 @@ async def create_group(
   (`dict[str, Any]`), never as a shortcut.
 - Size limits: cyclomatic complexity ≤ 10, ≤ 6 arguments, ≤ 12 branches, ≤ 6 returns,
   ≤ 50 statements per function.
+- Module and class limits (`scripts/check_module_size.py`, run by `make check`):
+  **≤ 500 lines per app module**, **≤ 800 lines per test module**, **≤ 20 methods per class**.
+  Migrations are exempt. 500 lines at 88 columns is about one cohesive topic; past it, split
+  the layer by topic (§2.2). A class past 20 methods is doing several jobs; split it by topic
+  and compose. These are hard limits, not targets: aim for 150 to 400 lines.
 - No `print` in app code (use `structlog`), no commented-out code, no mutable global state
   (`global`); use `functools.cache` factories or explicit holders.
 - Datetimes are timezone-aware UTC only (Ruff `DTZ`, plus the `CLAUDE.md` UTC rule).
@@ -198,7 +239,7 @@ features/<name>/
 |---|---|---|
 | Claude | `engineering-standards` skill before writing code; `production-code-review` skill before calling work done | every coding task |
 | Pre-commit | Ruff (fix and format), Prettier, ESLint on changed files; import contracts; secret scan; whitespace and large-file checks | `git commit` |
-| `make check` | Backend: `ruff format --check`, `ruff check`, `pyright`, `lint-imports`, `pytest -n auto --cov`. Frontend: Prettier check, ESLint, `tsc`, Vitest, build | before every PR |
+| `make check` | Backend: `ruff format --check`, `ruff check`, `pyright`, `lint-imports`, module and class size check, `pytest -n auto --cov`. Frontend: Prettier check, ESLint, `tsc`, Vitest, build | before every PR |
 | `make audit` | Dependency scan: `pip-audit` on lockfile pins resolved for this platform (`scripts/locked_requirements.py`, because pip-audit evaluates markers against its own interpreter, not the project venv), and `pnpm audit --prod` | before dependency changes |
 | CI | Everything in `make check`, plus `make audit` and a gitleaks secret scan | every push and PR; a red build cannot merge |
 
@@ -234,6 +275,7 @@ Each item is removed by the change that touches the code, and the matching rule 
 | `identity.revoke_user_tokens` swallows errors after the disable commit: if it fails and the user is later re-enabled, old tokens work again | Alert on the `identity.revoke_all_failed` log event; make the revocation part of the disable transaction when access and identity share a unit of work |
 | An OAuth issue holds the client row, family lock and user row (`FOR SHARE`) while the eligibility check waits for a second pooled connection. Under pool exhaustion an admin `update_user` on that user waits up to the pool timeout while holding `policy_state`, stalling every admin write; the issue itself then fails cleanly as "unavailable". PAT and service-token minting take no user lock, so a revoke-all racing a mint can miss the new token | Evaluate eligibility before taking the issue locks and re-check only status under them; take the user lock when minting PATs and service tokens |
 | OAuth Client ID Metadata Documents (CIMD) are not supported; clients register with DCR | Add CIMD with port-agnostic loopback matching and an SSRF-safe fetch if a client needs it |
+| Backend modules over the size limits (§2.4): `access/{admin,repository,requests,schemas}.py`, `identity/{oauth,credentials,repository}.py`, `atlas/tools.py`, and test modules `identity/test_oauth_service.py`, `mcp/test_oauth_routes.py`. `make check` runs the size check with `--warn` until they are split | Split per §2.2, then drop `--warn` from the Makefile |
 | Frontend features are flat files | Split per §3.2 when a feature passes about 8 files |
 | An x86_64 macOS toolchain (an Intel Mac, or the x86_64 uv/Python under Rosetta used on the current M1 dev machine) gets `cryptography` 48.0.1, because no newer x86_64 macOS wheels exist; 3 advisories apply to that local venv only, so `make audit-backend` is expected red there. Linux (CI, Docker, EC2) and arm64 macOS use the patched 50.x | Switch dev machines to a native arm64 uv and Python, then drop the platform pin |
 | `@grpc/grpc-js` is forced to ^1.13.6 by a pnpm override (Firebase's Firestore pins a vulnerable 1.9.x; atlas uses only Firebase auth in the browser) | Remove when Firebase ships a fixed Firestore |

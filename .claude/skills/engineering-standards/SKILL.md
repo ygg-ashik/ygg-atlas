@@ -50,6 +50,7 @@ applying them. Machines are the final authority: if `make check` fails, the work
 | An agent tool behavior | `app/atlas/tools.py` (the one door to data) |
 | A helper used only here | The same module, in a file named for what it does |
 | A truly cross-cutting helper | `app/core/<topic>.py`, only with a stable, generic job and several real consumers |
+| More code in a layer file that is past ~400 lines or holds several topics | Split that layer into a package with one file per topic (`routers/`, `services/`, `repositories/`, `schemas/`), per ARCHITECTURE.md §2.2; the package `__init__.py` re-exports |
 
 ### Frontend
 
@@ -74,6 +75,10 @@ applying them. Machines are the final authority: if `make check` fails, the work
 - Business data reached any way other than an atlas tool (`CLAUDE.md` guardrail 1).
 - Tests weakened, skipped or deleted to get green.
 - Unrelated changes bundled into the diff.
+- A module over 500 lines, a test module over 800, or a class over 20 methods (`scripts/check_module_size.py`).
+- `# ---- topic ----` section banners holding several topics in one file, or comments naming a phase or spec section instead of saying what the code does.
+- A service subclassing another service to reuse its methods (compose with the shared writer instead).
+- Routers nested deeper than module router → resource router.
 
 ## Examples
 
