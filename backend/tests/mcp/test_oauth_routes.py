@@ -16,7 +16,7 @@ from structlog.testing import capture_logs
 from app.config import get_settings
 from app.identity import ApiToken, OAuthAuthorizationRequest, OAuthClient, User
 from app.identity.api_tokens import hash_secret
-from app.identity.repository import CredentialRepository
+from app.identity.repository import TokenRepository
 from app.mcp.auth import AtlasTokenVerifier
 from tests.access_helpers import make_user
 from tests.identity.credential_helpers import LOOPBACK_REDIRECT, assert_no_secret
@@ -503,7 +503,7 @@ async def test_a_database_error_during_refresh_is_server_error_without_sql(
     async with http(app.app) as client:
         client_id, tokens = await tokens_for(store, client, user)
         with monkeypatch.context() as patched:
-            patched.setattr(CredentialRepository, "mark_rotated", broken)
+            patched.setattr(TokenRepository, "mark_rotated", broken)
             failed = await refresh(client, client_id, tokens["refresh_token"])
         retried = await refresh(client, client_id, tokens["refresh_token"])
 

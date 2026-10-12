@@ -563,7 +563,7 @@ class OAuthService:
     async def get_client(self, client_id: str) -> RegisteredClient | None:
         """None for unknown or revoked clients, or when no stored redirect is still
         allowed (the allowlist may have narrowed since registration)."""
-        row = await self._creds.client(client_id)
+        row = await self._creds.clients.client(client_id)
         if row is None or row.revoked_at is not None:
             return None
         hosted = self._config.hosted_redirect_uris
@@ -589,10 +589,12 @@ class OAuthService:
         """Revokes the client, all its tokens and its unused codes; writes
         client.revoked. False when the client is unknown or already revoked."""
         now = self._clock()
-        if not await self._creds.revoke_client(client_id, now):
+        if not await self._creds.clients.revoke_client(client_id, now):
             return False
-        tokens = await self._creds.revoke_client_tokens(client_id, REVOKED_CLIENT, now)
-        codes = await self._creds.spend_client_codes(client_id, now)
+        tokens = await self._creds.tokens.revoke_client_tokens(
+            client_id, REVOKED_CLIENT, now
+        )
+        codes = await self._creds.codes.spend_client_codes(client_id, now)
         self._creds.add(
             CredentialEvent(
                 event=EVENT_CLIENT_REVOKED,
@@ -607,8 +609,8 @@ class OAuthService:
         return True
 
     async def list_clients(self) -> list[ClientSummary]:
-        rows = await self._creds.list_clients()
-        families = await self._creds.live_family_counts(self._clock())
+        rows = await self._creds.clients.list_clients()
+        families = await self._creds.families.live_family_counts(self._clock())
         return [
             ClientSummary(
                 client_id=row.client_id,
@@ -672,7 +674,7 @@ class OAuthService:
         return expected is not None and canonical_resource(audience) == expected
 
     async def pending_request(self, txn: str) -> PendingAuthorization | None:
-        row = await self._creds.pending_request(hash_secret(txn), self._clock())
+        row = await self._creds.codes.pending_request(hash_secret(txn), self._clock())
         if row is None:
             return None
         client = await self.get_client(row.client_id)
@@ -690,7 +692,7 @@ class OAuthService:
     async def _consume(self, txn: str, now: datetime) -> OAuthAuthorizationRequest:
         """Single use (D36). A client revoked meanwhile leaves the request as it was
         and issues nothing."""
-        request = await self._creds.consume_request(hash_secret(txn), now)
+        request = await self._creds.codes.consume_request(hash_secret(txn), now)
         if request is None:
             raise AuthorizationRequestNotFoundError
         client = await self.get_client(request.client_id)
@@ -765,7 +767,7 @@ class OAuthService:
             raise GrantUnavailableError from None
 
     async def _load_code(self, client_id: str, raw_code: str) -> CodeGrant | None:
-        row = await self._creds.code_by_hash(hash_secret(raw_code))
+        row = await self._creds.codes.code_by_hash(hash_secret(raw_code))
         if row is None:
             return None
         if row.used_at is not None:
@@ -798,9 +800,9 @@ class OAuthService:
             raise OAuthGrantError(_DEAD_CODE)
         family = _Family(grant.family_id, grant.user_id, client_id)
         now = await self._enter_family(family)
-        if not await self._creds.mark_code_used(grant.code_id, now):
+        if not await self._creds.codes.mark_code_used(grant.code_id, now):
             await self._creds.rollback()
-            fresh = await self._creds.code(grant.code_id, fresh=True)
+            fresh = await self._creds.codes.code(grant.code_id, fresh=True)
             if fresh is not None and fresh.used_at is not None:
                 await self._revoke_family(family, REVOKED_CODE_REUSE, kind="code")
             raise OAuthGrantError(_DEAD_CODE)
@@ -833,7 +835,7 @@ class OAuthService:
     ) -> RefreshGrant | None:
         if kind_of(raw_refresh) is not TokenKind.OAUTH_REFRESH:
             return None
-        row = await self._creds.token_by_hash(hash_secret(raw_refresh))
+        row = await self._creds.tokens.token_by_hash(hash_secret(raw_refresh))
         if row is None or row.kind != TokenKind.OAUTH_REFRESH or row.family_id is None:
             return None
         if row.client_id != client_id:
@@ -868,7 +870,7 @@ class OAuthService:
     async def _rotate_refresh(
         self, client_id: str, grant: RefreshGrant, eligible: Eligibility
     ) -> TokenPair:
-        row = await self._creds.token(grant.token_id, fresh=True)
+        row = await self._creds.tokens.token(grant.token_id, fresh=True)
         if (
             row is None
             or row.client_id != client_id
@@ -884,7 +886,7 @@ class OAuthService:
         if row.revoked_at is None and _as_utc(row.expires_at) <= now:
             await self._creds.rollback()
             raise OAuthGrantError(_DEAD_REFRESH)
-        if row.revoked_at is not None or not await self._creds.mark_rotated(
+        if row.revoked_at is not None or not await self._creds.tokens.mark_rotated(
             row.id, now
         ):
             return await self._retry_or_reuse(grant.token_id, family, eligible)
@@ -904,7 +906,7 @@ class OAuthService:
         and is seen, or waits for the issue and then covers the new pair too."""
         await self._creds.rollback()
         now = await self._enter_family(family)
-        row = await self._creds.token(token_id, fresh=True)
+        row = await self._creds.tokens.token(token_id, fresh=True)
         if (
             row is not None
             and row.revoked_at is not None
@@ -928,9 +930,9 @@ class OAuthService:
         or code rows. A disable takes no client or family lock, so there is no
         cycle. Returns the time after the waits, so a lock wait never stretches a
         window such as the refresh grace."""
-        await self._creds.touch_client(family.client_id, self._clock())
-        await self._creds.lock_family(family.family_id)
-        await self._creds.lock_user(family.user_id)
+        await self._creds.clients.touch_client(family.client_id, self._clock())
+        await self._creds.families.lock_family(family.family_id)
+        await self._users.lock_user(family.user_id)
         return self._clock()
 
     async def _db_errors_as_unavailable(
@@ -961,7 +963,7 @@ class OAuthService:
             and row.revoked_at is not None
             and now - _as_utc(row.revoked_at) <= self._config.refresh_grace
             and row.family_id is not None
-            and await self._creds.family_has_live_token(row.family_id, now)
+            and await self._creds.families.family_has_live_token(row.family_id, now)
         )
 
     # ---- issuing and revoking --------------------------------------------------------
@@ -1081,7 +1083,9 @@ class OAuthService:
             details = {"family_id": family_id, "reason": reason}
             logger.info(EVENT_FAMILY_REVOKED, family_id=family_id, reason=reason)
         try:
-            await self._creds.revoke_family(family.family_id, reason, self._clock())
+            await self._creds.families.revoke_family(
+                family.family_id, reason, self._clock()
+            )
             self._creds.add(
                 CredentialEvent(
                     event=event,
@@ -1108,7 +1112,7 @@ class OAuthService:
         door), so a client can always revoke what it holds. None for anything else."""
         if kind_of(raw_access) is not TokenKind.OAUTH_ACCESS:
             return None
-        row = await self._creds.token_by_hash(hash_secret(raw_access))
+        row = await self._creds.tokens.token_by_hash(hash_secret(raw_access))
         if row is None or row.kind != TokenKind.OAUTH_ACCESS or row.client_id is None:
             return None
         return AccessTokenRef(token_id=row.id, client_id=row.client_id)
@@ -1116,7 +1120,7 @@ class OAuthService:
     async def revoke_by_token_id(self, token_id: UUID) -> None:
         """RFC 7009: revokes the token's whole family. Unknown and non-OAuth tokens
         are ignored (the endpoint answers 200 regardless)."""
-        row = await self._creds.token(token_id, fresh=True)
+        row = await self._creds.tokens.token(token_id, fresh=True)
         if row is None or row.family_id is None or row.client_id is None:
             return
         family = _Family(row.family_id, row.user_id, row.client_id)
@@ -1126,7 +1130,7 @@ class OAuthService:
 
     async def gc(self) -> GcReport:
         """delete_stale, then a credentials.gc event with the counts."""
-        counts = await self._creds.delete_stale(self._clock())
+        counts = await self._creds.gc.delete_stale(self._clock())
         self._creds.add(
             CredentialEvent(event=EVENT_GC, via="system", details=asdict(counts))
         )

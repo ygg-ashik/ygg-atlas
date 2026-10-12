@@ -131,7 +131,7 @@ async def authenticate_bearer(
         raise _rejected("malformed" if kind is None else "not_a_bearer", None)
     prefix = display_prefix(candidate)
     creds = CredentialRepository(db)
-    row = await creds.token_by_hash(hash_secret(candidate))
+    row = await creds.tokens.token_by_hash(hash_secret(candidate))
     if row is None:
         raise _rejected("unknown", prefix)
     reason = _dead_reason(row, kind, moment)
@@ -183,7 +183,9 @@ def _active_owner(user: User | None, kind: TokenKind, prefix: str) -> User:
 async def _require_live_client(
     creds: CredentialRepository, row: ApiToken, prefix: str
 ) -> None:
-    client = None if row.client_id is None else await creds.client(row.client_id)
+    client = (
+        None if row.client_id is None else await creds.clients.client(row.client_id)
+    )
     if client is None or client.revoked_at is not None:
         raise _rejected("client_revoked", prefix)
 
@@ -193,7 +195,7 @@ async def _touch(creds: CredentialRepository, row: ApiToken, moment: datetime) -
     last = row.last_used_at
     if last is not None and moment - _as_utc(last) < LAST_USED_INTERVAL:
         return
-    await creds.touch_token(row.id, moment)
+    await creds.tokens.touch_token(row.id, moment)
     await creds.commit()
 
 
@@ -339,7 +341,7 @@ class TokenService:
         now = self._clock()
         if (
             request.kind is TokenKind.PAT
-            and await self._creds.count_live(request.user_id, request.kind, now)
+            and await self._creds.tokens.count_live(request.user_id, request.kind, now)
             >= MAX_LIVE_PATS
         ):
             msg = (
@@ -404,7 +406,7 @@ class TokenService:
         include_revoked: bool = False,
     ) -> list[ApiToken]:
         """Tokens in `tenant`, newest first; only one user's when `user_id` is set."""
-        return await self._creds.list_tokens(
+        return await self._creds.tokens.list_tokens(
             tenant=tenant,
             kinds=[str(kind) for kind in kinds],
             user_id=user_id,
@@ -422,7 +424,7 @@ class TokenService:
     ) -> None:
         """Idempotent. Another owner's or tenant's token is CredentialNotFoundError
         (no existence probing). Writes token.revoked."""
-        token = await self._creds.token(token_id, fresh=True)
+        token = await self._creds.tokens.token(token_id, fresh=True)
         if token is None or (owner_id is not None and token.user_id != owner_id):
             raise CredentialNotFoundError(_NO_TOKEN)
         if tenant is not None:
@@ -441,7 +443,7 @@ class TokenService:
                 token_id=token.id,
             )
             return
-        if not await self._creds.revoke_token(token.id, reason, self._clock()):
+        if not await self._creds.tokens.revoke_token(token.id, reason, self._clock()):
             return  # already revoked: nothing changed, nothing to log
         self._creds.add(
             self._event(
@@ -466,8 +468,8 @@ class TokenService:
     ) -> int:
         """Every kind; one tokens.revoked_all event with the count and reason."""
         now = self._clock()
-        count = await self._creds.revoke_user_tokens(user_id, reason, now)
-        codes = await self._creds.spend_user_codes(user_id, now)
+        count = await self._creds.tokens.revoke_user_tokens(user_id, reason, now)
+        codes = await self._creds.codes.spend_user_codes(user_id, now)
         self._creds.add(
             self._event(
                 EVENT_TOKENS_REVOKED_ALL,
@@ -488,7 +490,7 @@ class TokenService:
 
     async def list_connected_apps(self, user_id: UUID) -> list[ConnectedApp]:
         """One entry per OAuth family with a live refresh token."""
-        rows = await self._creds.connected_apps(user_id, self._clock())
+        rows = await self._creds.families.connected_apps(user_id, self._clock())
         return [
             ConnectedApp(
                 family_id=row.family_id,
@@ -519,7 +521,7 @@ class TokenService:
         """
         client_id: str | None = None
         if owner_id is not None:
-            apps = await self._creds.connected_apps(owner_id, self._clock())
+            apps = await self._creds.families.connected_apps(owner_id, self._clock())
             app = next((a for a in apps if a.family_id == family_id), None)
             if app is None:
                 msg = "No such connected app."
@@ -546,7 +548,9 @@ class TokenService:
         """Revokes the family's live rows (the repository takes the family lock
         first, the order issuers use after the client row) and writes
         oauth.family_revoked; a dead family changes and logs nothing."""
-        count = await self._creds.revoke_family(family_id, reason, self._clock())
+        count = await self._creds.families.revoke_family(
+            family_id, reason, self._clock()
+        )
         if count == 0:
             await self._creds.commit()  # nothing staged; ends the family lock
             return
@@ -573,7 +577,7 @@ class TokenService:
         self, *, tenant: str, user_id: UUID | None = None, limit: int = 100
     ) -> list[CredentialEvent]:
         """credential_events in `tenant`, newest first."""
-        return await self._creds.list_events(
+        return await self._creds.events.list_events(
             tenant=tenant, user_id=user_id, limit=limit
         )
 

@@ -54,7 +54,12 @@ from app.identity.oauth import (
     OAuthService,
     RegisteredClient,
 )
-from app.identity.repository import CredentialRepository
+from app.identity.repository import (
+    ClientRepository,
+    CodeRepository,
+    FamilyRepository,
+    UserRepository,
+)
 from tests.access_helpers import make_user
 from tests.identity.credential_helpers import (
     LOOPBACK_REDIRECT,
@@ -1075,10 +1080,10 @@ async def test_a_database_error_during_exchange_is_unavailable(
     that is still good)."""
     _, grant = await approved_code(service, user, client_id)
 
-    async def broken(self: CredentialRepository, *args: object) -> bool:
+    async def broken(self: CodeRepository, *args: object) -> bool:
         raise DBAPIError("UPDATE oauth_codes ...", {}, Exception("deadlock detected"))
 
-    monkeypatch.setattr(CredentialRepository, "mark_code_used", broken)
+    monkeypatch.setattr(CodeRepository, "mark_code_used", broken)
     with capture_logs() as logs, pytest.raises(GrantUnavailableError) as caught:
         await service.exchange_code(client_id, grant, always_eligible)
     assert "deadlock" not in str(caught.value)
@@ -1097,10 +1102,10 @@ async def test_a_database_error_while_loading_a_code_is_unavailable(
     GrantUnavailableError (server_error), not 'not found' (invalid_grant)."""
     raw, _ = await approved_code(service, user, client_id)
 
-    async def broken(self: CredentialRepository, *args: object) -> None:
+    async def broken(self: CodeRepository, *args: object) -> None:
         raise DBAPIError("SELECT oauth_codes ...", {}, Exception("connection lost"))
 
-    monkeypatch.setattr(CredentialRepository, "code_by_hash", broken)
+    monkeypatch.setattr(CodeRepository, "code_by_hash", broken)
     with capture_logs() as logs, pytest.raises(GrantUnavailableError):
         await service.load_code(client_id, raw)
     [entry] = [e for e in logs if e["event"] == "oauth.database_error"]
@@ -1127,11 +1132,11 @@ async def test_any_sqlalchemy_error_is_unavailable(
     all the same: GrantUnavailableError, never a raw error."""
     raw, grant = await approved_code(service, user, client_id)
 
-    async def broken(self: CredentialRepository, *args: object) -> object:
+    async def broken(self: CodeRepository, *args: object) -> object:
         raise failure
 
-    monkeypatch.setattr(CredentialRepository, "code_by_hash", broken)
-    monkeypatch.setattr(CredentialRepository, "mark_code_used", broken)
+    monkeypatch.setattr(CodeRepository, "code_by_hash", broken)
+    monkeypatch.setattr(CodeRepository, "mark_code_used", broken)
     with pytest.raises(GrantUnavailableError):
         await service.load_code(client_id, raw)
     with pytest.raises(GrantUnavailableError):
@@ -1149,10 +1154,10 @@ async def test_a_failed_code_reuse_revoke_is_logged_with_its_family(
     raw, grant = await approved_code(service, user, client_id)
     await service.exchange_code(client_id, grant, always_eligible)
 
-    async def broken(self: CredentialRepository, *args: object) -> int:
+    async def broken(self: FamilyRepository, *args: object) -> int:
         raise DBAPIError("UPDATE api_tokens ...", {}, Exception("deadlock detected"))
 
-    monkeypatch.setattr(CredentialRepository, "revoke_family", broken)
+    monkeypatch.setattr(FamilyRepository, "revoke_family", broken)
     with capture_logs() as logs, pytest.raises(GrantUnavailableError):
         await service.load_code(client_id, raw)
     [failed] = [e for e in logs if e["event"] == "oauth.reuse_revoke_failed"]
@@ -1173,11 +1178,16 @@ async def test_exchange_locks_the_client_row_before_the_family_and_the_code(
     a disable waits for the issue), then code/token rows."""
     _, grant = await approved_code(service, user, client_id)
     calls: list[str] = []
-    for method in ("touch_client", "lock_family", "lock_user", "mark_code_used"):
-        original = getattr(CredentialRepository, method)
+    for repository, method in (
+        (ClientRepository, "touch_client"),
+        (FamilyRepository, "lock_family"),
+        (UserRepository, "lock_user"),
+        (CodeRepository, "mark_code_used"),
+    ):
+        original = getattr(repository, method)
 
         async def spy(
-            self: CredentialRepository,
+            self: object,
             *args: object,
             _name: str = method,
             _original: Any = original,
@@ -1185,6 +1195,6 @@ async def test_exchange_locks_the_client_row_before_the_family_and_the_code(
             calls.append(_name)
             return await _original(self, *args)
 
-        monkeypatch.setattr(CredentialRepository, method, spy)
+        monkeypatch.setattr(repository, method, spy)
     await service.exchange_code(client_id, grant, always_eligible)
     assert calls[:4] == ["touch_client", "lock_family", "lock_user", "mark_code_used"]
