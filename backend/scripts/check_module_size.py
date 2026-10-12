@@ -23,11 +23,11 @@ EXEMPT_PARTS = frozenset({"migrations", "__pycache__", ".venv"})
 
 @dataclass(frozen=True, slots=True)
 class Violation:
-    path: Path
+    path: Path  # relative to the scanned backend root
     what: str
 
     def __str__(self) -> str:
-        return f"{self.path.relative_to(BACKEND)}: {self.what}"
+        return f"{self.path}: {self.what}"
 
 
 def _python_files(root: Path) -> list[Path]:
@@ -36,14 +36,14 @@ def _python_files(root: Path) -> list[Path]:
     )
 
 
-def _line_violation(path: Path, limit: int) -> Violation | None:
+def _line_violation(path: Path, root: Path, limit: int) -> Violation | None:
     lines = len(path.read_text(encoding="utf-8").splitlines())
     if lines <= limit:
         return None
-    return Violation(path, f"{lines} lines (limit {limit})")
+    return Violation(path.relative_to(root), f"{lines} lines (limit {limit})")
 
 
-def _class_violations(path: Path) -> list[Violation]:
+def _class_violations(path: Path, root: Path) -> list[Violation]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     out: list[Violation] = []
     for node in ast.walk(tree):
@@ -56,7 +56,7 @@ def _class_violations(path: Path) -> list[Violation]:
         if methods > CLASS_MAX_METHODS:
             out.append(
                 Violation(
-                    path,
+                    path.relative_to(root),
                     f"class {node.name} has {methods} methods "
                     f"(limit {CLASS_MAX_METHODS})",
                 )
@@ -64,24 +64,24 @@ def _class_violations(path: Path) -> list[Violation]:
     return out
 
 
-def collect() -> list[Violation]:
-    """Every size violation under app/ and tests/."""
+def collect(root: Path = BACKEND) -> list[Violation]:
+    """Every size violation under `root`'s app/ and tests/."""
     found: list[Violation] = []
-    for path in _python_files(BACKEND / "app"):
-        if v := _line_violation(path, APP_MODULE_MAX_LINES):
+    for path in _python_files(root / "app"):
+        if v := _line_violation(path, root, APP_MODULE_MAX_LINES):
             found.append(v)
-        found.extend(_class_violations(path))
-    for path in _python_files(BACKEND / "tests"):
-        if v := _line_violation(path, TEST_MODULE_MAX_LINES):
+        found.extend(_class_violations(path, root))
+    for path in _python_files(root / "tests"):
+        if v := _line_violation(path, root, TEST_MODULE_MAX_LINES):
             found.append(v)
     return found
 
 
-def main() -> int:
+def main(argv: list[str] | None = None, root: Path = BACKEND) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--warn", action="store_true", help="report, never fail")
-    args = parser.parse_args()
-    violations = collect()
+    args = parser.parse_args(argv)
+    violations = collect(root)
     for v in violations:
         print(v, file=sys.stderr)
     if not violations:
