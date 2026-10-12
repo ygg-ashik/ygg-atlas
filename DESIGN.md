@@ -480,6 +480,56 @@ components:
     typography: "{typography.label}"
     rounded: "{rounded.lg}"
     padding: 10px
+  user-chip-dot:
+    backgroundColor: "{colors.primary}"
+    rounded: "{rounded.pill}"
+    size: 9px
+  # Settings navigation (layout A): account menu, settings rail, ⌘K quick actions.
+  account-menu:
+    backgroundColor: "{colors.glass}"
+    textColor: "{colors.ink}"
+    typography: "{typography.label}"
+    rounded: "{rounded.shell}"
+    padding: 6px
+    width: 276px
+  account-sheet:
+    backgroundColor: "{colors.glass}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body}"
+    rounded: "{rounded.glass}"
+    padding: 6px 8px 12px
+  settings-rail:
+    backgroundColor: "{colors.glass-heavy}"
+    textColor: "{colors.body}"
+    typography: "{typography.body}"
+    rounded: "{rounded.shell}"
+    padding: 14px 10px
+    width: 236px
+  settings-row:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body}"
+    rounded: "{rounded.lg}"
+    padding: 14px 16px
+  settings-drilldown:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body}"
+    rounded: "{rounded.lg}"
+    padding: 12px 16px
+  access-peek:
+    backgroundColor: "{colors.glass}"
+    textColor: "{colors.body}"
+    typography: "{typography.label}"
+    rounded: "{rounded.shell}"
+    padding: 14px 14px 12px
+    width: 400px
+  first-run-empty-state:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.body}"
+    typography: "{typography.body}"
+    rounded: "{rounded.card}"
+    padding: 30px 24px 26px
   action-toast:
     backgroundColor: "{colors.glass}"
     textColor: "{colors.ink}"
@@ -608,11 +658,11 @@ Bigger surfaces get bigger radii. Corners nest concentrically: inner radius = ou
 ## Components
 
 ### Shell & chrome (Apple)
-- **`shell-sidebar`**: floating glass, inset. It holds the brand, nav (Overview, Ask Atlas, Metrics, …), and **threads** with Codex status: a pulsing accent dot for running threads and mono elapsed or last-run time.
+- **`shell-sidebar`**: floating glass, inset. It holds the brand, the primary nav (Overview, Ask Atlas, Metrics), the ⌘K search trigger, **threads** with Codex status (a pulsing accent dot for running threads and mono elapsed or last-run time), and the `user-chip` at the foot. Nothing else: personal settings and admin pages live behind the account menu in **Settings** (see *Settings navigation*).
 - **`glass-toolbar`**: serif title on the left. On the right: the **jobs pill** ("◷ 2 running") and search/⌘K.
 - **`glass-composer`**: textarea, then a row of pills (＋ Source), the elapsed timer (mono, only while working), and **`button-send`**. While streaming, send morphs into a stop square with a spinning progress ring. Focus shows a 4px `{colors.primary-soft}` ring.
 - **`glass-popover`**: anchored to its trigger (transform-origin = trigger), enters with blur + scale + fade. Used for the jobs tray, provenance definitions and menus.
-- **`command-palette`** (⌘K, `cmdk`): searches metrics, artifacts, threads and "Ask …". Opens with a scrim and blurs into place.
+- **`command-palette`** (⌘K, `cmdk`): searches metrics, artifacts, threads and "Ask …". Opens with a scrim and blurs into place. Groups, in order: **Ask** (only once something is typed), **Quick actions**, **Go to** (pages, Settings pages as "Settings › Users"), **Recent threads**, then **Metrics**. See *Settings navigation › Quick actions*.
 - **`toast`** (`sonner`): glass, bottom-right, stacking. Only for completions that happen *away* from the trigger (export ready, schedule saved).
 
 - **`brand-mark`**: the Atlas mark, a `{colors.primary}` diamond (a 10px square with 3px corners, rotated 45°; it scales with the wordmark) beside the serif wordmark "Atlas". The diamond is decorative (`aria-hidden`); the wordmark carries the name. One component used by the sidebar, the sign-in panel and the favicon (`frontend/public/favicon.svg`, clay on light, `{colors.primary-on-dark}` on dark).
@@ -649,15 +699,27 @@ Every admin and account screen is a **view of backend responses**: the UI never 
 - **`empty-state`**: a solid card, centred: a 52px `{colors.primary-soft}` icon disc, a serif `{typography.title}` line, one muted sentence, then one action. Every list has one; filtered-empty says how to clear the filters.
 - **`skeleton`**: recessed bars and circles in the **shape of what is coming** (table rows, list rows, the split view), shimmering slowly; the region is `aria-busy`. No spinners for page loads.
 - **`notice-error`**: the neutral notice with "!" stating the failure as fact ("Couldn't load users", the status code in mono, "Nothing changed") and a **Retry** pill that morphs to "Loading…".
-- **`route-guard`**: a full-page `notice-denied` (560px, centred low on the canvas) for routes the token's capabilities don't cover: "This area needs `capability`", why (access comes from sign-in, nothing typed can widen it), provenance chips for scope and role, then "Go to My access" and "Request access".
+- **`route-guard`**: a full-page `notice-denied` (560px, centred low on the canvas) for routes the token's capabilities don't cover: "This area needs `capability`", why (access comes from sign-in, nothing typed can widen it), provenance chips for scope and role, then "Go to My access" (`/settings/access`) and "Request access" (`/settings/requests/new?kind=role`). Every Organization page in Settings sits behind it and fails closed while access is loading or unavailable.
 - **`catalog-combobox`**: an inline `cmdk` combobox under a mono `field-input`: a glass popover (`{rounded.shell}`) grows from the field and lists catalog entries as kind (source / entity / metric), name and mono path. Arrow keys and Enter pick; Escape closes. Only real catalog paths can be chosen.
 - **`avatar`**: initials on a `{colors.primary-soft}` disc in the accent (30px, 48px on detail headers). **`avatar-service`** is a rounded square on `{colors.card-2}` with a muted glyph for service identities.
-- **Sidebar additions**: **`sidebar-section-header`** (uppercase micro-label, `0.06em` tracking, muted) above the Account and Admin groups; the Admin group renders only when the token's capabilities include an admin capability. **`count-badge`**: a clay pill with a tabular count on a nav item (pending approvals); it counts exactly the requests the viewer can decide, excluding their own, the same set as the queue's Pending tab. **`user-chip`**: avatar, name, email (truncated) and role pill pinned to the sidebar foot.
+- **Navigation primitives**: **`sidebar-section-header`** (uppercase micro-label, `0.06em` tracking, muted) above the You and Organization groups of the `settings-rail`. **`count-badge`**: a clay pill with a tabular count on a nav item or menu item (pending approvals); it counts exactly the requests the viewer can decide, excluding their own, the same set as the queue's Pending tab. **`user-chip`**: avatar, name, email (truncated) and role pill pinned to the sidebar foot; it is the trigger of the `account-menu`.
 - **`action-toast`**: the glass `toast` in a **warning tone** with an amber "!" disc and a **Retry** pill. It stays until acted on or dismissed. Used for a stale-actor conflict (HTTP 409: "Access changed while this request was running; retry.").
 - **`series-hatch`**: the second series in a two-series bar chart (e.g. denied vs allowed decisions) keeps the accent hue at 45% opacity with a diagonal hatch, so it reads without colour. Its legend swatch uses the same pattern.
-- **`route-label`**: a muted mono route on the right of the `glass-toolbar` (e.g. `/admin/users`), truncated, hidden below 1000px.
+- **`route-label`**: a muted mono route on the right of the `glass-toolbar` (e.g. `/settings/admin/users`), truncated, hidden below 1000px.
 - **Label masking panel**: a list on a solid card below the groups workspace on Admin › Groups (admin:groups only), one hairline-separated row per label class with a mode select (suppress, pseudonymise, bucket) and, for bucket, a tabular size field (1–50). It lists only the maskable classes `GET /admin/label-classes` returns, never `category`, and every change opens a `review-card` (`label_class.update`, mode and bucket before → after) before anything is written.
 - **`toolbar-crumb`**: an optional back link before the `glass-toolbar` title on detail and sub-pages ("Users ›" on a user, "My access ›" on a new request): the parent's name as a muted serif link (ink on hover), then a muted "›". One level only; the title stays the page's own name.
+
+### Settings navigation (layout A)
+The sidebar stays about the work (chat, metrics, threads); everything about the person and the organization lives in **Settings**, reached from the account menu, ⌘, or ⌘K. Pages always open full page with their own URL under `/settings`; there is no modal copy of Settings. Reference: `docs/design/reference/atlas-settings-navigation.html` (layout A and its "Quick:" screens).
+
+- **`account-menu`**: the `user-chip` opens a `glass-popover` menu (276px, `{rounded.shell}`, `role="menu"`) growing from the chip. Top to bottom: a header (avatar, name, email, `role-pill`); **Settings** with a mono `⌘,` hint; **Admin**, only for viewers with an `admin:*` capability or manager standing, carrying the `count-badge` of pending approvals (it opens the Access requests queue when something is pending, otherwise the first Organization page they can open); a hairline; **Theme** as a compact three-segment capsule (Light · Dark · System, `menuitemradio` items laid out like the `segmented-control`, applied instantly); a hairline; **Sign out**. Escape or an outside click closes it and focus returns to the chip.
+- **`user-chip-dot`**: a 9px `{colors.primary}` dot with a 2px canvas ring on the chip's avatar when the viewer has approvals to decide. It never stands alone: its `aria-label` says "N pending approvals" and the menu's Admin item repeats the count.
+- **`settings-rail`**: inside Settings the sidebar **swaps in place** (same glass, same width) to the rail: "← Back to Atlas" with a mono `esc` hint, the serif "Settings" title, then two `sidebar-section-header` groups. **You**: General, My access, Requests, Tokens & apps. **Organization**, only the pages the token's capabilities open: Users, Audit, Tokens and OAuth clients need their `admin:*` capability; Groups and Access requests (with its `count-badge`) also open to group managers. A muted caption "Signed in as …" sits at the foot. Escape (when no dialog, menu or field has focus) and "Back to Atlas" return to the last chat or page. The swap cross-fades and slides 12px on `ease-sheet` (350ms); under reduced motion it is an instant swap.
+- **`settings-row`**: the General page is an `inset-list` of rows on a solid card: a 14.5px ink title with a muted one-line explanation on the left and the control on the right (a `segmented-control`, a select, or mono key caps), wrapping under 480px. Groups: **Appearance** (Theme), **Keyboard** (⌘K, ⌘, and Esc with what each does) and **Account** (signed in as, Sign out).
+- **Quick actions** (in the `command-palette`): tasks that run **in place over the chat** and reuse the page's own components; they never open a second copy of a page. Each row shows "↵ do it" on the right; role-gated rows carry a `tag-chip` ("admin" or "manager"). Theme switches apply instantly and confirm with a `toast`. **New token** (only with `tokens:create` and tokens enabled) opens the Tokens page's `dialog`. **Request access** opens the request form in a `dialog`, prefilled when it comes from a `notice-denied` or a guard. **My access** opens the `access-peek`. For admins and managers: **Approve request …** (one row per request they can decide) opens that request's `review-card` in a `dialog`; for `admin:tokens`: **Revoke token …** opens the token's `review-card` in a `dialog`. The palette offers only actions the token's capabilities allow; the API still refuses the rest.
+- **`access-peek`**: a 400px `glass-popover` where the palette was (top 11%, a clear scrim), `role="dialog"`: avatar, name, email and `role-pill`; the viewer's groups as mono chips with their standing; up to four held capabilities and whether any data is covered (rules are not listed: no self-service endpoint returns them, and the UI never reconstructs access); a `provenance-chip` "scope · from your sign-in"; and one link, "Open full page →", to My access. Data stays off the glass: the lists sit on an inset solid card.
+- **`settings-drilldown`** (< 600px): the account menu becomes an **`account-sheet`**, a glass bottom sheet (8px from the edges, `{rounded.glass}`, a grab handle, 48px rows) with the same items, and the theme as a full `segmented-control`. Settings becomes an iOS-style drill-down: the root is a serif "Settings" title, the person's card, then You and Organization as grouped `inset-list` rows with chevrons (and the approvals `count-badge`) and a destructive "Sign out" row; a page shows a back chevron where the menu button sits, returning to that list. Both enter on `ease-sheet` and fall back to a cross-fade under reduced motion.
+- **`first-run-empty-state`**: a signed-in viewer with no data access lands on the chat, not on a settings page. Under the serif greeting ("Good morning, Lina") the chat shows an `empty-state` card: a lock disc, "No data access yet", one sentence naming their email and that the managers of their team's group decide, a **Request access** button that opens the request `dialog`, and a `provenance-chip` "scope · from your Google sign-in". The composer stays usable for questions about Atlas itself.
 
 ### Dashboard
 - **Greeting**: `{typography.display}` with a muted subline.
@@ -738,6 +800,7 @@ Library: **`motion`** (springs, layout/shared-element, `AnimatePresence`). Numbe
 | 1000–1199px | Artifact panel overlays chat as a sheet with scrim |
 | < 1000px | Sidebar hidden behind toolbar menu; KPIs and presets go to 2 columns; dashboard row 2 stacks |
 | < 640px | Composer full-width, 12px from edges; panels become bottom sheets (`vaul`, later) with momentum springs |
+| < 600px | The account menu becomes the `account-sheet`; Settings becomes the `settings-drilldown` (list, then page with a back chevron) |
 
 ## Origin map (for reviewers)
 
@@ -764,5 +827,6 @@ Library: **`motion`** (springs, layout/shared-element, `AnimatePresence`). Numbe
 - The grant editor's row-scope builder, field clearances and connected apps are live (auth phases 3 and 4). A deployment can still turn personal tokens or OAuth off through `/meta/auth-methods`; those screens then say "Not enabled for this deployment".
 
 - The categorical chart palette for more than four series is undefined. Use accent opacity steps until one is designed.
-- Mobile bottom sheets (`vaul`) and the gesture rules (velocity handoff, rubber-banding) are deferred until there's a mobile surface.
+- Gesture-driven bottom sheets (`vaul`: drag to dismiss, velocity handoff, rubber-banding) are deferred. The `account-sheet` is a Radix dialog that enters and leaves on `ease-sheet` without drag.
+- Density (Comfortable / Compact) and a default-landing preference on Settings › General are deferred: no density mechanism or landing preference exists yet.
 - Source Serif 4 and Inter substitute for Claude's licensed faces. Don't reference Anthropic's fonts or mark.
