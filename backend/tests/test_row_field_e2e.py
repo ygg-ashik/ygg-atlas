@@ -16,7 +16,7 @@ from app.access.admin import Actor
 from app.access.catalog import CLEARANCE_PEOPLE_NAMES
 from app.access.models import Grant
 from app.atlas import AtlasCaller, AtlasTools, get_registry
-from app.atlas.tools import (
+from app.atlas.tools.labels import (
     _settings_pseudonym_key,  # pyright: ignore[reportPrivateUsage] -- the lazy key read (C13)
 )
 from app.config import get_settings
