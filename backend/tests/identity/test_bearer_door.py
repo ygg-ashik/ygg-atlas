@@ -20,7 +20,7 @@ from app.identity.api_tokens import (
 from app.identity.credentials import authenticate_bearer, principal_for_user
 from app.identity.errors import ForbiddenError
 from app.identity.models import ApiToken, User
-from app.identity.repository import CredentialRepository
+from app.identity.repository import CredentialRepository, TokenRepository
 from app.identity.tokens import ExpiredTokenError, InvalidTokenError
 from tests.access_helpers import make_user
 from tests.identity.credential_helpers import (
@@ -44,7 +44,7 @@ async def _service(db: AsyncSession, *, status: str = "active") -> User:
 
 
 async def _reload(db: AsyncSession, token: ApiToken) -> ApiToken:
-    row = await CredentialRepository(db).token(token.id, fresh=True)
+    row = await CredentialRepository(db).tokens.token(token.id, fresh=True)
     assert row is not None
     return row
 
@@ -150,10 +150,10 @@ async def test_refresh_token_is_never_a_bearer(db) -> None:
 async def test_unknown_prefix_is_rejected_without_a_query(
     db, monkeypatch: pytest.MonkeyPatch, raw: str
 ) -> None:
-    async def _no_lookup(self: CredentialRepository, token_hash: str) -> None:
+    async def _no_lookup(self: TokenRepository, token_hash: str) -> None:
         raise AssertionError("token_by_hash must not run for a malformed bearer")
 
-    monkeypatch.setattr(CredentialRepository, "token_by_hash", _no_lookup)
+    monkeypatch.setattr(TokenRepository, "token_by_hash", _no_lookup)
     with pytest.raises(InvalidTokenError, match=r"^invalid token$"):
         await authenticate_bearer(db, raw)
 

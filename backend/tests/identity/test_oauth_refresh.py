@@ -39,7 +39,13 @@ from app.identity.oauth import (
     RefreshGrant,
     TokenPair,
 )
-from app.identity.repository import CredentialRepository
+from app.identity.repository import (
+    ClientRepository,
+    CredentialRepository,
+    FamilyRepository,
+    TokenRepository,
+    UserRepository,
+)
 from tests.access_helpers import make_user
 from tests.identity.oauth_helpers import (
     Clock,
@@ -117,7 +123,7 @@ async def _family_reasons(db: AsyncSession, pair: TokenPair) -> set[str | None]:
 
 
 async def _family_live(db: AsyncSession, pair: TokenPair) -> bool:
-    return await CredentialRepository(db).family_has_live_token(
+    return await CredentialRepository(db).families.family_has_live_token(
         pair.family_id, Clock().now
     )
 
@@ -263,7 +269,7 @@ async def test_grace_never_revives_a_revoked_family(
     clock: Clock,
 ) -> None:
     await _rotate(service, client_id, pair.refresh_token)
-    await CredentialRepository(db).revoke_family(
+    await CredentialRepository(db).families.revoke_family(
         pair.family_id, REVOKED_BY_ADMIN, clock.now
     )
     await db.commit()
@@ -295,11 +301,13 @@ async def test_a_grace_issue_rechecks_eligibility_and_revokes_on_failure(
 
 
 async def test_lock_family_is_a_no_op_on_sqlite(db: AsyncSession) -> None:
-    await CredentialRepository(db).lock_family(uuid4())  # PG only; never raises here
+    await CredentialRepository(db).families.lock_family(
+        uuid4()
+    )  # PG only; never raises here
 
 
 async def test_lock_user_is_a_no_op_on_sqlite(db: AsyncSession) -> None:
-    await CredentialRepository(db).lock_user(uuid4())  # PG only; never raises here
+    await UserRepository(db).lock_user(uuid4())  # PG only; never raises here
 
 
 async def _broken_eligibility(_user_id: object) -> bool:
@@ -367,7 +375,9 @@ async def test_an_admin_revoked_token_is_dead_not_reuse(
     """A token revoked for any reason but rotation is simply dead: the legitimate
     client presenting it is no replay, so no alarm and no further revoke."""
     row = await _row(db, pair.refresh_token)
-    await CredentialRepository(db).revoke_token(row.id, REVOKED_BY_ADMIN, clock.now)
+    await CredentialRepository(db).tokens.revoke_token(
+        row.id, REVOKED_BY_ADMIN, clock.now
+    )
     await db.commit()
     with capture_logs() as logs, pytest.raises(OAuthGrantError):
         await _rotate(service, client_id, pair.refresh_token)
@@ -436,7 +446,7 @@ async def test_refresh_for_a_revoked_client_fails(
     db: AsyncSession, service: OAuthService, client_id: str, pair: TokenPair
 ) -> None:
     grant = await _grant(service, client_id, pair.refresh_token)
-    await CredentialRepository(db).revoke_client(client_id, Clock().now)
+    await CredentialRepository(db).clients.revoke_client(client_id, Clock().now)
     await db.commit()
     with pytest.raises(OAuthGrantError):
         await service.rotate_refresh(client_id, grant, always_eligible)
@@ -499,10 +509,10 @@ async def test_a_database_error_during_rotation_is_unavailable(
     never invalid_grant: the refresh token is still good."""
     grant = await _grant(service, client_id, pair.refresh_token)
 
-    async def broken(self: CredentialRepository, *args: object) -> bool:
+    async def broken(self: TokenRepository, *args: object) -> bool:
         raise _deadlock()
 
-    monkeypatch.setattr(CredentialRepository, "mark_rotated", broken)
+    monkeypatch.setattr(TokenRepository, "mark_rotated", broken)
     with capture_logs() as logs, pytest.raises(GrantUnavailableError) as caught:
         await service.rotate_refresh(client_id, grant, always_eligible)
     assert "deadlock" not in str(caught.value)
@@ -523,10 +533,10 @@ async def test_a_database_error_while_loading_a_refresh_is_unavailable(
     """load_refresh is the SDK token handler's entry too: a database error there
     is GrantUnavailableError (server_error), not 'not found' (invalid_grant)."""
 
-    async def broken(self: CredentialRepository, *args: object) -> None:
+    async def broken(self: TokenRepository, *args: object) -> None:
         raise _deadlock()
 
-    monkeypatch.setattr(CredentialRepository, "token_by_hash", broken)
+    monkeypatch.setattr(TokenRepository, "token_by_hash", broken)
     with capture_logs() as logs, pytest.raises(GrantUnavailableError):
         await service.load_refresh(client_id, pair.refresh_token)
     [entry] = [e for e in logs if e["event"] == "oauth.database_error"]
@@ -535,7 +545,7 @@ async def test_a_database_error_while_loading_a_refresh_is_unavailable(
     assert pair.refresh_token not in str(logs)
 
 
-async def _broken_revoke(self: CredentialRepository, *args: object) -> int:
+async def _broken_revoke(self: FamilyRepository, *args: object) -> int:
     raise _deadlock()
 
 
@@ -546,7 +556,7 @@ async def test_a_failed_cross_client_revoke_is_logged_with_its_family(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     other = await register_public_client(service)
-    monkeypatch.setattr(CredentialRepository, "revoke_family", _broken_revoke)
+    monkeypatch.setattr(FamilyRepository, "revoke_family", _broken_revoke)
     with capture_logs() as logs, pytest.raises(GrantUnavailableError):
         await service.load_refresh(other, pair.refresh_token)
     [failed] = [e for e in logs if e["event"] == "oauth.reuse_revoke_failed"]
@@ -565,7 +575,7 @@ async def test_a_failed_reuse_revoke_on_rotation_is_logged_with_its_family(
     await _rotate(service, client_id, pair.refresh_token)
     clock.advance(GRACE + timedelta(seconds=1))
     grant = await _grant(service, client_id, pair.refresh_token)
-    monkeypatch.setattr(CredentialRepository, "revoke_family", _broken_revoke)
+    monkeypatch.setattr(FamilyRepository, "revoke_family", _broken_revoke)
     with capture_logs() as logs, pytest.raises(GrantUnavailableError):
         await service.rotate_refresh(client_id, grant, always_eligible)
     [failed] = [e for e in logs if e["event"] == "oauth.reuse_revoke_failed"]
@@ -575,14 +585,23 @@ async def test_a_failed_reuse_revoke_on_rotation_is_logged_with_its_family(
     assert pair.refresh_token not in str(logs)
 
 
+_REPOSITORY_OF: dict[str, type] = {
+    "touch_client": ClientRepository,
+    "lock_family": FamilyRepository,
+    "lock_user": UserRepository,
+    "mark_rotated": TokenRepository,
+}
+
+
 def _record_calls(
     monkeypatch: pytest.MonkeyPatch, calls: list[str], *methods: str
 ) -> None:
     for method in methods:
-        original = getattr(CredentialRepository, method)
+        repository = _REPOSITORY_OF[method]
+        original = getattr(repository, method)
 
         async def spy(
-            self: CredentialRepository,
+            self: object,
             *args: object,
             _name: str = method,
             _original: Any = original,
@@ -590,7 +609,7 @@ def _record_calls(
             calls.append(_name)
             return await _original(self, *args)
 
-        monkeypatch.setattr(CredentialRepository, method, spy)
+        monkeypatch.setattr(repository, method, spy)
 
 
 async def test_rotation_locks_the_client_row_before_the_family_and_the_token(
@@ -624,13 +643,13 @@ async def test_the_grace_window_is_measured_after_the_lock_wait(
     await _rotate(service, client_id, pair.refresh_token)
     clock.advance(timedelta(seconds=5))
     grant = await _grant(service, client_id, pair.refresh_token)
-    original = CredentialRepository.lock_family
+    original = FamilyRepository.lock_family
 
-    async def slow_lock(self: CredentialRepository, family_id: Any) -> None:
+    async def slow_lock(self: FamilyRepository, family_id: Any) -> None:
         await original(self, family_id)
         clock.advance(GRACE)
 
-    monkeypatch.setattr(CredentialRepository, "lock_family", slow_lock)
+    monkeypatch.setattr(FamilyRepository, "lock_family", slow_lock)
     with pytest.raises(OAuthGrantError):
         await service.rotate_refresh(client_id, grant, always_eligible)
     assert await _events(db, EVENT_REFRESH_GRACE) == []

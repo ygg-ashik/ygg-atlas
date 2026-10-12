@@ -191,7 +191,7 @@ layers = [
     "repository",
     "models",
     "schemas",
-    "principal | tokens | errors | api_tokens",
+    "principal | tokens | errors | api_tokens | clock",
 ]
 
 [[tool.importlinter.contracts]]

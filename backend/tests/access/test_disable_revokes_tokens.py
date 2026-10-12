@@ -42,7 +42,7 @@ async def test_disabling_a_user_revokes_all_their_tokens(db) -> None:
 
     creds = CredentialRepository(db)
     for token in tokens:
-        row = await creds.token(token.id, fresh=True)
+        row = await creds.tokens.token(token.id, fresh=True)
         assert row is not None
         assert row.revoked_at is not None
         assert row.revoked_reason == REVOKED_USER_DISABLED
@@ -72,7 +72,7 @@ async def test_role_change_does_not_revoke_tokens(db) -> None:
 
     creds = CredentialRepository(db)
     for token in tokens:
-        row = await creds.token(token.id, fresh=True)
+        row = await creds.tokens.token(token.id, fresh=True)
         assert row is not None
         assert row.revoked_at is None
 
@@ -93,7 +93,7 @@ async def test_disabled_user_is_refused_even_if_revocation_failed(
     )
 
     assert user.status == "disabled"
-    row = await CredentialRepository(db).token(tokens[0].id, fresh=True)
+    row = await CredentialRepository(db).tokens.token(tokens[0].id, fresh=True)
     assert row is not None
     assert row.revoked_at is None
     with pytest.raises(ForbiddenError):
