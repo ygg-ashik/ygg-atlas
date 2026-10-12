@@ -258,7 +258,7 @@ async def test_concurrent_consent_approve_exactly_one_code(
 
 
 async def _revoke_family(factory: Factory, grant: RefreshGrant) -> int:
-    """What an admin disconnect does from another request (credentials.py)."""
+    """What an admin disconnect does from another request (TokenService)."""
     async with factory() as db:
         repository = CredentialRepository(db)
         count = await repository.families.revoke_family(
