@@ -7,7 +7,7 @@ from app.access.cache import PolicyCache
 from app.access.dependencies import get_policy
 from app.access.models import Group
 from app.access.policy import Policy
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.service import AccessService
 from app.identity.models import User
 from app.main import app as asgi_app

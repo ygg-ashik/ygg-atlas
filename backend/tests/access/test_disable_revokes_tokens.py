@@ -38,7 +38,7 @@ async def test_disabling_a_user_revokes_all_their_tokens(db) -> None:
     actor = await actor_with(db)
     sara, tokens, _ = await _sara_with_tokens(db)
 
-    await admin_for(db).update_user(actor, sara.id, UserUpdate(status="disabled"))
+    await admin_for(db).users.update_user(actor, sara.id, UserUpdate(status="disabled"))
 
     creds = CredentialRepository(db)
     for token in tokens:
@@ -68,7 +68,7 @@ async def test_role_change_does_not_revoke_tokens(db) -> None:
     actor = await actor_with(db)
     sara, tokens, _ = await _sara_with_tokens(db)
 
-    await admin_for(db).update_user(actor, sara.id, UserUpdate(role="analyst"))
+    await admin_for(db).users.update_user(actor, sara.id, UserUpdate(role="analyst"))
 
     creds = CredentialRepository(db)
     for token in tokens:
@@ -88,7 +88,7 @@ async def test_disabled_user_is_refused_even_if_revocation_failed(
 
     monkeypatch.setattr(TokenService, "revoke_all_tokens", _boom)
 
-    user = await admin_for(db).update_user(
+    user = await admin_for(db).users.update_user(
         actor, sara.id, UserUpdate(status="disabled")
     )
 

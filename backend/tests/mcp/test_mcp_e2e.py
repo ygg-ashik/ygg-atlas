@@ -306,7 +306,9 @@ async def test_user_disabled_mid_session_is_401(db) -> None:
     actor = await actor_with(db)
     async with serving() as (_, client):
         assert (await post_rpc(client, raw, "tools/list")).status_code == 200
-        await admin_for(db).update_user(actor, user.id, UserUpdate(status="disabled"))
+        await admin_for(db).users.update_user(
+            actor, user.id, UserUpdate(status="disabled")
+        )
         assert (await post_rpc(client, raw, "tools/list")).status_code == 401
 
     assert (await _row(db, raw)).revoked_reason == REVOKED_USER_DISABLED

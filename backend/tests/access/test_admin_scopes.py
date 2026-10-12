@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 from sqlmodel import col, select
 
-from app.access.admin import Actor
+from app.access import Actor
 from app.access.cache import PolicyCache
 from app.access.catalog import CLEARANCE_BUSINESS_NAMES, CLEARANCE_PEOPLE_NAMES
 from app.access.errors import (
@@ -21,7 +21,7 @@ from app.access.facts import (
     is_well_formed_scope,
 )
 from app.access.models import Group, RbacChange
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.schemas import GrantCreate
 from app.access.service import AccessService
 from tests.access_helpers import (
@@ -156,7 +156,7 @@ async def test_invalid_scoped_grants_are_rejected(
     actor, group_id = await _setup(db)
     before = await policy_version(db)
     with pytest.raises(InvalidChangeError, match=message):
-        await admin_for(db).create_grant(
+        await admin_for(db).grants.create_grant(
             actor, scoped(group_id, target, row_scope, **changes)
         )
     assert await policy_version(db) == before
@@ -176,7 +176,7 @@ async def test_a_scope_on_a_capability_grant_is_rejected(db) -> None:
         }
     )
     with pytest.raises(InvalidChangeError, match="data"):
-        await admin_for(db).create_grant(await fresh(db, actor), payload)
+        await admin_for(db).grants.create_grant(await fresh(db, actor), payload)
 
 
 async def test_a_scope_bypassing_the_schema_is_still_rejected(db) -> None:
@@ -192,7 +192,7 @@ async def test_a_scope_bypassing_the_schema_is_still_rejected(db) -> None:
         row_scope={"channel": []},
     )
     with pytest.raises(InvalidChangeError, match="scope"):
-        await admin_for(db).create_grant(actor, payload)
+        await admin_for(db).grants.create_grant(actor, payload)
 
 
 @pytest.mark.parametrize(
@@ -211,11 +211,13 @@ async def test_valid_scoped_grants_are_stored_and_audited(
     actor, group_id = await _setup(db)
     before = await policy_version(db)
 
-    grant = await admin_for(db).create_grant(actor, scoped(group_id, target, row_scope))
+    grant = await admin_for(db).grants.create_grant(
+        actor, scoped(group_id, target, row_scope)
+    )
 
     assert grant.row_scope == row_scope
     assert await policy_version(db) == before + 1
-    stored = await AccessRepository(db).grant(grant.id)
+    stored = await AccessRepository(db).grants.grant(grant.id)
     assert stored is not None
     assert stored.row_scope == row_scope
     change = (
@@ -238,7 +240,7 @@ async def test_a_scoped_grant_reaches_a_cached_policy(db) -> None:
     cached = await service.policy_for_user(sara.id)
     assert not cached.allows(REVENUE)
 
-    await admin_for(db).create_grant(
+    await admin_for(db).grants.create_grant(
         actor, scoped(group_id, "demo/*", {"channel": ["b2c"]})
     )
 
@@ -250,9 +252,9 @@ async def test_a_scoped_grant_reaches_a_cached_policy(db) -> None:
 async def test_a_scoped_and_an_unscoped_allow_on_one_target_conflict(db) -> None:
     actor, group_id = await _setup(db)
     admin = admin_for(db)
-    await admin.create_grant(actor, scoped(group_id, "demo/*", None))
+    await admin.grants.create_grant(actor, scoped(group_id, "demo/*", None))
     with pytest.raises(ConflictError):
-        await admin.create_grant(
+        await admin.grants.create_grant(
             await fresh(db, actor), scoped(group_id, "demo/*", {"channel": ["b2c"]})
         )
 
@@ -263,7 +265,7 @@ async def test_a_scoped_grant_on_an_unmirrored_plugin_is_rejected(db) -> None:
     actor = await actor_with(db)
     group = await make_group(db, "sales")
     with pytest.raises(InvalidChangeError, match="scoped"):
-        await admin_for(db).create_grant(
+        await admin_for(db).grants.create_grant(
             actor, scoped(group.id, "demo/*", {"channel": ["b2c"]})
         )
 
@@ -274,7 +276,7 @@ async def test_a_scoped_grant_on_an_unmirrored_plugin_is_rejected(db) -> None:
 async def _cleared_admin(db, *clearances: str) -> Actor:
     base = await actor_with(db)
     assert base.user_id is not None
-    user = await AccessRepository(db).user(base.user_id)
+    user = await AccessRepository(db).users.user(base.user_id)
     assert user is not None
     for clearance in clearances:
         await add_grant(db, user, clearance, kind="clearance")
@@ -305,10 +307,10 @@ async def test_a_cleared_admin_grants_a_clearance_to_a_group_and_a_user(db) -> N
         CLEARANCE_PEOPLE_NAMES
     )
 
-    await admin.create_grant(
+    await admin.grants.create_grant(
         actor, clearance("group", group.id, CLEARANCE_PEOPLE_NAMES)
     )
-    await admin.create_grant(
+    await admin.grants.create_grant(
         await fresh(db, actor), clearance("user", sara.id, CLEARANCE_PEOPLE_NAMES)
     )
 
@@ -321,7 +323,7 @@ async def test_an_unknown_clearance_is_rejected(db) -> None:
     actor = await actor_with(db)
     group = await make_group(db, "csm")
     with pytest.raises(InvalidChangeError, match="Unknown clearance"):
-        await admin_for(db).create_grant(
+        await admin_for(db).grants.create_grant(
             actor, clearance("group", group.id, "fields:salaries")
         )
 
@@ -330,7 +332,7 @@ async def test_an_api_actor_cannot_grant_a_clearance_they_lack(db) -> None:
     actor = await _cleared_admin(db, CLEARANCE_BUSINESS_NAMES)
     group = await make_group(db, "csm")
     with pytest.raises(AccessDeniedError, match="clearance"):
-        await admin_for(db).create_grant(
+        await admin_for(db).grants.create_grant(
             await fresh(db, actor), clearance("group", group.id, CLEARANCE_PEOPLE_NAMES)
         )
 
@@ -338,7 +340,7 @@ async def test_an_api_actor_cannot_grant_a_clearance_they_lack(db) -> None:
 async def test_a_clearance_deny_needs_no_clearance(db) -> None:
     actor = await actor_with(db)
     group = await make_group(db, "csm")
-    grant = await admin_for(db).create_grant(
+    grant = await admin_for(db).grants.create_grant(
         await fresh(db, actor),
         clearance("group", group.id, CLEARANCE_PEOPLE_NAMES, effect="deny"),
     )
@@ -352,30 +354,30 @@ async def test_revoking_a_clearance_deny_needs_the_clearance(db) -> None:
     )
     uncleared = await actor_with(db)
     with pytest.raises(AccessDeniedError, match="clearance"):
-        await admin_for(db).revoke_grant(uncleared, deny.id)
+        await admin_for(db).grants.revoke_grant(uncleared, deny.id)
 
     cleared = await _cleared_admin(db, CLEARANCE_PEOPLE_NAMES)
-    await admin_for(db).revoke_grant(cleared, deny.id)
-    assert await AccessRepository(db).grant(deny.id) is None
+    await admin_for(db).grants.revoke_grant(cleared, deny.id)
+    assert await AccessRepository(db).grants.grant(deny.id) is None
 
 
 async def test_revoking_a_clearance_allow_needs_no_clearance(db) -> None:
     group = await make_group(db, "csm")
     allow = await add_grant(db, group, CLEARANCE_PEOPLE_NAMES, kind="clearance")
     actor = await actor_with(db)
-    await admin_for(db).revoke_grant(actor, allow.id)
-    assert await AccessRepository(db).grant(allow.id) is None
+    await admin_for(db).grants.revoke_grant(actor, allow.id)
+    assert await AccessRepository(db).grants.grant(allow.id) is None
 
 
 async def test_the_cli_grants_and_lifts_clearances_without_holding_them(db) -> None:
     group = await make_group(db, "csm")
     admin = admin_for(db)
-    grant = await admin.create_grant(
+    grant = await admin.grants.create_grant(
         Actor.cli(), clearance("group", group.id, CLEARANCE_PEOPLE_NAMES)
     )
     assert grant.target == CLEARANCE_PEOPLE_NAMES
     deny = await add_grant(
         db, group, CLEARANCE_BUSINESS_NAMES, kind="clearance", effect="deny"
     )
-    await admin.revoke_grant(Actor.cli(), deny.id)
-    assert await AccessRepository(db).grant(deny.id) is None
+    await admin.grants.revoke_grant(Actor.cli(), deny.id)
+    assert await AccessRepository(db).grants.grant(deny.id) is None

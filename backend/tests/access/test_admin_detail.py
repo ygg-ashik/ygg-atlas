@@ -64,7 +64,7 @@ async def test_user_detail_lists_groups_direct_grants_and_pending_count(db) -> N
     await _ask(db, sara, "role", "analyst")
     await _ask(db, sara, "resource", "deepsales/ds_task/ds_open_tasks")
 
-    detail = await admin_for(db).user_detail(actor, sara.id)
+    detail = await admin_for(db).users.user_detail(actor, sara.id)
 
     assert detail.email == "sara@yougotagift.com"
     assert detail.created_at is not None
@@ -82,7 +82,7 @@ async def test_user_detail_cross_tenant_is_404(db) -> None:
 
     for target in (other.id, uuid4()):
         with pytest.raises(NotFoundError):
-            await admin_for(db).user_detail(actor, target)
+            await admin_for(db).users.user_detail(actor, target)
 
 
 async def test_user_detail_needs_admin_users(api: AsyncClient, db) -> None:
@@ -130,13 +130,13 @@ async def test_group_detail_counts_and_path(db) -> None:
     await add_grant(db, emea, "demo/*")
     await add_grant(db, emea, "demo/order/*", effect="deny")
 
-    detail = await admin_for(db).group_detail(actor, emea.id)
+    detail = await admin_for(db).groups.group_detail(actor, emea.id)
 
     assert detail.name == "emea"
     assert detail.parent_id == sales.id
     assert detail.path == ["company", "sales", "emea"]
     assert (detail.member_count, detail.grant_count) == (2, 2)
-    root = await admin_for(db).group_detail(actor, company.id)
+    root = await admin_for(db).groups.group_detail(actor, company.id)
     assert root.path == ["company"]
     assert (root.member_count, root.grant_count) == (0, 0)
 
@@ -148,11 +148,11 @@ async def test_group_detail_for_a_manager_of_an_ancestor(db) -> None:
     lead = await actor_with(db, "viewer", member_of=sales, standing="manager")
     stranger = await actor_with(db, "viewer", member_of=finance, standing="manager")
 
-    detail = await admin_for(db).group_detail(lead, emea.id)
+    detail = await admin_for(db).groups.group_detail(lead, emea.id)
 
     assert detail.path == ["sales", "emea"]
     with pytest.raises(AccessDeniedError):
-        await admin_for(db).group_detail(stranger, emea.id)
+        await admin_for(db).groups.group_detail(stranger, emea.id)
 
 
 async def test_group_detail_cross_tenant_is_404(db) -> None:
@@ -161,7 +161,7 @@ async def test_group_detail_cross_tenant_is_404(db) -> None:
 
     for target in (other_group.id, uuid4()):
         with pytest.raises(NotFoundError):
-            await admin_for(db).group_detail(actor, target)
+            await admin_for(db).groups.group_detail(actor, target)
 
 
 async def test_group_detail_over_http(api: AsyncClient, db) -> None:
@@ -190,7 +190,7 @@ async def test_user_filters_role_status_kind_and_search(db) -> None:
     admin = admin_for(db)
 
     async def emails(**filters: str) -> list[str]:
-        page = await admin.list_users(actor, UserQuery.model_validate(filters))
+        page = await admin.users.list_users(actor, UserQuery.model_validate(filters))
         return [u.email for u in page.items]
 
     assert await emails(role="analyst") == ["ana@yougotagift.com"]
@@ -213,7 +213,7 @@ async def test_user_cursor_walks_by_email(db) -> None:
     cursor: str | None = None
     for _ in range(5):
         query = UserQuery(q="-walk@", limit=2, cursor=cursor)
-        page = await admin.list_users(actor, query)
+        page = await admin.users.list_users(actor, query)
         seen.extend(u.email for u in page.items)
         cursor = page.next_cursor
         if cursor is None:
@@ -221,7 +221,7 @@ async def test_user_cursor_walks_by_email(db) -> None:
 
     assert seen == [f"{n}-walk@yougotagift.com" for n in "abcde"]
     with pytest.raises(InvalidChangeError, match="page link is invalid"):
-        await admin.list_users(actor, UserQuery(cursor="!!nope"))
+        await admin.users.list_users(actor, UserQuery(cursor="!!nope"))
 
 
 async def test_user_list_over_http(api: AsyncClient, db) -> None:

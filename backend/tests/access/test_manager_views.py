@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from app.access.admin import Actor
+from app.access import Actor
 from app.access.errors import AccessDeniedError, InvalidChangeError, NotFoundError
 from app.access.models import Group
 from app.identity.models import User
@@ -46,13 +46,13 @@ async def test_a_manager_lists_only_their_groups_and_subgroups(db) -> None:
     lead = await actor_with(db, "viewer", member_of=sales, standing="manager")
     team_lead = await actor_with(db, "viewer", member_of=team, standing="manager")
 
-    groups = await admin_for(db).list_groups(lead)
+    groups = await admin_for(db).groups.list_groups(lead)
     assert [(g.name, g.parent_id) for g in groups] == [
         ("emea", sales.id),
         ("sales", None),
     ]
     # The real parent_id is kept even when the parent itself isn't listed.
-    [only] = await admin_for(db).list_groups(team_lead)
+    [only] = await admin_for(db).groups.list_groups(team_lead)
     assert (only.name, only.parent_id) == ("team", company.id)
 
 
@@ -63,7 +63,7 @@ async def test_a_plain_member_or_viewer_cannot_list_groups(db) -> None:
 
     for actor in (member, viewer):
         with pytest.raises(AccessDeniedError, match="admin:groups"):
-            await admin_for(db).list_groups(actor)
+            await admin_for(db).groups.list_groups(actor)
 
 
 async def test_admin_groups_and_the_cli_list_every_tenant_group(db) -> None:
@@ -74,7 +74,7 @@ async def test_admin_groups_and_the_cli_list_every_tenant_group(db) -> None:
     admin = await actor_with(db)
 
     for actor in (admin, Actor.cli()):
-        names = [g.name for g in await admin_for(db).list_groups(actor)]
+        names = [g.name for g in await admin_for(db).groups.list_groups(actor)]
         assert names == ["finance", "sales"]
 
 
@@ -112,7 +112,7 @@ async def test_candidates_match_active_humans_not_yet_members(db) -> None:
     db.add(User(email="sara@acme.example", tenant="acme"))
     await db.commit()
 
-    found = await admin_for(db).member_candidates(lead, sales.id, "  SARA ")
+    found = await admin_for(db).members.member_candidates(lead, sales.id, "  SARA ")
 
     assert [(c.email, c.display_name) for c in found] == [
         ("sam@yougotagift.com", "Sara Morgan"),
@@ -125,7 +125,7 @@ async def test_candidates_never_include_the_actor(db) -> None:
     sales = await make_group(db, "sales")
     admin = await actor_with(db)
 
-    found = await admin_for(db).member_candidates(admin, sales.id, "admin-")
+    found = await admin_for(db).members.member_candidates(admin, sales.id, "admin-")
 
     assert admin.user_id not in {c.user_id for c in found}
 
@@ -135,7 +135,7 @@ async def test_candidates_are_capped_at_ten(db) -> None:
     for i in range(12):
         await make_user(db, f"bulk{i:02}@yougotagift.com")
 
-    found = await admin_for(db).member_candidates(lead, sales.id, "bulk")
+    found = await admin_for(db).members.member_candidates(lead, sales.id, "bulk")
 
     assert len(found) == 10
     assert found[0].email == "bulk00@yougotagift.com"
@@ -149,7 +149,7 @@ async def test_candidates_need_member_admin_on_that_group(db) -> None:
 
     for actor in (other_lead, viewer):
         with pytest.raises(AccessDeniedError):
-            await admin_for(db).member_candidates(actor, sales.id, "sara")
+            await admin_for(db).members.member_candidates(actor, sales.id, "sara")
 
 
 async def test_candidates_for_a_subgroup_of_a_managed_group(db) -> None:
@@ -159,7 +159,7 @@ async def test_candidates_for_a_subgroup_of_a_managed_group(db) -> None:
 
     lead = await fresh(db, lead)  # a new request sees the new subgroup
 
-    found = await admin_for(db).member_candidates(lead, emea.id, "sara")
+    found = await admin_for(db).members.member_candidates(lead, emea.id, "sara")
 
     assert [c.email for c in found] == ["sara@yougotagift.com"]
 
@@ -172,7 +172,7 @@ async def test_candidates_for_a_cross_tenant_group_are_404(db) -> None:
 
     for target in (acme.id, uuid4()):
         with pytest.raises(NotFoundError):
-            await admin_for(db).member_candidates(admin, target, "sara")
+            await admin_for(db).members.member_candidates(admin, target, "sara")
 
 
 async def test_candidate_query_length_is_3_to_100_after_stripping(db) -> None:
@@ -180,15 +180,15 @@ async def test_candidate_query_length_is_3_to_100_after_stripping(db) -> None:
 
     for q in ("", "  ab  ", "x" * 101):
         with pytest.raises(InvalidChangeError):
-            await admin_for(db).member_candidates(lead, sales.id, q)
-    assert await admin_for(db).member_candidates(lead, sales.id, " abc ") == []
+            await admin_for(db).members.member_candidates(lead, sales.id, q)
+    assert await admin_for(db).members.member_candidates(lead, sales.id, " abc ") == []
 
 
 async def test_candidate_query_is_not_a_wildcard(db) -> None:
     sales, lead = await _team(db)
     await make_user(db, "sara@yougotagift.com")
 
-    assert await admin_for(db).member_candidates(lead, sales.id, "%%%") == []
+    assert await admin_for(db).members.member_candidates(lead, sales.id, "%%%") == []
 
 
 async def test_member_candidates_over_http(api: AsyncClient, db) -> None:

@@ -7,14 +7,14 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.access.admin import AccessAdmin, Actor
+from app.access.actor import Actor
 from app.access.cache import shared_cache
 from app.access.catalog import CAPABILITIES
 from app.access.errors import AccessError, PolicyUnavailableError
 from app.access.policy import Policy
-from app.access.repository import AccessRepository
-from app.access.requests import AccessRequests
+from app.access.repositories import AccessRepository
 from app.access.service import AccessService
+from app.access.services import AccessAdmin, RequestService
 from app.database import get_db
 from app.identity import Principal, TokenVerifier, get_principal, get_token_verifier
 
@@ -63,7 +63,8 @@ def get_access_admin(
 
 
 def get_actor(policy: Policy = Depends(get_policy)) -> Actor:
-    """Capability checks happen in AccessAdmin (managers are not admins, D8)."""
+    """Capability checks happen in the access services (managers are not
+    admins, D8)."""
     return Actor.from_policy(policy)
 
 
@@ -84,6 +85,5 @@ async def access_error_handler(_request: Request, exc: Exception) -> JSONRespons
 def get_access_requests(
     db: AsyncSession = Depends(get_db),
     verifier: TokenVerifier = Depends(get_token_verifier),
-) -> AccessRequests:
-    repo = AccessRepository(db)
-    return AccessRequests(repo, AccessService(repo, shared_cache()), verifier)
+) -> RequestService:
+    return get_access_admin(db, verifier).requests

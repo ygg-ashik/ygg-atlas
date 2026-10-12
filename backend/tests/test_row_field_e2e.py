@@ -11,8 +11,7 @@ from typing import Any
 
 import pytest
 
-from app.access import policy_for, sync_scope_dimensions
-from app.access.admin import Actor
+from app.access import Actor, policy_for, sync_scope_dimensions
 from app.access.catalog import CLEARANCE_PEOPLE_NAMES
 from app.access.models import Grant
 from app.atlas import AtlasCaller, AtlasTools, get_registry
@@ -148,7 +147,7 @@ async def test_a_revoked_clearance_applies_on_the_next_call(db) -> None:
     assert len(_rows(await _breakdown(db, manager))) == 3  # now cached
     before = await policy_version(db)
 
-    await admin_for(db).revoke_grant(Actor.cli(), clearance.id)
+    await admin_for(db).grants.revoke_grant(Actor.cli(), clearance.id)
 
     assert await policy_version(db) > before
     after = await _breakdown(db, manager)
@@ -160,7 +159,7 @@ async def test_deleting_the_self_attribute_denies_the_scoped_grant(db) -> None:
     _, rep, _, _ = await _world(db)
     assert _rows(await _breakdown(db, rep)) == {"Aisha Khan": 21}
 
-    await admin_for(db).delete_attribute(Actor.cli(), rep.id, "rep_name")
+    await admin_for(db).row_field.delete_attribute(Actor.cli(), rep.id, "rep_name")
 
     denied = await _breakdown(db, rep)
     assert "isn't available" in denied["error"]

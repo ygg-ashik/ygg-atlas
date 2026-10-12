@@ -10,7 +10,7 @@ from app.access.cache import PolicyCache
 from app.access.catalog import role_capabilities
 from app.access.errors import PolicyUnavailableError
 from app.access.models import Grant, PolicyState
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.service import AccessService, policy_for
 from app.database import get_session_factory
 from app.identity import Principal

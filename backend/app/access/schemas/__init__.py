@@ -1,0 +1,115 @@
+"""Request and response shapes for the access API (separate from the tables)."""
+
+from app.access.schemas.audit import (
+    ActorRefOut,
+    AuditDecisionOut,
+    AuditSummaryOut,
+    AuditUserOut,
+    ChangeOut,
+    ChangeQuery,
+    DayCountOut,
+    DecisionQuery,
+    ReasonCountOut,
+    UserCountOut,
+)
+from app.access.schemas.effective_access import (
+    DecisionOut,
+    EffectiveAccessOut,
+    RuleOut,
+    SkippedOut,
+)
+from app.access.schemas.grants import (
+    GrantCreate,
+    GrantOut,
+)
+from app.access.schemas.groups import (
+    GroupCreate,
+    GroupDetailOut,
+    GroupOut,
+    GroupUpdate,
+    MemberCandidateOut,
+    MemberOut,
+    MemberPut,
+)
+from app.access.schemas.me import (
+    CapabilityOut,
+    CatalogOut,
+    ClearanceOut,
+    GroupRefOut,
+    MeAccessOut,
+    RoleOut,
+)
+from app.access.schemas.page import Page
+from app.access.schemas.requests import (
+    AccessRequestCreate,
+    AccessRequestOut,
+    DeciderOut,
+    RequestDecision,
+    RequesterOut,
+    RequestGroupOptionOut,
+    RequestOptionsOut,
+)
+from app.access.schemas.row_field import (
+    AttributeOut,
+    AttributePut,
+    LabelClassOut,
+    LabelClassPut,
+    ScopeDimensionOut,
+)
+from app.access.schemas.users import (
+    UserDetailOut,
+    UserGroupOut,
+    UserOut,
+    UserQuery,
+    UserUpdate,
+)
+
+__all__ = [
+    "AccessRequestCreate",
+    "AccessRequestOut",
+    "ActorRefOut",
+    "AttributeOut",
+    "AttributePut",
+    "AuditDecisionOut",
+    "AuditSummaryOut",
+    "AuditUserOut",
+    "CapabilityOut",
+    "CatalogOut",
+    "ChangeOut",
+    "ChangeQuery",
+    "ClearanceOut",
+    "DayCountOut",
+    "DeciderOut",
+    "DecisionOut",
+    "DecisionQuery",
+    "EffectiveAccessOut",
+    "GrantCreate",
+    "GrantOut",
+    "GroupCreate",
+    "GroupDetailOut",
+    "GroupOut",
+    "GroupRefOut",
+    "GroupUpdate",
+    "LabelClassOut",
+    "LabelClassPut",
+    "MeAccessOut",
+    "MemberCandidateOut",
+    "MemberOut",
+    "MemberPut",
+    "Page",
+    "ReasonCountOut",
+    "RequestDecision",
+    "RequestGroupOptionOut",
+    "RequestOptionsOut",
+    "RequesterOut",
+    "RoleOut",
+    "RuleOut",
+    "ScopeDimensionOut",
+    "SkippedOut",
+    "UserCountOut",
+    "UserDetailOut",
+    "UserGroupOut",
+    "UserOut",
+    "UserQuery",
+    "UserUpdate",
+]

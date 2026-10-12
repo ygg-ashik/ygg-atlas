@@ -8,7 +8,7 @@ from sqlalchemy import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 
-from app.access.admin import AccessAdmin, Actor
+from app.access import AccessAdmin, Actor
 from app.access.cache import PolicyCache
 from app.access.models import (
     Grant,
@@ -20,9 +20,9 @@ from app.access.models import (
     UserAttribute,
 )
 from app.access.policy import Policy
-from app.access.repository import AccessRepository
-from app.access.requests import AccessRequests
+from app.access.repositories import AccessRepository
 from app.access.service import AccessService
+from app.access.services import RequestService
 from app.identity import TokenVerifier
 from app.identity.models import User
 
@@ -231,9 +231,8 @@ async def policy_version(db: AsyncSession) -> int:
     return state.policy_version
 
 
-def requests_for(db: AsyncSession) -> AccessRequests:
-    repo = AccessRepository(db)
-    return AccessRequests(repo, AccessService(repo, PolicyCache()))
+def requests_for(db: AsyncSession) -> RequestService:
+    return admin_for(db).requests
 
 
 async def policy_of(db: AsyncSession, user: User) -> Policy:
