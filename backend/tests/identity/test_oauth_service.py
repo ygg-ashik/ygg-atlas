@@ -28,6 +28,7 @@ from app.identity.api_tokens import (
     REVOKED_CLIENT,
     REVOKED_CODE_REUSE,
     REVOKED_OAUTH_REVOKE,
+    UNNAMED_CLIENT,
     CredentialActor,
     TokenKind,
     hash_secret,
@@ -43,7 +44,6 @@ from app.identity.models import (
     UserStatus,
 )
 from app.identity.oauth import (
-    UNNAMED_CLIENT,
     AuthorizationRequestNotFoundError,
     EligibilityUnavailableError,
     GrantUnavailableError,
