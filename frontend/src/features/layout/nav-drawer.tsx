@@ -19,7 +19,7 @@ import {
 const SLIDE = { hidden: { x: '-110%', opacity: 1 }, shown: { x: 0, opacity: 1 } };
 const FADE = { hidden: { x: 0, opacity: 0 }, shown: { x: 0, opacity: 1 } };
 /** Mirrors the `max-[999px]` breakpoint that hides the docked sidebar. */
-const DOCKED_QUERY = '(min-width: 1000px)';
+export const DOCKED_QUERY = '(min-width: 1000px)';
 
 /** Below 1000px the docked sidebar is hidden; this compact glass button opens
  * the same sidebar content (the app sidebar or the settings rail) as a left

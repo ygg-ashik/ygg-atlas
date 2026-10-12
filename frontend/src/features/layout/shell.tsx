@@ -6,7 +6,7 @@ import { Glass, cn } from '@/ui';
 import { ROUTES, isSettingsPath } from '@/lib/routes';
 import { useMediaQuery } from '@/lib/use-media-query';
 import { PHONE_QUERY } from './account-menu';
-import { NavDrawer } from './nav-drawer';
+import { DOCKED_QUERY, NavDrawer } from './nav-drawer';
 import { SettingsList } from './settings-list';
 import { SETTINGS_LIST_STATE, wantsSettingsList } from './settings-list-state';
 import { SettingsRail } from './settings-rail';
@@ -40,9 +40,6 @@ function useSwap(inSettings: boolean): Swap {
   }
   return swap;
 }
-
-/** Docked sidebar: mirrors the `max-[999px]:hidden` breakpoint below. */
-const DOCKED_QUERY = '(min-width: 1000px)';
 
 /** After the sidebar swaps, the control that had focus (the chip, a rail link)
  * is gone. Move focus to the new sidebar's entry point (Back to Atlas, or the
