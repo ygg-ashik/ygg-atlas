@@ -34,7 +34,9 @@ class _Connector:
 
 @pytest.fixture(autouse=True)
 def _connector(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("app.atlas.tools.get_connector", lambda _source: _Connector())
+    monkeypatch.setattr(
+        "app.atlas.tools.door.get_connector", lambda _source: _Connector()
+    )
 
 
 def _registry(label_class: str | None = "person_name") -> AtlasRegistry:
@@ -266,11 +268,11 @@ async def test_the_key_is_read_from_settings_at_mask_time(
         ),
         registry=_registry(),
     )  # pseudonym_key=None: read lazily from settings
-    monkeypatch.setattr("app.atlas.tools.get_settings", lambda: _Settings("k1"))
+    monkeypatch.setattr("app.atlas.tools.labels.get_settings", lambda: _Settings("k1"))
     first = [r["label"] for r in (await _breakdown(tools))["rows"]]
-    monkeypatch.setattr("app.atlas.tools.get_settings", lambda: _Settings("k2"))
+    monkeypatch.setattr("app.atlas.tools.labels.get_settings", lambda: _Settings("k2"))
     second = [r["label"] for r in (await _breakdown(tools))["rows"]]
     assert all(label.startswith("Person ") for label in first + second)
     assert first != second  # the key is not cached at construction
-    monkeypatch.setattr("app.atlas.tools.get_settings", lambda: _Settings(""))
+    monkeypatch.setattr("app.atlas.tools.labels.get_settings", lambda: _Settings(""))
     assert (await _breakdown(tools))["rows"] == []

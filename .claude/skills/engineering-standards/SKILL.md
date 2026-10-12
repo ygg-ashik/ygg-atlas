@@ -47,7 +47,7 @@ applying them. Machines are the final authority: if `make check` fails, the work
 | A request or response shape | `app/<module>/schemas.py` (Pydantic, separate from models) |
 | A business metric, funnel or breakdown | YAML in `app/sources/<plugin>/definitions/`, never Python |
 | A new data source | A new plugin package `app/sources/<id>/` (manifest + connector + definitions), added to the plugin independence contract in `backend/pyproject.toml` |
-| An agent tool behavior | `app/atlas/tools.py` (the one door to data) |
+| An agent tool behavior | `app/atlas/tools/` (the one door to data; one file per tool family) |
 | A helper used only here | The same module, in a file named for what it does |
 | A truly cross-cutting helper | `app/core/<topic>.py`, only with a stable, generic job and several real consumers |
 | A new topic (domain noun) in a module | Its own file in each layer it touches: when the module has 2+ topics, every layer is a package with one file per topic (`routers/`, `services/`, `repositories/`, `schemas/`), per ARCHITECTURE.md §2.2. Name the topics before writing code; never add a second topic to a single-topic file |
