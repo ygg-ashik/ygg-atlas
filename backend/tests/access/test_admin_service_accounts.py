@@ -6,7 +6,7 @@ import pytest
 from app.access import AccessAdmin, Actor
 from app.access.cache import PolicyCache
 from app.access.errors import AccessDeniedError, ConflictError, InvalidChangeError
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.service import AccessService
 from app.identity import UserKind
 from tests.access_helpers import (
@@ -21,7 +21,7 @@ from tests.access_helpers import (
 async def _builder_with_admin_users(db) -> Actor:
     base = await actor_with(db, "builder")
     assert base.user_id is not None
-    user = await AccessRepository(db).user(base.user_id)
+    user = await AccessRepository(db).users.user(base.user_id)
     assert user is not None
     await add_grant(db, user, "admin:users", kind="capability")
     policy = await AccessService(AccessRepository(db), PolicyCache()).policy_for_user(

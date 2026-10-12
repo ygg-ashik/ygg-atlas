@@ -9,7 +9,7 @@ from structlog.testing import capture_logs
 from app.access.dependencies import access_error_handler
 from app.access.errors import PolicyUnavailableError
 from app.access.models import PolicyState
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.schemas import GroupCreate
 from tests.access_helpers import actor_with, admin_for
 
@@ -43,7 +43,11 @@ async def test_every_repository_raise_site_hides_policy_state(db) -> None:
     await db.commit()
     repo = AccessRepository(db)
 
-    for call in (repo.policy_version, repo.lock_for_write, repo.bump_version):
+    for call in (
+        repo.state.policy_version,
+        repo.state.lock_for_write,
+        repo.state.bump_version,
+    ):
         with pytest.raises(PolicyUnavailableError) as raised:
             await call()
         assert "policy_state" not in str(raised.value)

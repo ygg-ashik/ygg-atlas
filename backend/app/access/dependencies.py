@@ -12,7 +12,7 @@ from app.access.cache import shared_cache
 from app.access.catalog import CAPABILITIES
 from app.access.errors import AccessError, PolicyUnavailableError
 from app.access.policy import Policy
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.requests import AccessRequests
 from app.access.service import AccessService
 from app.database import get_db

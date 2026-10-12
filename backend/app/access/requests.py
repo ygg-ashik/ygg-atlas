@@ -164,7 +164,7 @@ class AccessRequests(AccessAdmin):
             raise InvalidChangeError(msg)
         try:
             # The row lock makes the pending cap atomic per user (Postgres).
-            user = await self._repo.lock_user(policy.user_id)
+            user = await self._repo.users.lock_user(policy.user_id)
             if (
                 user is None
                 or user.tenant != policy.tenant
@@ -177,13 +177,13 @@ class AccessRequests(AccessAdmin):
                 # would silently lift the scope, so there is nothing to request.
                 msg = f"You can already see {target}."
                 raise InvalidChangeError(msg)
-            if await self._repo.count_pending(user.id) >= MAX_PENDING:
+            if await self._repo.requests.count_pending(user.id) >= MAX_PENDING:
                 msg = (
                     f"You have {MAX_PENDING} pending requests; cancel one or wait "
                     "for a decision first."
                 )
                 raise InvalidChangeError(msg)
-            if await self._repo.pending_request(user.id, payload.kind, target):
+            if await self._repo.requests.pending_request(user.id, payload.kind, target):
                 raise ConflictError(DUPLICATE)
             request = AccessRequest(
                 tenant=policy.tenant,
@@ -208,7 +208,7 @@ class AccessRequests(AccessAdmin):
 
     async def cancel(self, policy: Policy, request_id: UUID) -> AccessRequestOut:
         _require_active(policy)
-        request = await self._repo.request(request_id)
+        request = await self._repo.requests.request(request_id)
         if (
             request is None
             or request.tenant != policy.tenant
@@ -216,7 +216,7 @@ class AccessRequests(AccessAdmin):
         ):
             raise NotFoundError(NO_SUCH_REQUEST)
         try:
-            changed = await self._repo.finish_request(
+            changed = await self._repo.requests.finish_request(
                 request_id,
                 policy.tenant,
                 CANCELLED,
@@ -235,7 +235,7 @@ class AccessRequests(AccessAdmin):
 
     async def list_own(self, policy: Policy) -> list[AccessRequestOut]:
         _require_active(policy)
-        rows = await self._repo.list_own_requests(
+        rows = await self._repo.requests.list_own_requests(
             policy.tenant, policy.user_id, OWN_LIST_LIMIT
         )
         return await self._outs([(r, None) for r in rows], policy.tenant)
@@ -247,14 +247,14 @@ class AccessRequests(AccessAdmin):
         if not is_resource_path(resource):
             msg = f"'{resource}' is not a resource path like demo/order/revenue."
             raise InvalidChangeError(msg)
-        groups = await self._repo.tenant_groups(policy.tenant)
-        grants = await self._repo.all_group_grants(policy.tenant)
+        groups = await self._repo.groups.tenant_groups(policy.tenant)
+        grants = await self._repo.grants.all_group_grants(policy.tenant)
         ids = [
             gid
             for gid in groups_granting(resource, groups, grants, _utcnow())
             if gid not in policy.group_ids
         ]
-        managers = await self._repo.group_managers(ids)
+        managers = await self._repo.groups.group_managers(ids)
         return RequestOptionsOut(
             resource=resource,
             groups=[
@@ -284,7 +284,7 @@ class AccessRequests(AccessAdmin):
         if scope.empty:
             raise AccessDeniedError(NO_SCOPE)
         statuses = _STATUS_SETS.get(status, (status,)) if status is not None else None
-        rows = await self._repo.list_decidable(
+        rows = await self._repo.requests.list_decidable(
             actor.tenant,
             scope,
             statuses,
@@ -348,7 +348,7 @@ class AccessRequests(AccessAdmin):
         # decline changes no access: no rbac_changes row, no version bump.
         async with self._write(actor):
             await self._locked_pending(actor, request_id)
-            changed = await self._repo.finish_request(
+            changed = await self._repo.requests.finish_request(
                 request_id, actor.tenant, DECLINED, decided_by=actor.user_id, note=note
             )
             if not changed:
@@ -390,18 +390,18 @@ class AccessRequests(AccessAdmin):
             group_id = UUID(target)
         except ValueError:
             group_id = None
-        group = None if group_id is None else await self._repo.group(group_id)
+        group = None if group_id is None else await self._repo.groups.group(group_id)
         if group is None or group.tenant != user.tenant:
             msg = "No such group."
             raise InvalidChangeError(msg)
-        if await self._repo.member(group.id, user.id) is not None:
+        if await self._repo.groups.member(group.id, user.id) is not None:
             msg = f"You're already in {group.name}."
             raise InvalidChangeError(msg)
         return str(group.id)
 
     async def _decidable_request(self, actor: Actor, request_id: UUID) -> None:
         """404 unless the request is in the actor's view; 409 if it is theirs."""
-        request = await self._repo.request(request_id)
+        request = await self._repo.requests.request(request_id)
         self._check_decidable(actor, request)
 
     def _check_decidable(
@@ -419,7 +419,7 @@ class AccessRequests(AccessAdmin):
         """Re-read the request under the caller's `_write`; it must still be
         in view and pending."""
         request = self._check_decidable(
-            actor, await self._repo.request_for_update(request_id)
+            actor, await self._repo.requests.request_for_update(request_id)
         )
         if request.status != PENDING:
             raise ConflictError(ALREADY_DECIDED)
@@ -427,7 +427,7 @@ class AccessRequests(AccessAdmin):
 
     async def _requester_active(self, request: AccessRequest) -> None:
         """Fail closed: never grant access to an account disabled since it asked."""
-        requester = await self._repo.user(request.user_id)
+        requester = await self._repo.users.user(request.user_id)
         if requester is None or requester.status != STATUS_ACTIVE:
             raise ConflictError(REQUESTER_DISABLED)
 
@@ -458,7 +458,7 @@ class AccessRequests(AccessAdmin):
         (an approval never demotes or duplicates, P5-D7)."""
         if request.kind == KIND_GROUP:
             group_id = UUID(request.target)
-            if await self._repo.member(group_id, request.user_id) is not None:
+            if await self._repo.groups.member(group_id, request.user_id) is not None:
                 await self._group(actor, group_id)
                 return None  # already in, at any standing
             _, change = await self._stage_member(
@@ -488,7 +488,7 @@ class AccessRequests(AccessAdmin):
         requester = await self._access.policy_for_user(request.user_id)
         if requester.allows(request.target):
             return None
-        existing = await self._repo.find_grant(
+        existing = await self._repo.grants.find_grant(
             (SUBJECT_USER, request.user_id), EFFECT_ALLOW, KIND_RESOURCE, request.target
         )
         expiry = None if existing is None else as_utc(existing.expires_at)
@@ -510,7 +510,7 @@ class AccessRequests(AccessAdmin):
     async def _reloaded(
         self, request_id: UUID, *, with_requester: bool = False
     ) -> AccessRequestOut:
-        request = await self._repo.request(request_id)
+        request = await self._repo.requests.request(request_id)
         if request is None:  # pragma: no cover - committed just before
             raise NotFoundError(NO_SUCH_REQUEST)
         return await self._out(request, with_requester=with_requester)
@@ -519,7 +519,9 @@ class AccessRequests(AccessAdmin):
         self, request: AccessRequest, *, with_requester: bool = False
     ) -> AccessRequestOut:
         """One request; `with_requester` embeds the requester (decider views)."""
-        requester = await self._repo.user(request.user_id) if with_requester else None
+        requester = (
+            await self._repo.users.user(request.user_id) if with_requester else None
+        )
         [out] = await self._outs([(request, requester)], request.tenant)
         return out
 
@@ -528,8 +530,8 @@ class AccessRequests(AccessAdmin):
     ) -> list[AccessRequestOut]:
         """Shape requests; `requester` is set only where a row carries one
         (admin views)."""
-        groups = await self._repo.tenant_groups(tenant)
-        deciders = await self._repo.users_by_id(
+        groups = await self._repo.groups.tenant_groups(tenant)
+        deciders = await self._repo.users.users_by_id(
             r.decided_by for r, _ in rows if r.decided_by is not None
         )
         outs: list[AccessRequestOut] = []

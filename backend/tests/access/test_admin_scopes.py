@@ -21,7 +21,7 @@ from app.access.facts import (
     is_well_formed_scope,
 )
 from app.access.models import Group, RbacChange
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.schemas import GrantCreate
 from app.access.service import AccessService
 from tests.access_helpers import (
@@ -215,7 +215,7 @@ async def test_valid_scoped_grants_are_stored_and_audited(
 
     assert grant.row_scope == row_scope
     assert await policy_version(db) == before + 1
-    stored = await AccessRepository(db).grant(grant.id)
+    stored = await AccessRepository(db).grants.grant(grant.id)
     assert stored is not None
     assert stored.row_scope == row_scope
     change = (
@@ -274,7 +274,7 @@ async def test_a_scoped_grant_on_an_unmirrored_plugin_is_rejected(db) -> None:
 async def _cleared_admin(db, *clearances: str) -> Actor:
     base = await actor_with(db)
     assert base.user_id is not None
-    user = await AccessRepository(db).user(base.user_id)
+    user = await AccessRepository(db).users.user(base.user_id)
     assert user is not None
     for clearance in clearances:
         await add_grant(db, user, clearance, kind="clearance")
@@ -356,7 +356,7 @@ async def test_revoking_a_clearance_deny_needs_the_clearance(db) -> None:
 
     cleared = await _cleared_admin(db, CLEARANCE_PEOPLE_NAMES)
     await admin_for(db).revoke_grant(cleared, deny.id)
-    assert await AccessRepository(db).grant(deny.id) is None
+    assert await AccessRepository(db).grants.grant(deny.id) is None
 
 
 async def test_revoking_a_clearance_allow_needs_no_clearance(db) -> None:
@@ -364,7 +364,7 @@ async def test_revoking_a_clearance_allow_needs_no_clearance(db) -> None:
     allow = await add_grant(db, group, CLEARANCE_PEOPLE_NAMES, kind="clearance")
     actor = await actor_with(db)
     await admin_for(db).revoke_grant(actor, allow.id)
-    assert await AccessRepository(db).grant(allow.id) is None
+    assert await AccessRepository(db).grants.grant(allow.id) is None
 
 
 async def test_the_cli_grants_and_lifts_clearances_without_holding_them(db) -> None:
@@ -378,4 +378,4 @@ async def test_the_cli_grants_and_lifts_clearances_without_holding_them(db) -> N
         db, group, CLEARANCE_BUSINESS_NAMES, kind="clearance", effect="deny"
     )
     await admin.revoke_grant(Actor.cli(), deny.id)
-    assert await AccessRepository(db).grant(deny.id) is None
+    assert await AccessRepository(db).grants.grant(deny.id) is None

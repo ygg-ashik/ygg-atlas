@@ -214,7 +214,7 @@ layers = [
     "requests",
     "admin",
     "service | startup",
-    "repository",
+    "repositories",
     "models",
     "schemas",
     "cache | evaluator",

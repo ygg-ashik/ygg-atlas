@@ -40,7 +40,7 @@ from app.access.models import (
     PolicyState,
     RbacChange,
 )
-from app.access.repository import AccessRepository
+from app.access.repositories import GroupRepository, RequestRepository
 from app.access.schemas import (
     AccessRequestCreate,
     AccessRequestOut,
@@ -122,8 +122,13 @@ async def factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(engine, expire_on_commit=False)
 
 
-def _widen_race(monkeypatch: pytest.MonkeyPatch, method: str, parties: int = 2) -> None:
-    """Hold each caller at `AccessRepository.<method>` (the read behind an
+def _widen_race(
+    monkeypatch: pytest.MonkeyPatch,
+    repository: type[GroupRepository | RequestRepository],
+    method: str,
+    parties: int = 2,
+) -> None:
+    """Hold each caller at `<repository>.<method>` (the read behind an
     application-level check) until all `parties` arrive, or 0.5s pass.
 
     Without the policy_state lock every caller reaches the check before any
@@ -131,11 +136,11 @@ def _widen_race(monkeypatch: pytest.MonkeyPatch, method: str, parties: int = 2) 
     the lock holder times out alone and commits before the next caller even
     gets to the check.
     """
-    original = getattr(AccessRepository, method)
+    original = getattr(repository, method)
     arrived = 0
     everyone = asyncio.Event()
 
-    async def held(self: AccessRepository, *args: object, **kwargs: object) -> object:
+    async def held(self: object, *args: object, **kwargs: object) -> object:
         nonlocal arrived
         arrived += 1
         if arrived >= parties:
@@ -144,7 +149,7 @@ def _widen_race(monkeypatch: pytest.MonkeyPatch, method: str, parties: int = 2) 
             await asyncio.wait_for(everyone.wait(), 0.5)
         return await original(self, *args, **kwargs)
 
-    monkeypatch.setattr(AccessRepository, method, held)
+    monkeypatch.setattr(repository, method, held)
 
 
 async def _create_group(factory: async_sessionmaker[AsyncSession], name: str) -> Group:
@@ -172,7 +177,7 @@ async def test_concurrent_create_same_group_name_conflicts_cleanly(
     factory: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     start_version, start_changes = await _counts(factory)
-    _widen_race(monkeypatch, "group_by_name")
+    _widen_race(monkeypatch, GroupRepository, "group_by_name")
 
     results = await asyncio.gather(
         _create_group(factory, "finance"),
@@ -198,7 +203,7 @@ async def test_concurrent_crossing_moves_cannot_make_a_cycle(
 ) -> None:
     a = await _create_group(factory, "a")
     b = await _create_group(factory, "b")
-    _widen_race(monkeypatch, "tenant_groups")
+    _widen_race(monkeypatch, GroupRepository, "tenant_groups")
 
     results = await asyncio.gather(
         _move_group(factory, a, b), _move_group(factory, b, a), return_exceptions=True
@@ -227,7 +232,7 @@ async def test_concurrent_admin_writes_lose_no_version_bump(
     factory: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     start_version, start_changes = await _counts(factory)
-    _widen_race(monkeypatch, "group_by_name", parties=5)
+    _widen_race(monkeypatch, GroupRepository, "group_by_name", parties=5)
 
     results = await asyncio.gather(
         *(_create_group(factory, f"team-{i}") for i in range(5)),
@@ -282,7 +287,8 @@ async def test_concurrent_approvals_exactly_one_wins(
     sara = await _requester(factory)
     request = await _ask(factory, sara, "group", str(group.id))
     start_version, start_changes = await _counts(factory)
-    _widen_race(monkeypatch, "request")  # both pass the pre-lock read
+    # Both pass the pre-lock read.
+    _widen_race(monkeypatch, RequestRepository, "request")
 
     results = await asyncio.gather(
         _approve(factory, request.id),
@@ -306,7 +312,8 @@ async def test_cancel_racing_an_approval_one_wins(
 ) -> None:
     sara = await _requester(factory)
     request = await _ask(factory, sara, "resource", "demo/order/revenue")
-    _widen_race(monkeypatch, "request")  # approve and cancel both read first
+    # Approve and cancel both read first.
+    _widen_race(monkeypatch, RequestRepository, "request")
 
     async def _cancel() -> AccessRequestOut:
         async with factory() as db:
@@ -337,7 +344,7 @@ async def test_concurrent_creates_respect_the_cap(
     sara = await _requester(factory)
     for i in range(19):
         await _ask(factory, sara, "resource", f"demo/order/m{i}")
-    _widen_race(monkeypatch, "count_pending")
+    _widen_race(monkeypatch, RequestRepository, "count_pending")
 
     results = await asyncio.gather(
         _ask(factory, sara, "resource", "demo/order/a"),

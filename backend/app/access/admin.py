@@ -82,7 +82,7 @@ from app.access.patterns import (
     validate_pattern,
 )
 from app.access.policy import Policy
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.schemas import (
     ActorRefOut,
     AuditDecisionOut,
@@ -469,16 +469,16 @@ class AccessAdmin:
         if policy is not None and not policy.has(ADMIN_GROUPS):
             if not (policy.active and policy.managed_group_ids):
                 actor.require(ADMIN_GROUPS)  # raises: the unchanged 403
-            groups = await self._repo.list_groups(actor.tenant)
+            groups = await self._repo.groups.list_groups(actor.tenant)
             return [g for g in groups if g.id in policy.managed_group_ids]
-        return await self._repo.list_groups(actor.tenant)
+        return await self._repo.groups.list_groups(actor.tenant)
 
     async def group_detail(self, actor: Actor, group_id: UUID) -> GroupDetailOut:
         """One group with its direct member and grant counts and its path of
         names from the root (admin:groups or a manager of it or an ancestor)."""
         actor.require_member_admin(group_id)
         group = await self._group(actor, group_id)
-        groups = await self._repo.tenant_groups(actor.tenant)
+        groups = await self._repo.groups.tenant_groups(actor.tenant)
         path: list[str] = []
         current: UUID | None = group.id
         while current is not None and current in groups and len(path) < len(groups):
@@ -486,8 +486,8 @@ class AccessAdmin:
             current = groups[current].parent_id
         return GroupDetailOut(
             **GroupOut.model_validate(group).model_dump(),
-            member_count=await self._repo.count_members(group.id),
-            grant_count=await self._repo.count_grants(SUBJECT_GROUP, group.id),
+            member_count=await self._repo.groups.count_members(group.id),
+            grant_count=await self._repo.grants.count_grants(SUBJECT_GROUP, group.id),
             path=path[::-1],
         )
 
@@ -503,7 +503,7 @@ class AccessAdmin:
             msg = f"Type {shortest} to {longest} characters of a name or email."
             raise InvalidChangeError(msg)
         group = await self._group(actor, group_id)
-        users = await self._repo.member_candidates(
+        users = await self._repo.users.member_candidates(
             actor.tenant,
             group.id,
             search,
@@ -569,7 +569,7 @@ class AccessAdmin:
         actor.require(ADMIN_GROUPS)
         async with self._write(actor):
             group = await self._group(actor, group_id)
-            if await self._repo.group_in_use(group.id):
+            if await self._repo.groups.group_in_use(group.id):
                 msg = "Remove the group's subgroups, members and grants first."
                 raise ConflictError(msg)
             before = _snapshot(group)
@@ -583,7 +583,9 @@ class AccessAdmin:
     async def list_members(self, actor: Actor, group_id: UUID) -> list[MemberOut]:
         actor.require_member_admin(group_id)
         group = await self._group(actor, group_id)
-        return [_member_out(m, u) for m, u in await self._repo.list_members(group.id)]
+        return [
+            _member_out(m, u) for m, u in await self._repo.groups.list_members(group.id)
+        ]
 
     async def put_member(
         self, actor: Actor, group_id: UUID, user_id: UUID, standing: str
@@ -616,7 +618,7 @@ class AccessAdmin:
             # A service identity (the shared MCP user) gains whatever its
             # groups hold, for every caller of that door: admin:groups only.
             actor.require(ADMIN_GROUPS)
-        member = await self._repo.member(group.id, user.id)
+        member = await self._repo.groups.member(group.id, user.id)
         # Only admin:groups appoints a manager, demotes one or edits one's
         # standing further (decision D8): a manager may only ever change
         # the membership of a plain member.
@@ -651,7 +653,7 @@ class AccessAdmin:
         _no_self_membership(actor, user_id)
         async with self._write(actor):
             group = await self._group(actor, group_id)
-            member = await self._repo.member(group.id, user_id)
+            member = await self._repo.groups.member(group.id, user_id)
             if member is None:
                 msg = "That user isn't in this group."
                 raise NotFoundError(msg)
@@ -676,7 +678,7 @@ class AccessAdmin:
     ) -> list[Grant]:
         actor.require(_grant_capability(subject_type))
         await self._subject(actor, subject_type, subject_id)
-        return await self._repo.list_grants(subject_type, subject_id)
+        return await self._repo.grants.list_grants(subject_type, subject_id)
 
     async def create_grant(self, actor: Actor, payload: GrantCreate) -> Grant:
         actor.require(_grant_capability(payload.subject_type))
@@ -717,7 +719,7 @@ class AccessAdmin:
         if payload.row_scope is not None:
             await self._check_scope(target, payload.row_scope)
         subject = (payload.subject_type, payload.subject_id)
-        existing = await self._repo.find_grant(
+        existing = await self._repo.grants.find_grant(
             subject, payload.effect, payload.target_kind, target
         )
         if existing is not None:
@@ -750,7 +752,7 @@ class AccessAdmin:
     async def revoke_grant(self, actor: Actor, grant_id: UUID) -> None:
         actor.require_any(ADMIN_GROUPS, ADMIN_USERS)
         async with self._write(actor):
-            grant = await self._repo.grant(grant_id)
+            grant = await self._repo.grants.grant(grant_id)
             if grant is None:
                 msg = "No such grant."
                 raise NotFoundError(msg)
@@ -788,7 +790,7 @@ class AccessAdmin:
     async def list_users(self, actor: Actor, query: UserQuery) -> Page[UserOut]:
         """The tenant's users by email (keyset on (email, id)), filtered."""
         actor.require(ADMIN_USERS)
-        rows = await self._repo.list_users(
+        rows = await self._repo.users.list_users(
             actor.tenant, query, _email_position(query.cursor)
         )
         page = rows[: query.limit]
@@ -803,18 +805,18 @@ class AccessAdmin:
         """One user with their direct groups, direct grants and pending requests."""
         actor.require(ADMIN_USERS)  # before any lookup: no probing for user ids
         user = await self._user(actor, user_id)
-        groups = await self._repo.tenant_groups(actor.tenant)
+        groups = await self._repo.groups.tenant_groups(actor.tenant)
         memberships = [
             UserGroupOut(id=gid, name=groups[gid].name, standing=standing)
-            for gid, standing in (await self._repo.memberships(user.id)).items()
+            for gid, standing in (await self._repo.groups.memberships(user.id)).items()
             if gid in groups
         ]
-        grants = await self._repo.list_grants(SUBJECT_USER, user.id)
+        grants = await self._repo.grants.list_grants(SUBJECT_USER, user.id)
         return UserDetailOut(
             **UserOut.model_validate(user).model_dump(),
             groups=sorted(memberships, key=lambda g: (g.name, g.id)),
             direct_grants=[GrantOut.model_validate(g) for g in grants],
-            pending_requests=await self._repo.count_pending(user.id),
+            pending_requests=await self._repo.requests.count_pending(user.id),
         )
 
     async def update_user(
@@ -869,7 +871,7 @@ class AccessAdmin:
     ) -> Page[ChangeOut]:
         """The tenant's access-change log, newest first (keyset on (at, id))."""
         actor.require(ADMIN_AUDIT)
-        rows = await self._repo.list_changes(
+        rows = await self._repo.audit.list_changes(
             actor.tenant, query, page_position(query.cursor)
         )
         page, next_cursor = time_page(rows, query.limit, lambda r: (r[0].at, r[0].id))
@@ -885,7 +887,7 @@ class AccessAdmin:
         """The tenant's atlas tool decisions, newest first (keyset on
         (created_at, id)); rows with no user are never listed."""
         actor.require(ADMIN_AUDIT)
-        rows = await self._repo.list_decisions(
+        rows = await self._repo.audit.list_decisions(
             actor.tenant, query, page_position(query.cursor)
         )
         page, next_cursor = time_page(
@@ -905,7 +907,7 @@ class AccessAdmin:
         since = datetime.combine(first, time.min, tzinfo=UTC)
         counts = {
             (day, decision): n
-            for day, decision, n in await self._repo.decision_counts_by_day(
+            for day, decision, n in await self._repo.audit.decision_counts_by_day(
                 actor.tenant, since
             )
         }
@@ -917,8 +919,8 @@ class AccessAdmin:
             )
             for day in (first + timedelta(days=i) for i in range(days))
         ]
-        reasons = await self._repo.top_deny_reasons(actor.tenant, since, _TOP)
-        users = await self._repo.top_denied_users(actor.tenant, since, _TOP)
+        reasons = await self._repo.audit.top_deny_reasons(actor.tenant, since, _TOP)
+        users = await self._repo.audit.top_denied_users(actor.tenant, since, _TOP)
         return AuditSummaryOut(
             days=days,
             per_day=per_day,
@@ -963,7 +965,7 @@ class AccessAdmin:
     async def list_attributes(self, actor: Actor, user_id: UUID) -> list[UserAttribute]:
         actor.require(ADMIN_USERS)
         user = await self._user(actor, user_id)
-        return await self._repo.list_attributes(user.id)
+        return await self._repo.row_field.list_attributes(user.id)
 
     async def set_attribute(
         self, actor: Actor, user_id: UUID, key: str, value: str
@@ -978,7 +980,7 @@ class AccessAdmin:
         async with self._write(actor):
             user = await self._user(actor, user_id)
             _not_self_attribute(actor, user)
-            row = await self._repo.attribute(user.id, key)
+            row = await self._repo.row_field.attribute(user.id, key)
             before = _attribute_snapshot(row)
             if row is not None and row.value == value:
                 await self._repo.commit()  # release the lock; nothing changed
@@ -1006,7 +1008,7 @@ class AccessAdmin:
         async with self._write(actor):
             user = await self._user(actor, user_id)
             _not_self_attribute(actor, user)
-            row = await self._repo.attribute(user.id, key)
+            row = await self._repo.row_field.attribute(user.id, key)
             if row is None:
                 msg = f"That user has no attribute '{key}'."
                 raise NotFoundError(msg)
@@ -1028,7 +1030,10 @@ class AccessAdmin:
         """Both maskable classes (C12); an unset one shows as `suppress`, which
         is what the atlas does without a row (fail closed)."""
         actor.require(ADMIN_GROUPS)
-        stored = {row.label_class: row for row in await self._repo.list_label_classes()}
+        stored = {
+            row.label_class: row
+            for row in await self._repo.row_field.list_label_classes()
+        }
         return [
             stored.get(name) or LabelClassSetting(label_class=name, mode=_MASK_SUPPRESS)
             for name in MASKABLE_LABEL_CLASSES
@@ -1046,7 +1051,7 @@ class AccessAdmin:
         actor.require(ADMIN_GROUPS)
         _check_label_class(label_class, mode, bucket_size)
         async with self._write(actor):
-            row = await self._repo.label_class(label_class)
+            row = await self._repo.row_field.label_class(label_class)
             before = _label_class_snapshot(row)
             if row is None:
                 row = LabelClassSetting(label_class=label_class, mode=mode)
@@ -1075,7 +1080,7 @@ class AccessAdmin:
     async def list_scope_dimensions(self, actor: Actor) -> list[ScopeDimension]:
         """The dimensions enabled plugins declare, for building scoped grants."""
         actor.require_any(ADMIN_GROUPS, ADMIN_USERS)
-        return await self._repo.scope_dimensions()
+        return await self._repo.row_field.scope_dimensions()
 
     async def _check_scope(
         self, pattern: str, scope: Mapping[str, Sequence[str]]
@@ -1086,7 +1091,7 @@ class AccessAdmin:
         a scope on a disabled plugin's data is rejected (fail closed)."""
         declared = {
             row.dimension
-            for row in await self._repo.scope_dimensions()
+            for row in await self._repo.row_field.scope_dimensions()
             if _covers_entity(pattern, row.source, row.entity)
         }
         if not declared:
@@ -1103,7 +1108,7 @@ class AccessAdmin:
                 f"{', '.join(sorted(declared))}."
             )
             raise InvalidChangeError(msg)
-        self_attributes = await self._repo.self_attributes()
+        self_attributes = await self._repo.row_field.self_attributes()
         for dimension in sorted(scope):
             if SELF_TOKEN in scope[dimension] and dimension not in self_attributes:
                 msg = (
@@ -1115,7 +1120,7 @@ class AccessAdmin:
     async def _lineage(self, actor: Actor, group_id: UUID | None) -> frozenset[UUID]:
         if group_id is None:
             return frozenset()
-        groups = await self._repo.tenant_groups(actor.tenant)
+        groups = await self._repo.groups.tenant_groups(actor.tenant)
         return with_ancestors((group_id,), groups)
 
     async def _check_move_clearances(
@@ -1138,7 +1143,7 @@ class AccessAdmin:
         now = _utcnow()
         codes = {
             grant.target
-            for grant in await self._repo.group_grants(group_ids)
+            for grant in await self._repo.grants.group_grants(group_ids)
             if grant.target_kind == KIND_CLEARANCE
             and grant.effect == effect
             and _is_live(grant.expires_at, now)
@@ -1166,7 +1171,7 @@ class AccessAdmin:
         409; anything else rolls back and re-raises as-is.
         """
         try:
-            version = await self._repo.lock_for_write()
+            version = await self._repo.state.lock_for_write()
             if actor.policy is not None and version != actor.policy.policy_version:
                 logger.info(
                     "access.stale_actor",
@@ -1189,7 +1194,7 @@ class AccessAdmin:
         """Stage every row, bump policy_version ONCE, commit, log each action."""
         for change in changes:
             self._repo.add(change)
-        await self._repo.bump_version()
+        await self._repo.state.bump_version()
         await self._repo.commit()
         for change in changes:
             logger.info(
@@ -1200,14 +1205,14 @@ class AccessAdmin:
             )
 
     async def _group(self, actor: Actor, group_id: UUID) -> Group:
-        group = await self._repo.group(group_id)
+        group = await self._repo.groups.group(group_id)
         if group is None or group.tenant != actor.tenant:
             msg = "No such group."
             raise NotFoundError(msg)
         return group
 
     async def _user(self, actor: Actor, user_id: UUID) -> User:
-        user = await self._repo.user(user_id)
+        user = await self._repo.users.user(user_id)
         if user is None or user.tenant != actor.tenant:
             msg = "No such user."
             raise NotFoundError(msg)
@@ -1223,13 +1228,15 @@ class AccessAdmin:
     async def _carries_restriction(self, actor: Actor, group_id: UUID) -> bool:
         """True when the group or any ancestor holds a live deny (or a
         malformed grant), judged as the evaluator judges it."""
-        groups = await self._repo.tenant_groups(actor.tenant)
+        groups = await self._repo.groups.tenant_groups(actor.tenant)
         lineage = with_ancestors((group_id,), groups)
         now = _utcnow()
-        return any(restricts(g, now) for g in await self._repo.group_grants(lineage))
+        return any(
+            restricts(g, now) for g in await self._repo.grants.group_grants(lineage)
+        )
 
     async def _ensure_name_free(self, actor: Actor, name: str) -> None:
-        if await self._repo.group_by_name(actor.tenant, name) is not None:
+        if await self._repo.groups.group_by_name(actor.tenant, name) is not None:
             msg = f"A group named '{name}' already exists."
             raise ConflictError(msg)
 
@@ -1239,7 +1246,7 @@ class AccessAdmin:
         """Reject a parent that is the group itself or one of its subgroups."""
         if parent_id is None:
             return
-        groups = await self._repo.tenant_groups(actor.tenant)
+        groups = await self._repo.groups.tenant_groups(actor.tenant)
         if parent_id not in groups:
             msg = "No such parent group."
             raise NotFoundError(msg)
@@ -1264,7 +1271,7 @@ class AccessAdmin:
             msg = "Use 3-40 letters, digits or dashes for the service account name."
             raise InvalidChangeError(msg)
         async with self._write(actor):
-            if await self._repo.user_by_email(email) is not None:
+            if await self._repo.users.user_by_email(email) is not None:
                 msg = f"A service account '{email}' already exists."
                 raise ConflictError(msg)
             user = User(

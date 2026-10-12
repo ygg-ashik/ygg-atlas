@@ -14,7 +14,7 @@ from app.access.admin import Actor
 from app.access.catalog import CLEARANCE_PEOPLE_NAMES
 from app.access.errors import AccessDeniedError
 from app.access.models import Group
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.schemas import GroupUpdate
 from tests.access_helpers import (
     actor_with,
@@ -30,7 +30,7 @@ from tests.access_helpers import (
 async def _cleared_admin(db) -> Actor:
     base = await actor_with(db)
     assert base.user_id is not None
-    user = await AccessRepository(db).user(base.user_id)
+    user = await AccessRepository(db).users.user(base.user_id)
     assert user is not None
     await add_grant(db, user, CLEARANCE_PEOPLE_NAMES, kind="clearance")
     return await fresh(db, base)
@@ -171,5 +171,5 @@ async def test_removing_a_member_under_a_clearance_deny_needs_it(db) -> None:
 
     await admin.remove_member(await _cleared_admin(db), child_id, sara_id)
     await admin.remove_member(Actor.cli(), child_id, omar_id)
-    assert await AccessRepository(db).member(child_id, sara_id) is None
-    assert await AccessRepository(db).member(child_id, omar_id) is None
+    assert await AccessRepository(db).groups.member(child_id, sara_id) is None
+    assert await AccessRepository(db).groups.member(child_id, omar_id) is None

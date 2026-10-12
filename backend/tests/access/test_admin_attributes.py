@@ -14,7 +14,7 @@ from app.access.errors import (
     NotFoundError,
 )
 from app.access.models import RbacChange
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.schemas import GrantCreate
 from app.access.service import AccessService
 from app.identity.models import User

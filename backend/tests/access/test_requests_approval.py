@@ -17,7 +17,7 @@ from app.access.errors import (
 )
 from app.access.models import AccessRequest, Grant, GroupMember, RbacChange
 from app.access.policy import decidable_scope
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.schemas import AccessRequestCreate, AccessRequestOut, RequestDecision
 from app.identity.models import User
 from tests.access_helpers import (
@@ -525,8 +525,10 @@ async def test_count_decidable_matches_the_list(db) -> None:
     lead = await fresh(db, lead)
     assert lead.policy is not None
     assert admin.policy is not None
-    assert await repo.count_decidable("ygg", decidable_scope(lead.policy)) == 1
-    assert await repo.count_decidable("ygg", decidable_scope(admin.policy)) == 2
+    assert await repo.requests.count_decidable("ygg", decidable_scope(lead.policy)) == 1
+    assert (
+        await repo.requests.count_decidable("ygg", decidable_scope(admin.policy)) == 2
+    )
 
 
 async def test_approving_for_a_disabled_requester_is_409(db) -> None:

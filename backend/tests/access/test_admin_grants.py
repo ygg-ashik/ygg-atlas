@@ -14,7 +14,7 @@ from app.access.errors import (
     NotFoundError,
 )
 from app.access.models import Group, RbacChange
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.schemas import GrantCreate
 from app.access.service import AccessService
 from tests.access_helpers import (
@@ -55,7 +55,7 @@ async def _actor_with_capabilities(db, *capabilities: str) -> Actor:
     """A builder actor with exactly these extra capabilities, nothing assumed."""
     base = await actor_with(db, "builder")
     assert base.user_id is not None
-    user = await AccessRepository(db).user(base.user_id)
+    user = await AccessRepository(db).users.user(base.user_id)
     assert user is not None
     for capability in capabilities:
         await add_grant(db, user, capability, kind="capability")
@@ -229,7 +229,7 @@ async def test_a_grant_for_a_group_in_another_tenant_is_not_found(db) -> None:
 async def test_lifting_a_deny_on_yourself_is_denied(db) -> None:
     actor = await actor_with(db)
     assert actor.user_id is not None
-    user = await AccessRepository(db).user(actor.user_id)
+    user = await AccessRepository(db).users.user(actor.user_id)
     assert user is not None
     grant = await add_grant(db, user, "demo/*", effect="deny")
     grant_id = grant.id

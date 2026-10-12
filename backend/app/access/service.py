@@ -13,7 +13,7 @@ from app.access.errors import PolicyUnavailableError
 from app.access.evaluator import evaluate
 from app.access.facts import STATUS_ACTIVE, PolicyInputs, UserFacts
 from app.access.policy import Policy, decidable_scope
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.schemas import GroupRefOut, MeAccessOut
 from app.identity import Principal
 
@@ -55,12 +55,12 @@ class AccessService:
     async def _resolve(self, user_id: UUID) -> Policy:
         # Read the version before the facts: a policy cached under version v
         # then never predates v.
-        version = await self._repo.policy_version()
+        version = await self._repo.state.policy_version()
         now = self._clock()
         cached = self._cache.get(user_id, version, now)
         if cached is not None:
             return cached
-        user = await self._repo.user_facts(user_id)
+        user = await self._repo.users.user_facts(user_id)
         if user is None:
             return Policy.deny_all(user_id, "", version)
         inputs = await self._inputs(user, version)
@@ -85,9 +85,9 @@ class AccessService:
             raise PolicyUnavailableError(msg) from exc
 
     async def _resolve_if_active(self, user_id: UUID) -> frozenset[str]:
-        version = await self._repo.policy_version()
+        version = await self._repo.state.policy_version()
         now = self._clock()
-        user = await self._repo.user_facts(user_id)
+        user = await self._repo.users.user_facts(user_id)
         if user is None:
             return frozenset()
         user = replace(user, status=STATUS_ACTIVE)
@@ -95,16 +95,16 @@ class AccessService:
         return evaluate(inputs, now).capabilities
 
     async def _inputs(self, user: UserFacts, version: int) -> PolicyInputs:
-        groups = await self._repo.tenant_groups(user.tenant)
+        groups = await self._repo.groups.tenant_groups(user.tenant)
         return PolicyInputs(
             user=user,
             groups=groups,
-            memberships=await self._repo.memberships(user.id),
-            grants=await self._repo.grants_for(user.id, groups),
+            memberships=await self._repo.groups.memberships(user.id),
+            grants=await self._repo.grants.grants_for(user.id, groups),
             policy_version=version,
-            attributes=await self._repo.attributes_for(user.id),
-            self_attributes=await self._repo.self_attributes(),
-            label_modes=await self._repo.label_modes(),
+            attributes=await self._repo.row_field.attributes_for(user.id),
+            self_attributes=await self._repo.row_field.self_attributes(),
+            label_modes=await self._repo.row_field.label_modes(),
         )
 
     async def describe(self, policy: Policy) -> MeAccessOut:
@@ -115,7 +115,7 @@ class AccessService:
         Built from the already-evaluated Policy (group_ids, managed_group_ids)
         so this can never disagree with it; tenant_groups is read only for names.
         """
-        groups = await self._repo.tenant_groups(policy.tenant)
+        groups = await self._repo.groups.tenant_groups(policy.tenant)
         refs = [
             GroupRefOut(
                 id=gid,
@@ -125,10 +125,12 @@ class AccessService:
             for gid in policy.group_ids
             if gid in groups
         ]
-        user = await self._repo.user(policy.user_id)
+        user = await self._repo.users.user(policy.user_id)
         scope = decidable_scope(policy)
         approvals = (
-            0 if scope.empty else await self._repo.count_decidable(policy.tenant, scope)
+            0
+            if scope.empty
+            else await self._repo.requests.count_decidable(policy.tenant, scope)
         )
         return MeAccessOut(
             role=policy.role,
@@ -138,7 +140,7 @@ class AccessService:
             user_id=policy.user_id,
             email=user.email if user is not None else "",
             display_name=user.display_name if user is not None else "",
-            pending_requests=await self._repo.count_pending(policy.user_id),
+            pending_requests=await self._repo.requests.count_pending(policy.user_id),
             pending_approvals=approvals,
             is_manager=bool(policy.managed_group_ids),
             clearances=sorted(policy.clearances) if policy.active else [],

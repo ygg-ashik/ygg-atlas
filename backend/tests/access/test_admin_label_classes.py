@@ -8,7 +8,7 @@ from app.access.cache import PolicyCache
 from app.access.catalog import ADMIN_GROUPS, ADMIN_USERS
 from app.access.errors import AccessDeniedError, InvalidChangeError
 from app.access.models import RbacChange
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.service import AccessService
 from tests.access_helpers import (
     actor_with,
@@ -25,7 +25,7 @@ from tests.access_helpers import (
 async def _actor_with_capabilities(db, *capabilities: str) -> Actor:
     base = await actor_with(db, "builder")
     assert base.user_id is not None
-    user = await AccessRepository(db).user(base.user_id)
+    user = await AccessRepository(db).users.user(base.user_id)
     assert user is not None
     for capability in capabilities:
         await add_grant(db, user, capability, kind="capability")

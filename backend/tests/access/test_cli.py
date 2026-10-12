@@ -8,7 +8,7 @@ from sqlmodel import col, select
 from app.access import cli
 from app.access.facts import as_utc
 from app.access.models import PolicyState, RbacChange
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from tests.access_helpers import add_grant, add_member, make_group, make_user
 
 
@@ -108,7 +108,7 @@ async def test_set_role_changes_the_role(db) -> None:
 
     assert await cli.run(["set-role", "someone@yougotagift.com", "analyst"]) == 0
 
-    refreshed = await AccessRepository(db).user(user_id)
+    refreshed = await AccessRepository(db).users.user(user_id)
     assert refreshed is not None
     assert refreshed.role == "analyst"
 
@@ -121,7 +121,7 @@ async def test_remove_member_succeeds(db) -> None:
 
     assert await cli.run(["remove-member", "someone@yougotagift.com", "ops"]) == 0
 
-    assert await AccessRepository(db).member(group_id, user_id) is None
+    assert await AccessRepository(db).groups.member(group_id, user_id) is None
 
 
 # ---- grant details: subject resolution, kind, expiry ------------------------
@@ -141,7 +141,7 @@ async def test_grant_resolves_a_mixed_case_email(
 
     out = capsys.readouterr().out
     assert "to ashik@yougotagift.com" in out
-    grants = await AccessRepository(db).list_grants("user", user.id)
+    grants = await AccessRepository(db).grants.list_grants("user", user.id)
     assert len(grants) == 1
 
 
@@ -174,7 +174,7 @@ async def test_grant_a_capability_with_kind(db) -> None:
         == 0
     )
 
-    grants = await AccessRepository(db).list_grants("user", user.id)
+    grants = await AccessRepository(db).grants.list_grants("user", user.id)
     assert len(grants) == 1
     assert grants[0].target_kind == "capability"
     assert grants[0].target == "mcp:use"
@@ -197,7 +197,7 @@ async def test_expires_is_persisted_as_timezone_aware(db) -> None:
         == 0
     )
 
-    grants = await AccessRepository(db).list_grants("group", group.id)
+    grants = await AccessRepository(db).grants.list_grants("group", group.id)
     assert len(grants) == 1
     # SQLite returns naive datetimes even for TIMESTAMP(timezone=True) columns
     # (facts.as_utc); every stored value is UTC end-to-end, so this is the

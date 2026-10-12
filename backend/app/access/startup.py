@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.access.cache import shared_cache
 from app.access.catalog import CAPABILITIES
 from app.access.models import RbacChange
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.identity import User, UserKind
 
 logger = structlog.get_logger()
@@ -41,12 +41,12 @@ async def prepare_access(
     """One transaction: catalog sync, bootstrap admins, version bump."""
     repo = AccessRepository(db)
     await _startup_lock(db)
-    await repo.ensure_policy_state()
-    await repo.sync_capabilities(CAPABILITIES)
+    await repo.state.ensure_policy_state()
+    await repo.state.sync_capabilities(CAPABILITIES)
     await _bootstrap_admins(repo, bootstrap_admins)
     # Bump on every start: cheap, and it commits together with any bootstrap
     # admin it created, so every worker sees the change.
-    await repo.bump_version()
+    await repo.state.bump_version()
     await repo.commit()
     shared_cache().clear()
 
@@ -59,15 +59,15 @@ async def _bootstrap_admins(repo: AccessRepository, emails: Iterable[str]) -> No
     existing user with the audited CLI (`set-role`) instead.
     """
     for email in emails:
-        user = await repo.user_by_email(email)
+        user = await repo.users.user_by_email(email)
         if user is None:
             user = User(email=email.strip().lower(), role=ADMIN_ROLE)
-            if await repo.insert_user_if_absent(user):
+            if await repo.users.insert_user_if_absent(user):
                 repo.add(_bootstrap_change(user))
                 logger.info("identity.bootstrap_admin_created", user_id=str(user.id))
                 continue
             # A concurrent sign-in created this email first: judge that row.
-            user = await repo.user_by_email(email)
+            user = await repo.users.user_by_email(email)
             if user is None:
                 # The conflict was on something other than the email: skip,
                 # never fail startup over it.
@@ -95,7 +95,7 @@ async def sync_scope_dimensions(
     """
     try:
         await _startup_lock(db)
-        changed = await AccessRepository(db).replace_scope_dimensions(
+        changed = await AccessRepository(db).row_field.replace_scope_dimensions(
             (source, entity, dimension, self_attribute, description[:DESCRIPTION_LIMIT])
             for source, entity, dimension, self_attribute, description in rows
         )

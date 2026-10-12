@@ -20,7 +20,7 @@ from app.access.models import (
     UserAttribute,
 )
 from app.access.policy import Policy
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.requests import AccessRequests
 from app.access.service import AccessService
 from app.identity import TokenVerifier

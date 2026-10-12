@@ -13,7 +13,7 @@ import pytest
 from app.access.admin import Actor
 from app.access.cache import PolicyCache
 from app.access.errors import AccessDeniedError
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.service import AccessService
 from tests.access_helpers import (
     actor_with,

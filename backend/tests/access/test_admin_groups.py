@@ -13,7 +13,7 @@ from app.access.errors import (
     NotFoundError,
 )
 from app.access.models import Group, RbacChange
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.schemas import GroupCreate, GroupUpdate
 from app.access.service import AccessService
 from tests.access_helpers import (

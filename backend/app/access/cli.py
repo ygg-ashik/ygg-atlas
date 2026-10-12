@@ -67,7 +67,7 @@ from app.access.facts import (
 from app.access.models import Group
 from app.access.patterns import is_resource_path
 from app.access.policy import Conjunction, RowScope
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.schemas import GrantCreate, UserUpdate
 from app.access.service import AccessService
 from app.database import get_engine, get_session_factory
@@ -131,14 +131,14 @@ class _Context:
     actor: Actor
 
     async def group(self, name: str) -> Group:
-        group = await self.repo.group_by_name(DEFAULT_TENANT, name)
+        group = await self.repo.groups.group_by_name(DEFAULT_TENANT, name)
         if group is None:
             msg = f"No group named '{name}'. Run `groups` to list them."
             raise NotFoundError(msg)
         return group
 
     async def user(self, email: str) -> User:
-        user = await self.repo.user_by_email(email)
+        user = await self.repo.users.user_by_email(email)
         if user is None:
             msg = f"No user {email}. They must sign in to atlas once first."
             raise NotFoundError(msg)

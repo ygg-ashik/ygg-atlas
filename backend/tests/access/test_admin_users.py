@@ -10,7 +10,7 @@ from app.access.errors import (
     InvalidChangeError,
     NotFoundError,
 )
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.schemas import GroupCreate, UserQuery, UserUpdate
 from app.access.service import AccessService
 from app.identity.models import User
@@ -45,7 +45,7 @@ async def _actor_with_capabilities(db, *capabilities: str) -> Actor:
     """A builder actor with exactly these extra capabilities, nothing assumed."""
     base = await actor_with(db, "builder")
     assert base.user_id is not None
-    user = await AccessRepository(db).user(base.user_id)
+    user = await AccessRepository(db).users.user(base.user_id)
     assert user is not None
     for capability in capabilities:
         await add_grant(db, user, capability, kind="capability")
