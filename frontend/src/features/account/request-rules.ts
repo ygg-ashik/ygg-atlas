@@ -1,5 +1,5 @@
 // Pure rules for an access request. They mirror the backend's create rules
-// (app/access/requests.py, P5-D11) only to give early, inline feedback: the
+// (app/access/services/request_rules.py) only to give early, inline feedback: the
 // backend decides, and its 422 sentence replaces anything said here.
 import { type AccessRequestCreate, type RequestKind } from '@/api/access-requests';
 import { type RoleInfo } from '@/api/access';

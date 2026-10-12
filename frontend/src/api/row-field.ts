@@ -1,5 +1,5 @@
 // Row and field controls (phase 3): per-user attributes, label-class masking
-// and the declared row-scope dimensions. Shapes: backend app/access/schemas.py
+// and the declared row-scope dimensions. Shapes: backend app/access/schemas/row_field.py
 // (`AttributeOut`, `LabelClassOut`, `LabelClassPut`, `ScopeDimensionOut`).
 import { api } from './axios-instance';
 import { seg } from './params';

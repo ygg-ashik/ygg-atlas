@@ -1,5 +1,5 @@
 // Users and per-user effective access (admin:users). Shapes: backend
-// app/access/schemas.py; list and detail from phase 5 (B5).
+// app/access/schemas/users.py; list and detail from phase 5 (B5).
 import { type GrantOut, type RowScope } from './admin-groups';
 import { api } from './axios-instance';
 import { type Page } from './cursor';

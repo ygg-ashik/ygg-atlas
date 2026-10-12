@@ -1,5 +1,5 @@
 // Groups, memberships and grants (admin:groups, group managers for members).
-// Shapes: backend app/access/schemas.py; detail and member role/status from B5.
+// Shapes: backend app/access/schemas/groups.py; detail and member role/status from B5.
 import { api } from './axios-instance';
 import { type GroupStanding } from './access';
 import { seg } from './params';

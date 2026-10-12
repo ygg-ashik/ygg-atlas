@@ -35,7 +35,7 @@ jobs:
       - name: Architecture contracts
         run: uv run lint-imports
       - name: Module and class size
-        run: uv run python scripts/check_module_size.py --warn
+        run: uv run python scripts/check_module_size.py
       - name: Tests and coverage
         run: uv run pytest -n auto --cov=app -q
       - name: Dependency audit

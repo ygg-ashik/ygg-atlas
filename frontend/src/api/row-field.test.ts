@@ -15,7 +15,7 @@ import { httpError } from './test-support';
 
 vi.mock('./axios-instance', async () => (await import('./test-api-mock')).apiMock);
 
-// Exactly the fields of the backend schemas (app/access/schemas.py).
+// Exactly the fields of the backend schemas (app/access/schemas/row_field.py).
 const ATTRIBUTE: UserAttribute = {
   key: 'csm',
   value: 'sara',
