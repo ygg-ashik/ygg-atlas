@@ -10,7 +10,6 @@ from collections.abc import Awaitable, Callable
 
 import structlog
 
-import app.atlas.tools as tools_package
 from app.atlas.models import EntityDef, FunnelDef, MetricDef
 from app.atlas.policy import (
     ResourcePolicy,
@@ -34,6 +33,7 @@ from app.atlas.tools.errors import (
     AtlasPolicyError,
     policy_failed,
 )
+from app.sources import get_connector
 from app.sources.base import Connector
 
 logger = structlog.get_logger()
@@ -45,12 +45,8 @@ Freshness = Callable[[EntityDef | None, RowScope | None], Awaitable[str | None]]
 
 
 def connector(source: str) -> Connector:
-    """The source's connector, looked up on the package at call time.
-
-    `app.atlas.tools.get_connector` is the single seam every tool family reads
-    connectors through, so replacing it there replaces it for all of them.
-    """
-    return tools_package.get_connector(source)
+    """The source's connector: the single seam every tool family reads through."""
+    return get_connector(source)
 
 
 def scope_columns(entity: EntityDef | None) -> dict[str, str]:

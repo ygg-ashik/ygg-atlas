@@ -34,7 +34,9 @@ class _Connector:
 
 @pytest.fixture(autouse=True)
 def _connector(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("app.atlas.tools.get_connector", lambda _source: _Connector())
+    monkeypatch.setattr(
+        "app.atlas.tools.door.get_connector", lambda _source: _Connector()
+    )
 
 
 def _registry(label_class: str | None = "person_name") -> AtlasRegistry:

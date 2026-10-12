@@ -109,7 +109,7 @@ class RecordingConnector:
 @pytest.fixture
 def recorder(monkeypatch: pytest.MonkeyPatch) -> RecordingConnector:
     connector = RecordingConnector()
-    monkeypatch.setattr("app.atlas.tools.get_connector", lambda _source: connector)
+    monkeypatch.setattr("app.atlas.tools.door.get_connector", lambda _source: connector)
     return connector
 
 
@@ -434,7 +434,7 @@ async def test_an_unexpected_error_is_audited_without_scope_values(
     db: AsyncSession, registry: AtlasRegistry, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     connector = _LeakyConnector()
-    monkeypatch.setattr("app.atlas.tools.get_connector", lambda _source: connector)
+    monkeypatch.setattr("app.atlas.tools.door.get_connector", lambda _source: connector)
     user_id = uuid4()
     tools = make_tools(
         db=db, registry=registry, row_scopes=[(ORDERS, B2C)], user_id=user_id
