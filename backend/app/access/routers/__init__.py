@@ -7,15 +7,17 @@ from app.access.routers import (
     audit,
     grants,
     groups,
-    me_meta,
+    me,
     members,
+    meta,
     requests,
     row_field,
     users,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["access"])
-router.include_router(me_meta.router)
+router.include_router(me.router)
+router.include_router(meta.router)
 router.include_router(groups.router)
 router.include_router(members.router)
 router.include_router(grants.router)
