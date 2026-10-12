@@ -8,7 +8,10 @@
      account menu plus a dedicated Settings page. Built on DESIGN.md "Atlas Hybrid Glass" tokens and
      the approved phase-5 mockup (atlas-admin-self-service.html): same tokens, dock, data and screen
      content. DESIGN.md stays authoritative. Not production code. Deep-link with
-     #layout=A&screen=settings&page=users&persona=admin&pending=3&width=desktop -->
+     #layout=A&screen=settings&page=users&persona=admin&pending=3&width=desktop
+     Decision: layout A is final (pages always open full page); ⌘K runs quick tasks in place:
+     #layout=A&screen=quick-token (also quick-request, quick-request-denial, quick-access,
+     quick-approve, quick-revoke) -->
 <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300..700&family=Source+Serif+4:opsz,wght@8..60,400..600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* ═════════ TOKENS · DESIGN.md (light default) ═════════ */
@@ -462,6 +465,31 @@ kbd{font-family:var(--mono);font-size:11.5px;padding:2px 7px;border-radius:7px;b
 .dock .link-out{font:400 10.5px/1.4 var(--mono);color:var(--muted);word-break:break-all}
 .scrim.clear{background:transparent}
 
+/* ⌘K quick tasks (decision: layout A final, quick tasks in place) */
+.plist{max-height:min(440px,58vh)}
+.pr .hint{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted-2);white-space:nowrap}
+.pr.on .hint{color:var(--accent-text)}
+.pr .tag{margin-left:8px}
+.dialog .grab{display:none}
+.dialog .x{position:absolute;top:14px;right:14px}
+.dialog h3{padding-right:40px}
+.dialog .dsub{color:var(--muted);font-size:14px;margin:0 0 16px}
+.dialog .df{display:flex;gap:8px;align-items:center;margin-top:18px;flex-wrap:wrap}
+.dialog .review{margin:14px 0 0}
+.dialog .diff{white-space:pre-wrap;word-break:break-word}
+.dialog .list .li{min-height:0;padding:10px 14px}
+.dialog.wide{width:min(580px,calc(100% - 40px))}
+.seg.full{display:flex}.seg.full button{flex:1;justify-content:center}
+.btn.danger{background:var(--neg)}
+.peek{position:absolute;top:11%;left:max(16px,calc(50% - 200px));width:min(400px,calc(100% - 32px));border-radius:22px;padding:14px 14px 12px;z-index:38;transform-origin:50% -10px;animation:mat .35s var(--ease)}
+.peek .lbl{margin:12px 2px 6px;display:flex;align-items:center}
+.peek .list .li{min-height:0;padding:8px 12px;gap:10px}
+body.w-mobile .dialog{left:8px;right:8px;top:auto;bottom:8px;width:auto;transform:none;border-radius:28px;padding:6px 18px 18px;max-height:calc(100% - 24px);overflow-y:auto;animation:sheetin .5s var(--sheet)}
+body.w-mobile .dialog .grab{display:block}
+body.w-mobile .dialog .x{top:16px}
+body.w-mobile .peek{left:10px;right:10px;width:auto}
+.still,.still .review{animation:none!important}
+
 /* reduced motion: instant swaps */
 body.rm *,body.rm *::before,body.rm *::after{animation-duration:1ms!important;animation-iteration-count:1!important;transition-duration:1ms!important}
 body.rm .morph *{filter:none!important}
@@ -611,17 +639,18 @@ const PAGES={
  audit:{t:'Audit',grp:'org',r:'/settings/admin/audit',er:'/admin/audit',ic:'audit',need:'admin',cap:'admin:audit',w:1080}};
 const YOU=['general','access','requests','tokens'],ORG=['users','groups','queue','audit'];
 const LAYOUTS={
- A:['A · Account menu + Settings ★','<b>Recommended.</b> Sidebar stays a chat tool. Settings take the full width, so phase-5 admin tables keep their 1080px. The same tree drills down on mobile.'],
+ A:['A · Account menu + Settings ★ final','<b>Recommended.</b> Pages always open full page; ⌘K does quick tasks in place (theme, token, request, access peek), so you never need a second, modal copy of Settings.'],
  B:['B · Dual rail','claude.ai-web style. Chat threads stay visible, but two rails eat about 460px, and admin tables scroll sideways below 1300px.'],
- C:['C · Settings modal','Fine for General, Tokens and the like. The admin tables are cramped: the users table scrolls inside a modal over the chat, and there are no deep links per page.'],
+ C:['C · Settings modal ✕','<b>Rejected:</b> a modal copy of Settings means two versions of every page. ⌘K quick tasks give the speed without that.'],
  D:['D · Separate admin console','Clean split, but it creates two products: personal settings in a modal and admin in another shell with its own header. Managers bounce between them.'],
  E:['E · Current (before)','The phase-5 baseline. Account (3) and Admin (4) items push the recent threads below the fold, and the chip menu repeats Account links.']};
-const SCREENS=[['chat','Chat'],['menu','Account menu open'],...Object.keys(PAGES).map(p=>['settings.'+p,'Settings › '+PAGES[p].t]),['settings.index','Settings › list (mobile)'],['palette','⌘K palette open'],['firstrun','First run · new viewer']];
+const SCREENS=[['chat','Chat'],['menu','Account menu open'],...Object.keys(PAGES).map(p=>['settings.'+p,'Settings › '+PAGES[p].t]),['settings.index','Settings › list (mobile)'],['palette','⌘K quick actions (palette)'],['quick-token','Quick: new token'],['quick-request','Quick: request access'],['quick-request-denial','Quick: request (from denial)'],['quick-access','Quick: my access peek'],['quick-approve','Quick: approve request (admin)'],['quick-revoke','Quick: revoke token (admin)'],['firstrun','First run · new viewer']];
 const PERSONAS={viewer:{u:'omar',label:'Viewer'},manager:{u:'rania',label:'Manager'},admin:{u:'ashik',label:'Admin'}};
 
 /* ═════════ STATE ═════════ */
 const S={layout:'A',screen:'chat',page:'general',persona:'admin',pending:3,theme:'light',width:'auto',rm:false,rt:false,o:false,dock:'open'};
-const U={decided:{},rvOpen:null,rvDone:{},gSel:'marketing',auditTab:'changes',uq:'',density:'comfortable',landing:'chat',drawer:false,palQ:'',palSel:0,frOpen:false,frSent:false,frGroup:'marketing',lastSide:'app'};
+const U={decided:{},rvOpen:null,rvDone:{},gSel:'marketing',auditTab:'changes',uq:'',density:'comfortable',landing:'chat',drawer:false,palQ:'',palSel:0,frOpen:false,frSent:false,frGroup:'marketing',lastSide:'app',
+  qt:{step:'form',name:'',days:90,copied:false,err:false},qr:{kind:'group',group:'',role:'',res:'',note:'',sent:false,err:false,den:false},qa:{id:'',done:false},qv:{key:'',done:false},revoked:{}};
 
 /* ═════════ HELPERS ═════════ */
 const first=()=>S.screen==='firstrun';
@@ -807,24 +836,100 @@ function popMenu(){return `<div class="amenu glass pos" role="menu" data-o="clau
 function sheetMenu(){return `<div class="sheet glass pos" role="menu" data-o="apple" data-o-label="Apple · bottom sheet (Claude-style account menu)"><div class="grab"></div>${menuItems()}</div>`}
 
 /* palette */
+/* Quick actions run in place (more:true rows only appear once you type); Go to opens full pages */
+const QA='Quick actions';
 function palItems(){const out=[];
-  (S.layout==='E'?['access','requests','tokens',...ORG]:[...YOU,...ORG]).filter(canSee).forEach(p=>out.push({g:'Settings',t:(S.layout==='E'?'':'Settings › ')+PAGES[p].t,m:route(p),ic:PAGES[p].ic,k:'page',v:p,n:p==='queue'?pending():0}));
-  out.push({g:'Actions',t:S.theme==='dark'?'Switch to light theme':'Switch to dark theme',ic:S.theme==='dark'?'sun':'moon',k:'theme',v:S.theme==='dark'?'light':'dark'},{g:'Actions',t:'New chat',ic:'plus',k:'back'},{g:'Actions',t:'Sign out',ic:'signout',k:'signout'});
+  [['dark','Dark','moon'],['light','Light','sun'],['system','System','monitor']].filter(x=>x[0]!==S.theme).forEach((x,i)=>out.push({g:QA,t:'Theme: '+x[1],lbl:x[1],ic:x[2],k:'theme',v:x[0],kw:'theme appearance mode '+x[0],more:i>0}));
+  if(has('tokens:create'))out.push({g:QA,t:'New token',ic:'tokens',k:'quick',v:'quick-token',kw:'create personal access token pat mcp claude code'});
+  out.push({g:QA,t:'Request access',ic:'myRequests',k:'quick',v:'quick-request',kw:'request access group role resource ask permission'});
+  out.push({g:QA,t:'My access',ic:'account',k:'quick',v:'quick-access',kw:'my access peek permissions what can i see groups role'});
+  approvable().forEach((r,i)=>out.push({g:QA,t:`Approve request ${r.id} · ${USERS[r.u].name}`,ic:'adminRequests',k:'quick',v:'quick-approve',x:{id:r.id},kw:'approve request '+target(r),more:i>0,adm:1}));
+  revocable().forEach((o,i)=>out.push({g:QA,t:`Revoke token ${o.t[1]}… · ${USERS[o.uid].name}`,ic:'tokens',k:'quick',v:'quick-revoke',x:{key:o.t[1]},kw:'revoke token '+o.t[0],more:i>0,adm:1}));
+  out.push({g:QA,t:'New chat',ic:'plus',k:'back',more:true},{g:QA,t:'Sign out',ic:'signout',k:'signout',more:true});
+  (S.layout==='E'?['access','requests','tokens',...ORG]:[...YOU,...ORG]).filter(canSee).forEach(p=>out.push({g:'Go to',t:(S.layout==='E'?'':'Settings › ')+PAGES[p].t,m:route(p),ic:PAGES[p].ic,k:'page',v:p,n:p==='queue'?pending():0}));
   THREADS.slice(0,3).forEach(t=>out.push({g:'Recent threads',t:t[0],m:'/ask/t/'+t[1],ic:'chat',k:'back'}));
-  const q=U.palQ.trim().toLowerCase();return out.filter(i=>!q||i.t.toLowerCase().includes(q)||(i.m||'').includes(q))}
+  const q=U.palQ.trim().toLowerCase();return out.filter(i=>q?(i.t.toLowerCase().includes(q)||(i.m||'').includes(q)||(i.kw||'').includes(q)):!i.more)}
 function palList(){const items=palItems();if(U.palSel>=items.length)U.palSel=Math.max(0,items.length-1);let g='';
-  return items.length?items.map((it,i)=>{const h=it.g!==g?`<div class="pg">${it.g}</div>`:'';g=it.g;return h+`<div class="pr ${i===U.palSel?'on':''}" data-pal="${i}" role="option" aria-selected="${i===U.palSel}"><span class="ic">${icon(it.ic)}</span>${it.t}${it.n?`<span class="badge" style="margin-left:8px">${it.n}</span>`:''}${it.m?`<span class="mono">${esc(it.m)}</span>`:''}</div>`}).join(''):`<div class="pr" style="color:var(--muted);cursor:default">No page or action matches “${esc(U.palQ)}”</div>`}
-function palette(){return `<div class="palette glass pos" role="dialog" aria-label="Command palette" data-o="apple" data-o-label="Apple · ⌘K glass palette (cmdk)"><div class="pin">${icon('search',18)}<input id="palIn" placeholder="Search settings, threads and actions…" value="${esc(U.palQ)}" autocomplete="off" aria-label="Search"></div><div class="plist" id="palList" role="listbox">${palList()}</div><div class="pfoot"><span><span class="mono">↑↓</span> move</span><span><span class="mono">↵</span> open</span><span><span class="mono">esc</span> close</span><span style="margin-left:auto" class="mono">⌘,  settings</span></div></div>`}
+  return items.length?items.map((it,i)=>{const h=it.g!==g?`<div class="pg"${it.g===QA?' data-o="atlas" data-o-label="Atlas · quick tasks run in place"':''}>${it.g}</div>`:'';g=it.g;return h+`<div class="pr ${i===U.palSel?'on':''}" data-pal="${i}" role="option" aria-selected="${i===U.palSel}"><span class="ic">${icon(it.ic)}</span>${esc(it.t)}${it.adm?`<span class="tag">${isAdmin()?'admin':'manager'}</span>`:''}${it.n?`<span class="badge" style="margin-left:8px">${it.n}</span>`:''}${it.g===QA?'<span class="hint">↵ do it</span>':it.m?`<span class="mono">${esc(it.m)}</span>`:''}</div>`}).join(''):`<div class="pr" style="color:var(--muted);cursor:default">No page or action matches “${esc(U.palQ)}”</div>`}
+function palette(){return `<div class="palette glass pos" role="dialog" aria-label="Command palette" data-o="apple" data-o-label="Apple · ⌘K glass palette (cmdk)"><div class="pin">${icon('search',18)}<input id="palIn" placeholder="Type a task or a page… try “dark”, “new token”, “my access”" value="${esc(U.palQ)}" autocomplete="off" aria-label="Search"></div><div class="plist" id="palList" role="listbox">${palList()}</div><div class="pfoot"><span><span class="mono">↑↓</span> move</span><span><span class="mono">↵</span> do it · open</span><span><span class="mono">esc</span> close</span><span style="margin-left:auto" class="mono">⌘,  settings</span></div></div>`}
+
+/* ═════════ ⌘K QUICK TASKS (in place, over the chat; never a second copy of a page) ═════════ */
+const QUICK=['quick-token','quick-request','quick-request-denial','quick-access','quick-approve','quick-revoke'];
+const isQuick=s=>QUICK.includes(s);
+const FAKE_PAT='atl_pat_'+'0000demo'.repeat(5); /* obviously fake, low entropy */
+const TODAY=Date.UTC(2026,9,12);
+const plusDays=d=>new Date(TODAY+d*864e5).toISOString().slice(0,10);
+const DENIAL='demo/checkout/checkout_funnel';
+function suggestGroups(){const mine=groupsOf(me().id).map(x=>x.g);return GROUPS.filter(g=>g.id!=='atlas-admins'&&!mine.includes(g.id)).slice(0,4).map(g=>g.id)}
+function approvable(){if(!(isAdmin()||isMgr()))return [];return (isAdmin()?QUEUE.admin:QUEUE.manager).slice(0,S.pending).filter(i=>!U.decided[i]).map(i=>REQS.find(r=>r.id===i))}
+function revocable(){if(!isAdmin())return [];const out=[];Object.entries(TOKENS).forEach(([uid,ts])=>ts.forEach(t=>{if(!U.revoked[t[1]])out.push({uid,t})}));return out}
+function findToken(key){for(const [uid,ts] of Object.entries(TOKENS)){const t=ts.find(x=>x[1]===key);if(t)return {uid,t}}return null}
+const names=list=>[...new Set(list)].join(' and ');
+function reqTo(q){if(q.kind!=='group')return 'an admin';const ms=managersOf(q.group);return ms.length?names(ms.map(m=>USERS[m.u].name)):'an admin'}
+function initQuick(s,x={}){
+  if(s==='quick-token')U.qt={step:'form',name:'Claude Code · laptop',days:90,copied:false,err:false};
+  if(s==='quick-request'||s==='quick-request-denial'){const den=s==='quick-request-denial';U.qr={kind:den?'resource':(x.kind||'group'),group:suggestGroups()[0]||'',role:ROLES[ROLES.indexOf(me().role)+1]||'',res:den?DENIAL:'',note:'',sent:false,err:false,den}}
+  if(s==='quick-approve'){const l=approvable();U.qa={id:x.id||(l[0]?l[0].id:''),done:false}}
+  if(s==='quick-revoke'){const l=revocable();U.qv={key:x.key||(l[0]?l[0].t[1]:''),done:false}}}
+function enterQuick(s,x){S.screen=s;U.drawer=false;U.palQ='';U.palSel=0;initQuick(s,x||{});render()}
+function finishQuick(msg){const s=S.screen;setTimeout(()=>{if(S.screen===s){back();toast(msg)}},S.rm?250:1100)}
+function dlg(label,o,inner,cls=''){return `<div class="dialog pos ${cls}${U.enter?'':' still'}" role="dialog" aria-modal="true" aria-label="${esc(label)}" data-o="${o[0]}" data-o-label="${o[1]}"><div class="grab"></div><button class="ibtn x" data-act="back" aria-label="Close">✕</button>${inner}</div>`}
+const morph=(on,anim,a,b)=>`<span class="morph ${on?'done':''}" ${anim?'data-anim':''}><span class="a">${a}</span><span class="b">${b}</span></span>`;
+const qGuard=cap=>dlg('Not available',['atlas','Atlas · quick task guard: scope from token'],`<h3>This needs ${mono(cap)}</h3><p class="dsub">Access comes from your sign-in, not from what you type in ⌘K. Your role (<b>${me().role}</b>) doesn’t include it.</p><div class="chips">${prov('scope · from your Google sign-in')}</div><div class="df"><span class="spacer"></span><button class="btn" data-act="back">Back to Atlas</button></div>`);
+function qToken(){const q=U.qt;const u=me();const O=['claude','Claude · solid dialog over a scrim (phase-5 token flow)'];
+  if(!has('tokens:create'))return dlg('New token',O,`<h3>New token</h3><p class="dsub">Tokens let MCP clients act as you.</p><div class="notice"><div class="ni">${LOCK}</div><div style="flex:1"><div class="nt">Personal tokens need ${mono('tokens:create')}</div><div class="nb">It comes with the <b>analyst</b> role. Your role is ${u.role}.</div></div></div><div class="df"><span class="spacer"></span><button class="pill" data-act="back">Close</button><button class="btn" data-act="quick" data-v="quick-request" data-k="role">Request analyst</button></div>`);
+  if(q.step==='form')return dlg('New token',O,`<h3>New token</h3><p class="dsub">For Claude Code and other MCP clients. It sees exactly what you see, never more.</p>
+   <div class="field"><label for="qtName">Name</label><input class="inp${q.err?' bad':''}" id="qtName" value="${esc(q.name)}" autocomplete="off">${q.err?'<div class="err">Give it a name you’ll recognise later.</div>':'<div class="hint">Where you’ll use it, such as a laptop or a CI runner.</div>'}</div>
+   <div class="field" style="margin-top:14px"><span class="lbl">Expires in</span><div class="seg full" role="radiogroup" aria-label="Expiry" data-o="apple" data-o-label="Apple · segmented expiry">${[30,90,180].map(d=>`<button class="${q.days===d?'on':''}" data-act="qtDays" data-v="${d}" role="radio" aria-checked="${q.days===d}">${d} days</button>`).join('')}</div><div class="hint num">Until ${plusDays(q.days)} · scope ${mono('mcp:use')}</div></div>
+   <div class="df"><span class="cap">Recorded as ${mono('token.create')}</span><span class="spacer"></span><button class="pill" data-act="back">Cancel</button><button class="btn" data-act="qtCreate">Create token</button></div>`);
+  return dlg('Copy your token',O,`<h3>Copy your token</h3><p class="dsub"><b style="color:var(--ink);font-weight:500">${esc(q.name)}</b> · expires ${plusDays(q.days)}</p>
+   <div class="secret" data-o="codex" data-o-label="Codex · secret shown once, mono"><code>${FAKE_PAT}</code><button class="pill sm" data-act="qtCopy">${morph(q.copied,U.anim==='copy','Copy','✓ Copied')}</button></div>
+   <div class="notice warn" style="margin-top:12px"><div class="ni">!</div><div style="flex:1"><div class="nt">Shown once</div><div class="nb">Atlas keeps only a hash. If you lose it, revoke it in Settings › Tokens & apps and create a new one.</div></div></div>
+   <div class="df"><span class="spacer"></span><button class="btn" data-act="qtDone">Done</button></div>`)}
+function qRequest(){const q=U.qr;const u=me();let body='';
+  if(q.kind==='group'){const gs=suggestGroups();body=gs.length?`<div class="list" role="radiogroup" aria-label="Suggested groups">${gs.map(g=>{const ms=managersOf(g);return `<div class="li click ${q.group===g?'sel':''}" data-act="qrGroup" data-v="${g}" role="radio" aria-checked="${q.group===g}"><span class="radio"></span><div class="grow"><div class="t1"><span class="mono">${g}</span></div><div class="t2">${GBY[g].desc}</div></div><span class="cap" style="text-align:right">${ms.length?'Decided by<br>'+names(ms.map(m=>USERS[m.u].name)):'An admin<br>decides'}</span></div>`}).join('')}</div>`:'<div class="cap">You’re already in every group.</div>'}
+  else if(q.kind==='role'){const next=ROLES.slice(ROLES.indexOf(u.role)+1);body=next.length?`<div class="list" role="radiogroup" aria-label="Role">${next.map(r=>`<div class="li click ${q.role===r?'sel':''}" data-act="qrRole" data-v="${r}" role="radio" aria-checked="${q.role===r}"><span class="radio"></span><div class="grow"><div class="t1">${role(r)}</div><div class="t2">Adds ${ADDS[r].map(c=>`<span class="mono">${c}</span>`).join(', ')}</div></div><span class="cap">An admin decides</span></div>`).join('')}</div>`:`<div class="cap">You already have the top role (${u.role}).</div>`}
+  else body=`${q.den?`<div class="notice" style="margin-bottom:12px" data-o="atlas" data-o-label="Atlas · prefilled from a chat denial"><div class="ni">${LOCK}</div><div style="flex:1"><div class="nt">From your chat</div><div class="nb">${mono('query_metric')} was denied here: no grant allows it. No number was produced.</div></div></div>`:''}
+   <div class="field"><label for="qrRes">Resource</label><input class="inp mono" id="qrRes" value="${esc(q.res)}" placeholder="source/entity/metric" autocomplete="off" ${q.sent?'disabled':''}><div class="hint" id="qrResLab">${q.res?(esc(lab(q.res))||'Not in the catalog'):'For example demo/checkout/checkout_funnel'}</div></div>`;
+  return dlg('Request access',['claude','Claude · solid dialog over a scrim (phase-5 request flow)'],`<h3>${q.den?'Request the checkout funnel':'Request access'}</h3><p class="dsub">Approvers see your note. Nothing changes until someone approves it.</p>
+   <div class="seg" role="radiogroup" aria-label="What do you need?" style="margin-bottom:14px">${[['group','Group'],['role','Role'],['resource','Resource']].map(([v,t])=>`<button class="${q.kind===v?'on':''}" data-act="qrKind" data-v="${v}" role="radio" aria-checked="${q.kind===v}" ${q.sent?'disabled':''}>${t}</button>`).join('')}</div>
+   ${body}
+   <div class="field" style="margin-top:14px"><label for="qrNote">Why do you need it? <span class="cap">required</span></label><textarea class="inp${q.err?' bad':''}" id="qrNote" style="min-height:64px" placeholder="${q.den?'For example: reviewing checkout drop-off for the Q4 redesign.':'A sentence for the approver.'}" ${q.sent?'disabled':''}>${esc(q.note)}</textarea>${q.err?'<div class="err">Add a short reason; the approver sees it.</div>':''}</div>
+   <div class="df"><span class="cap">Goes to ${reqTo(q)}</span><span class="spacer"></span>${q.sent?'':'<button class="pill" data-act="back">Cancel</button>'}<button class="btn" data-act="qrSend" ${q.sent?'disabled':''}>${morph(q.sent,U.anim==='qr','Send request','✓ Sent')}</button></div>`)}
+function qAccess(){const u=me();const rules=rulesFor(u.id);const grps=groupsOf(u.id);
+  return `<div class="peek glass pos${U.enter?'':' still'}" role="dialog" aria-label="My access" data-o="apple" data-o-label="Apple · anchored glass peek (popover)">
+   <div class="row" style="gap:10px;flex-wrap:nowrap">${av(u)}<div style="flex:1;min-width:0"><div style="font-weight:500;font-size:14px;line-height:1.25">${u.name}</div><div class="cap" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.email}</div></div>${role(u.role)}</div>
+   <div class="lbl">Groups</div>${grps.length?`<div class="row" style="gap:6px">${grps.map(x=>`<span class="tag" style="padding:3px 5px 3px 9px;gap:6px;color:var(--ink)"><span class="mono">${x.g}</span>${standing(x.standing)}</span>`).join('')}</div>`:'<div class="cap">None yet. Groups decide what data you can see.</div>'}
+   <div class="lbl">What you can see<span class="cap" style="margin-left:auto;font-weight:400">${Math.min(4,rules.length)} of ${rules.length} · deny wins</span></div>
+   <div class="list">${rules.slice(0,4).map(r=>`<div class="li">${eff(r.effect)}<div class="grow" style="min-width:0"><div class="mono" style="color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.target)}</div><div class="t2" style="font-size:12px">${lab(r.target)||'—'}</div></div></div>`).join('')||'<div class="li"><div class="t2">No data yet.</div></div>'}</div>
+   <div class="row" style="margin-top:10px;padding:0 2px">${prov('scope · from your sign-in')}<span class="spacer"></span><a data-page="access" data-o="claude" data-o-label="Claude · one way to the full page">Open full page →</a></div></div>`}
+function qApprove(){if(!(isAdmin()||isMgr()))return qGuard('admin:users');const r=REQS.find(x=>x.id===U.qa.id);const O=['codex','Codex · single review card as a dialog'];
+  if(!r)return dlg('Approve request',O,`<h3>Nothing to approve</h3><p class="dsub">You’re all caught up. New requests show as a count in the account menu.</p><div class="df"><span class="spacer"></span><button class="pill" data-act="back">Close</button></div>`);
+  const u=USERS[r.u];const done=U.qa.done;
+  return dlg('Approve request '+r.id,O,`<h3>Approve request ${r.id}</h3><p class="dsub">Applies exactly the change below. Nothing else moves.</p>
+   <div class="row" style="gap:10px;flex-wrap:nowrap;align-items:flex-start">${av(u)}<div style="flex:1;min-width:0"><div class="row" style="gap:8px"><b style="font-weight:500;color:var(--ink)">${u.name}</b><span class="cap">${u.email}</span></div>
+    <div class="row" style="gap:8px;margin-top:4px">${kindTag(r.kind)}<span class="mono" style="color:var(--ink)">${esc(target(r))}</span>${r.kind==='resource'?`<span class="cap">${lab(r.target)}</span>`:''}<span class="cap num">· ${r.at}</span></div>
+    <div style="margin-top:8px;font-size:14px">“${esc(r.note)}”</div></div></div>
+   <div class="review" data-o="codex" data-o-label="Codex · review diff before apply"><div class="rh">◇ <b>Exact change</b> · ${done?'applied':'needs your approval'}</div><div class="diff">${approveLines(r).map(([k,t])=>`<span class="${k}">${esc(t)}</span>`).join('\n')}</div>
+    <div class="rf"><button class="btn" data-act="qaApply" ${done?'disabled':''}>${morph(done,U.anim==='qa','Approve','✓ Approved')}</button>${done?'':'<button class="pill" data-act="back">Dismiss</button>'}<span class="cap" style="margin-left:auto">Recorded as ${mono('request.approve')}</span></div></div>`,'wide')}
+function qRevoke(){if(!isAdmin())return qGuard('admin:tokens');const hit=findToken(U.qv.key);const O=['codex','Codex · small review card as a dialog'];
+  if(!hit)return dlg('Revoke token',O,`<h3>No token to revoke</h3><div class="df"><span class="spacer"></span><button class="pill" data-act="back">Close</button></div>`);
+  const {uid,t}=hit;const done=U.qv.done;
+  return dlg('Revoke token',O,`<h3>Revoke ${esc(t[1])}…?</h3><p class="dsub">${esc(t[0])} · ${USERS[uid].name} · last used ${t[4]}</p>
+   <div class="review" data-o="codex" data-o-label="Codex · review diff before apply"><div class="rh">◇ <b>Exact change</b> · ${done?'applied':'needs your approval'}</div><div class="diff">${[['c',`token  ${t[1]}…  ${t[0]}`],['c',`owner  ${USERS[uid].email}`],['rm','status active'],['a','status revoked · its MCP sessions end now']].map(([k,x])=>`<span class="${k}">${esc(x)}</span>`).join('\n')}</div>
+    <div class="rf"><button class="btn danger" data-act="qvApply" ${done?'disabled':''}>${morph(done,U.anim==='qv','Revoke','✓ Revoked')}</button>${done?'':'<button class="pill" data-act="back">Cancel</button>'}<span class="cap" style="margin-left:auto">Recorded as ${mono('token.revoke')}</span></div></div>`)}
+function quickOverlay(s){return s==='quick-token'?qToken():s==='quick-access'?qAccess():s==='quick-approve'?qApprove():s==='quick-revoke'?qRevoke():qRequest()}
+function denialTurn(){return `<div class="u" style="margin-top:26px"><div>Where do people drop off in checkout this week?</div></div><div class="ans"><div class="notice" data-o="atlas" data-o-label="Atlas · denial as a fact, with a way forward"><div class="ni">${LOCK}</div><div style="flex:1"><div class="nt">I can’t read the checkout funnel for you</div><div class="nb">Your access doesn’t include ${mono(DENIAL)}, so no number was produced.</div><div class="chips">${prov('scope · from your Google sign-in')}<button class="pill sm" data-act="quick" data-v="quick-request-denial">Request access</button></div></div></div></div>`}
 
 /* chat + first run */
-function chatView(){return `<div class="chat ${U.enter?'enter':''}">
+function chatView(extra=''){return `<div class="chat ${U.enter?'enter':''}">
   <div class="u"><div>How did revenue do in September, and which channel drove it?</div></div>
   <div class="ans">
    <div class="plan" data-o="claude" data-o-label="Claude · Worked for Ns (Codex plan collapsed)">▸ Worked for 4s · 3 steps <span class="mono" style="margin-left:auto">search_atlas · query_metric · metric_breakdown</span></div>
    <div class="card kpi" style="max-width:360px;margin-bottom:14px"><div class="l">Total revenue · Sep 2026</div><div class="v">AED 4.82M</div><div class="row" style="gap:6px">${stPlain('pos','+6.1% vs Aug')}${prov('<span class="mono" style="font-size:11px">revenue</span> · demo · synced 12 min ago')}</div></div>
    <p>Revenue in September was <strong>AED 4.82M</strong>, up <strong>6.1%</strong> on August. Paid social drove most of the gain at <strong>AED 1.31M</strong>, up 18% month on month; email and organic were flat.</p>
    <div class="chips" style="margin-top:0">${prov('<span class="mono" style="font-size:11px">revenue</span> · demo · fresh')}${prov('breakdown by channel · demo · fresh')}</div>
-  </div></div>`}
+  </div>${extra}</div>`}
 function firstRun(){const u=me();const opts=['marketing','csm','leadership'];
   return `<div class="fr ${U.enter?'enter':''}"><h1 class="greet serif">Good morning, ${u.name.split(' ')[0]}</h1><p class="gsub">You're signed in. One step before Atlas can answer.</p>
   <div class="card empty" style="padding:30px 24px 26px" data-o="claude" data-o-label="Claude · editorial empty state, in the chat"><div class="ei">${lock(20)}</div><h3>No data access yet</h3>
@@ -875,9 +980,10 @@ function render(){
     else if(L==='C'){top=chatTop();stage=chatView();comp=true;over=modalC(p);scrim='on'}
     else if(L==='D'){if(isOrg(p)){top=consoleTop(p);stage=wrapPage(p)}else{top=chatTop();stage=chatView();comp=true;over=modalD(p);scrim='on'}}
   }else if(scr==='firstrun'){top=chatTop();stage=firstRun();comp=true}
-  else{top=chatTop();stage=chatView();comp=true;
+  else{top=chatTop();stage=chatView(scr==='quick-request-denial'?denialTurn():'');comp=true;
     if(scr==='menu'){over=mob?sheetMenu():popMenu();scrim=mob?'on':'on clear'}
-    if(scr==='palette'){over=palette();scrim='on'}}
+    if(scr==='palette'){over=palette();scrim='on'}
+    if(isQuick(scr)){over=quickOverlay(scr);scrim=scr==='quick-access'?'on clear':'on'}}
   const tb=$('#topbar');tb.innerHTML=top;tb.classList.toggle('ctop',L==='D'&&inSet&&isOrg(p)&&!mob);
   $('#stage').innerHTML=stage;
   $('#composerHost').innerHTML=comp?composer():'';
@@ -887,6 +993,7 @@ function render(){
   if(U.enter)$('#sc').scrollTop=0;lastKey=key;
   $$('.morph[data-anim]').forEach(m=>{m.classList.remove('done');requestAnimationFrame(()=>requestAnimationFrame(()=>m.classList.add('done')))});U.anim=null;U.frAnim=false;
   if(scr==='palette'){const i=$('#palIn');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}}
+  if(U.enter&&isQuick(scr)){const f=$('#qtName')||$('#qrNote');if(f)f.focus()}
   bindSpec();syncDock();writeHash()}
 function bindSpec(){$$('.spec').forEach(g=>{if(g._spec)return;g._spec=1;g.addEventListener('pointermove',e=>{const r=g.getBoundingClientRect();g.style.setProperty('--x',(e.clientX-r.left)+'px');g.style.setProperty('--y',(e.clientY-r.top)+'px')})})}
 
@@ -906,7 +1013,7 @@ function writeHash(){const q=new URLSearchParams();q.set('layout',S.layout);q.se
   $('#dLink').textContent=h}
 function readHash(){try{const q=new URLSearchParams(location.hash.slice(1));
   const l=(q.get('layout')||'').toUpperCase();if(LAYOUTS[l])S.layout=l;
-  let s=q.get('screen');if(s){if(s==='menu-open')s='menu';const [a,b]=s.split(/[.:/]/);if(a==='settings'){S.screen='settings';const pg=b||q.get('page');if(pg&&(PAGES[pg]||pg==='index'))S.page=pg}else if(['chat','menu','palette','firstrun'].includes(a))S.screen=a}
+  let s=q.get('screen');if(s){if(s==='menu-open')s='menu';const [a,b]=s.split(/[.:/]/);if(a==='settings'){S.screen='settings';const pg=b||q.get('page');if(pg&&(PAGES[pg]||pg==='index'))S.page=pg}else if(['chat','menu','palette','firstrun',...QUICK].includes(a))S.screen=a}
   const pg=q.get('page');if(pg&&(PAGES[pg]||pg==='index'))S.page=pg;
   const pe=q.get('persona');if(PERSONAS[pe])S.persona=pe;
   const pn=q.get('pending');if(pn!=null)S.pending=+pn>0?3:0;
@@ -932,12 +1039,12 @@ function adminEntry(){const p=pending()?'queue':(isAdmin()?'users':'groups');goS
 function back(){S.screen='chat';U.drawer=false;U.palQ='';U.palSel=0;render()}
 function setTheme(v){S.theme=v;render()}
 function runPal(i){const it=palItems()[i];if(!it)return;U.palQ='';U.palSel=0;
-  if(it.k==='page')goSettings(it.v);else if(it.k==='theme'){S.screen='chat';setTheme(it.v)}else if(it.k==='signout'){back();toast('Signed out (mockup)')}else back()}
+  if(it.k==='page')goSettings(it.v);else if(it.k==='quick')enterQuick(it.v,it.x);else if(it.k==='theme'){S.screen='chat';setTheme(it.v);toast('Theme: '+it.lbl)}else if(it.k==='signout'){back();toast('Signed out (mockup)')}else back()}
 
 document.addEventListener('click',e=>{
   if(e.target.closest('#dock')){const d=e.target.closest('[data-layout],[data-persona],[data-a],#dmin');if(!d)return;
     if(d.id==='dmin'){S.dock=S.dock==='min'?'open':'min';d.textContent=S.dock==='min'?'+':'–'}
-    else if(d.dataset.layout)S.layout=d.dataset.layout;else if(d.dataset.persona){S.persona=d.dataset.persona;U.decided={};U.rvOpen=null}else if(d.dataset.a)S[d.dataset.a]=!S[d.dataset.a];
+    else if(d.dataset.layout)S.layout=d.dataset.layout;else if(d.dataset.persona){S.persona=d.dataset.persona;U.decided={};U.rvOpen=null;if(isQuick(S.screen))initQuick(S.screen)}else if(d.dataset.a)S[d.dataset.a]=!S[d.dataset.a];
     render();return}
   if(e.target.id==='scrim'){if(U.drawer){U.drawer=false;render()}else back();return}
   const pal=e.target.closest('[data-pal]');if(pal){runPal(+pal.dataset.pal);return}
@@ -963,31 +1070,49 @@ document.addEventListener('click',e=>{
    case 'frOpen':U.frOpen=true;render();break;
    case 'frPick':if(!U.frSent){U.frGroup=v;render()}break;
    case 'frSend':U.frSent=true;U.frAnim=true;render();break;
+   case 'quick':enterQuick(v,{kind:a.dataset.k});break;
+   case 'qtDays':U.qt.days=+v;render();break;
+   case 'qtCreate':{const n=(($('#qtName')||{}).value||'').trim();U.qt.name=n;if(!n){U.qt.err=true;render();break}
+     U.qt.err=false;U.qt.step='done';(TOKENS[me().id]=TOKENS[me().id]||[]).push([n,'atl_pat_0000',plusDays(0),plusDays(U.qt.days),'never']);render();break}
+   case 'qtCopy':if(!U.qt.copied){try{navigator.clipboard.writeText(FAKE_PAT).catch(()=>{})}catch(_){}U.qt.copied=true;U.anim='copy';render()}break;
+   case 'qtDone':back();toast('Token created');break;
+   case 'qrKind':if(!U.qr.sent){U.qr.kind=v;U.qr.err=false;render()}break;
+   case 'qrGroup':if(!U.qr.sent){U.qr.group=v;render()}break;
+   case 'qrRole':if(!U.qr.sent){U.qr.role=v;render()}break;
+   case 'qrSend':{const q=U.qr;if(q.sent)break;if(!q.note.trim()){q.err=true;render();const t=$('#qrNote');if(t)t.focus();break}
+     q.sent=true;q.err=false;U.anim='qr';render();finishQuick('Request sent to '+reqTo(q));break}
+   case 'qaApply':if(!U.qa.done){U.decided[U.qa.id]=true;U.qa.done=true;U.anim='qa';render();finishQuick('Approved · recorded in the audit log')}break;
+   case 'qvApply':if(!U.qv.done){U.revoked[U.qv.key]=true;U.qv.done=true;U.anim='qv';render();finishQuick('Token revoked · recorded in the audit log')}break;
   }});
 document.addEventListener('change',e=>{const t=e.target;
-  if(t.id==='dScreen'){const [a,b]=t.value.split('.');if(a==='settings'){S.screen='settings';S.page=b}else S.screen=a;U.drawer=false;render()}
-  else if(t.id==='dPending'){S.pending=+t.value;render()}
+  if(t.id==='dScreen'){const [a,b]=t.value.split('.');if(a==='settings'){S.screen='settings';S.page=b}else{S.screen=a;if(isQuick(a))initQuick(a)}U.drawer=false;render()}
+  else if(t.id==='dPending'){S.pending=+t.value;if(isQuick(S.screen))initQuick(S.screen);render()}
   else if(t.id==='dTheme'){S.theme=t.value;render()}
   else if(t.id==='dWidth'){S.width=t.value;U.drawer=false;render()}
   else if(t.dataset.actChange==='landing'){U.landing=t.value;toast('Default landing saved')}});
 document.addEventListener('input',e=>{
   if(e.target.id==='palIn'){U.palQ=e.target.value;U.palSel=0;$('#palList').innerHTML=palList()}
-  if(e.target.id==='uq'){U.uq=e.target.value;$('#usersTable').innerHTML=usersTable()}});
+  if(e.target.id==='uq'){U.uq=e.target.value;$('#usersTable').innerHTML=usersTable()}
+  if(e.target.id==='qtName')U.qt.name=e.target.value;
+  if(e.target.id==='qrNote')U.qr.note=e.target.value;
+  if(e.target.id==='qrRes'){U.qr.res=e.target.value.trim();const l=$('#qrResLab');if(l)l.textContent=U.qr.res?(lab(U.qr.res)||'Not in the catalog'):'For example demo/checkout/checkout_funnel'}});
 document.addEventListener('keydown',e=>{const mod=e.metaKey||e.ctrlKey;
   if(mod&&e.key.toLowerCase()==='k'){e.preventDefault();if(S.screen==='palette')back();else{S.screen='palette';render()}return}
   if(mod&&e.key===','){e.preventDefault();settingsEntry();return}
+  if(e.key==='Enter'&&e.target.id==='qtName'){e.preventDefault();const b=$('[data-act="qtCreate"]');if(b)b.click();return}
   if(S.screen==='palette'){const n=palItems().length;
-    if(e.key==='ArrowDown'){e.preventDefault();U.palSel=(U.palSel+1)%Math.max(n,1);$('#palList').innerHTML=palList();return}
-    if(e.key==='ArrowUp'){e.preventDefault();U.palSel=(U.palSel-1+n)%Math.max(n,1);$('#palList').innerHTML=palList();return}
+    const mv=()=>{$('#palList').innerHTML=palList();const on=$('#palList .pr.on');if(on&&on.scrollIntoView)on.scrollIntoView({block:'nearest'})};
+    if(e.key==='ArrowDown'){e.preventDefault();U.palSel=(U.palSel+1)%Math.max(n,1);mv();return}
+    if(e.key==='ArrowUp'){e.preventDefault();U.palSel=(U.palSel-1+n)%Math.max(n,1);mv();return}
     if(e.key==='Enter'){e.preventDefault();runPal(U.palSel);return}}
   if(e.key==='Escape'){if(U.drawer){U.drawer=false;render()}else if(S.screen!=='chat'&&S.screen!=='firstrun')back()}});
 window.addEventListener('resize',()=>{if(S.width==='auto')render()});
-window.addEventListener('hashchange',()=>{readHash();render()});
+window.addEventListener('hashchange',()=>{const was=S.screen;readHash();if(isQuick(S.screen)&&S.screen!==was)initQuick(S.screen);render()});
 
 /* ═════════ INIT ═════════ */
 try{if(matchMedia('(prefers-reduced-motion: reduce)').matches)S.rm=true;if(matchMedia('(prefers-reduced-transparency: reduce)').matches)S.rt=true}catch(_){}
 if(window.innerWidth<600)S.dock='min';
-readHash();buildDock();render();
+readHash();if(isQuick(S.screen))initQuick(S.screen);buildDock();render();
 if(S.dock==='min')$('#dmin').textContent='+';
 })();
 </script>
