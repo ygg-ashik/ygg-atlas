@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 from sqlmodel import col, select
 
-from app.access.admin import Actor
+from app.access import Actor
 from app.access.cache import PolicyCache
 from app.access.errors import (
     AccessDeniedError,
@@ -42,16 +42,20 @@ async def test_set_overwrite_and_delete_are_audited_and_each_bumps(db) -> None:
     admin = admin_for(db)
 
     start = await policy_version(db)
-    row = await admin.set_attribute(await fresh(db, actor), sara.id, "rep_name", "Ali")
+    row = await admin.row_field.set_attribute(
+        await fresh(db, actor), sara.id, "rep_name", "Ali"
+    )
     assert (row.key, row.value, row.set_by) == ("rep_name", "Ali", actor.user_id)
     assert await policy_version(db) == start + 1
 
-    await admin.set_attribute(await fresh(db, actor), sara.id, "rep_name", "Ali K")
+    await admin.row_field.set_attribute(
+        await fresh(db, actor), sara.id, "rep_name", "Ali K"
+    )
     assert await policy_version(db) == start + 2
 
-    await admin.delete_attribute(await fresh(db, actor), sara.id, "rep_name")
+    await admin.row_field.delete_attribute(await fresh(db, actor), sara.id, "rep_name")
     assert await policy_version(db) == start + 3
-    assert await admin.list_attributes(await fresh(db, actor), sara.id) == []
+    assert await admin.row_field.list_attributes(await fresh(db, actor), sara.id) == []
 
     sets = await _changes(db, "attribute.set")
     assert [(c.before, c.after) for c in sets] == [
@@ -71,10 +75,14 @@ async def test_a_no_op_set_does_not_bump(db) -> None:
     actor = await actor_with(db)
     sara = await make_user(db, "sara@yougotagift.com")
     admin = admin_for(db)
-    await admin.set_attribute(await fresh(db, actor), sara.id, "rep_name", "Ali")
+    await admin.row_field.set_attribute(
+        await fresh(db, actor), sara.id, "rep_name", "Ali"
+    )
     before = await policy_version(db)
 
-    await admin.set_attribute(await fresh(db, actor), sara.id, "rep_name", "Ali")
+    await admin.row_field.set_attribute(
+        await fresh(db, actor), sara.id, "rep_name", "Ali"
+    )
 
     assert await policy_version(db) == before
     assert len(await _changes(db, "attribute.set")) == 1
@@ -89,8 +97,8 @@ async def test_an_attribute_change_reaches_a_cached_scoped_policy(db) -> None:
     group = await make_group(db, "sales")
     sara = await make_user(db, "sara@yougotagift.com")
     admin = admin_for(db)
-    await admin.put_member(await fresh(db, actor), group.id, sara.id, "member")
-    await admin.create_grant(
+    await admin.members.put_member(await fresh(db, actor), group.id, sara.id, "member")
+    await admin.grants.create_grant(
         await fresh(db, actor),
         GrantCreate.model_validate(
             {
@@ -105,12 +113,14 @@ async def test_an_attribute_change_reaches_a_cached_scoped_policy(db) -> None:
     cached = await service.policy_for_user(sara.id)
     assert cached.row_scope(REVENUE) == ()  # $self unresolved: skipped
 
-    await admin.set_attribute(await fresh(db, actor), sara.id, "rep_name", "Ali")
+    await admin.row_field.set_attribute(
+        await fresh(db, actor), sara.id, "rep_name", "Ali"
+    )
     refreshed = await service.policy_for_user(sara.id)
     assert refreshed.policy_version == cached.policy_version + 1
     assert refreshed.row_scope(REVENUE) == ({"sales_rep": frozenset({"Ali"})},)
 
-    await admin.delete_attribute(await fresh(db, actor), sara.id, "rep_name")
+    await admin.row_field.delete_attribute(await fresh(db, actor), sara.id, "rep_name")
     after_delete = await service.policy_for_user(sara.id)
     assert after_delete.policy_version == refreshed.policy_version + 1
     assert after_delete.row_scope(REVENUE) == ()
@@ -121,9 +131,9 @@ async def test_nobody_sets_their_own_attributes(db) -> None:
     assert actor.user_id is not None
     admin = admin_for(db)
     with pytest.raises(ConflictError, match="your own"):
-        await admin.set_attribute(actor, actor.user_id, "rep_name", "Me")
+        await admin.row_field.set_attribute(actor, actor.user_id, "rep_name", "Me")
     with pytest.raises(ConflictError, match="your own"):
-        await admin.delete_attribute(actor, actor.user_id, "rep_name")
+        await admin.row_field.delete_attribute(actor, actor.user_id, "rep_name")
 
 
 @pytest.mark.parametrize(
@@ -146,7 +156,9 @@ async def test_bad_keys_and_values_are_rejected(
     actor = await actor_with(db)
     sara = await make_user(db, "sara@yougotagift.com")
     with pytest.raises(InvalidChangeError, match=message):
-        await admin_for(db).set_attribute(await fresh(db, actor), sara.id, key, value)
+        await admin_for(db).row_field.set_attribute(
+            await fresh(db, actor), sara.id, key, value
+        )
 
 
 async def test_attribute_writes_need_admin_users(db) -> None:
@@ -155,11 +167,11 @@ async def test_attribute_writes_need_admin_users(db) -> None:
     admin = admin_for(db)
     actor = await fresh(db, actor)
     with pytest.raises(AccessDeniedError, match="admin:users"):
-        await admin.set_attribute(actor, sara.id, "rep_name", "Ali")
+        await admin.row_field.set_attribute(actor, sara.id, "rep_name", "Ali")
     with pytest.raises(AccessDeniedError, match="admin:users"):
-        await admin.delete_attribute(actor, sara.id, "rep_name")
+        await admin.row_field.delete_attribute(actor, sara.id, "rep_name")
     with pytest.raises(AccessDeniedError, match="admin:users"):
-        await admin.list_attributes(actor, sara.id)
+        await admin.row_field.list_attributes(actor, sara.id)
 
 
 async def test_a_user_in_another_tenant_is_not_found(db) -> None:
@@ -170,9 +182,11 @@ async def test_a_user_in_another_tenant_is_not_found(db) -> None:
     await db.commit()
     admin = admin_for(db)
     with pytest.raises(NotFoundError):
-        await admin.set_attribute(await fresh(db, actor), other_id, "rep_name", "Ali")
+        await admin.row_field.set_attribute(
+            await fresh(db, actor), other_id, "rep_name", "Ali"
+        )
     with pytest.raises(NotFoundError):
-        await admin.list_attributes(await fresh(db, actor), other_id)
+        await admin.row_field.list_attributes(await fresh(db, actor), other_id)
 
 
 async def test_deleting_a_missing_attribute_is_not_found(db) -> None:
@@ -180,7 +194,7 @@ async def test_deleting_a_missing_attribute_is_not_found(db) -> None:
     sara = await make_user(db, "sara@yougotagift.com")
     before = await policy_version(db)
     with pytest.raises(NotFoundError):
-        await admin_for(db).delete_attribute(
+        await admin_for(db).row_field.delete_attribute(
             await fresh(db, actor), sara.id, "rep_name"
         )
     assert await policy_version(db) == before
@@ -189,10 +203,10 @@ async def test_deleting_a_missing_attribute_is_not_found(db) -> None:
 async def test_list_attributes_is_sorted_and_the_cli_may_write(db) -> None:
     sara = await make_user(db, "sara@yougotagift.com")
     admin = admin_for(db)
-    await admin.set_attribute(Actor.cli(), sara.id, "rep_name", "Ali")
-    await admin.set_attribute(Actor.cli(), sara.id, "csm_name", "Ali K")
+    await admin.row_field.set_attribute(Actor.cli(), sara.id, "rep_name", "Ali")
+    await admin.row_field.set_attribute(Actor.cli(), sara.id, "csm_name", "Ali K")
 
-    rows = await admin.list_attributes(Actor.cli(), sara.id)
+    rows = await admin.row_field.list_attributes(Actor.cli(), sara.id)
 
     assert [(r.key, r.value) for r in rows] == [
         ("csm_name", "Ali K"),

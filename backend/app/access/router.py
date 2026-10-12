@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 
-from app.access.admin import AccessAdmin, Actor
+from app.access.actor import Actor
 from app.access.dependencies import (
     get_access_admin,
     get_access_requests,
@@ -16,7 +16,6 @@ from app.access.dependencies import (
 from app.access.errors import InvalidChangeError
 from app.access.patterns import is_resource_path
 from app.access.policy import Policy
-from app.access.requests import AccessRequests
 from app.access.schemas import (
     AccessRequestCreate,
     AccessRequestOut,
@@ -51,6 +50,7 @@ from app.access.schemas import (
     UserUpdate,
 )
 from app.access.service import AccessService
+from app.access.services import AccessAdmin, RequestService
 from app.identity import Principal, get_principal
 
 router = APIRouter(prefix="/api/v1", tags=["access"])
@@ -80,7 +80,7 @@ async def capability_catalog(
 async def list_groups(
     actor: Actor = Depends(get_actor), admin: AccessAdmin = Depends(get_access_admin)
 ) -> list[GroupOut]:
-    return [GroupOut.model_validate(g) for g in await admin.list_groups(actor)]
+    return [GroupOut.model_validate(g) for g in await admin.groups.list_groups(actor)]
 
 
 @router.post("/admin/groups", response_model=GroupOut, status_code=201)
@@ -89,7 +89,7 @@ async def create_group(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> GroupOut:
-    return GroupOut.model_validate(await admin.create_group(actor, payload))
+    return GroupOut.model_validate(await admin.groups.create_group(actor, payload))
 
 
 @router.get("/admin/groups/{group_id}", response_model=GroupDetailOut)
@@ -98,7 +98,7 @@ async def group_detail(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> GroupDetailOut:
-    return await admin.group_detail(actor, group_id)
+    return await admin.groups.group_detail(actor, group_id)
 
 
 @router.get(
@@ -111,7 +111,7 @@ async def member_candidates(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> list[MemberCandidateOut]:
-    return await admin.member_candidates(actor, group_id, q)
+    return await admin.members.member_candidates(actor, group_id, q)
 
 
 @router.patch("/admin/groups/{group_id}", response_model=GroupOut)
@@ -121,7 +121,9 @@ async def update_group(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> GroupOut:
-    return GroupOut.model_validate(await admin.update_group(actor, group_id, payload))
+    return GroupOut.model_validate(
+        await admin.groups.update_group(actor, group_id, payload)
+    )
 
 
 @router.delete("/admin/groups/{group_id}", status_code=204)
@@ -130,7 +132,7 @@ async def delete_group(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> None:
-    await admin.delete_group(actor, group_id)
+    await admin.groups.delete_group(actor, group_id)
 
 
 @router.get("/admin/groups/{group_id}/members", response_model=list[MemberOut])
@@ -139,7 +141,7 @@ async def list_members(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> list[MemberOut]:
-    return await admin.list_members(actor, group_id)
+    return await admin.members.list_members(actor, group_id)
 
 
 @router.put("/admin/groups/{group_id}/members/{user_id}", response_model=MemberOut)
@@ -150,7 +152,7 @@ async def put_member(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> MemberOut:
-    return await admin.put_member(actor, group_id, user_id, payload.standing)
+    return await admin.members.put_member(actor, group_id, user_id, payload.standing)
 
 
 @router.delete("/admin/groups/{group_id}/members/{user_id}", status_code=204)
@@ -160,7 +162,7 @@ async def remove_member(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> None:
-    await admin.remove_member(actor, group_id, user_id)
+    await admin.members.remove_member(actor, group_id, user_id)
 
 
 @router.get("/admin/grants", response_model=list[GrantOut])
@@ -170,7 +172,7 @@ async def list_grants(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> list[GrantOut]:
-    grants = await admin.list_grants(actor, subject_type, subject_id)
+    grants = await admin.grants.list_grants(actor, subject_type, subject_id)
     return [GrantOut.model_validate(g) for g in grants]
 
 
@@ -180,7 +182,7 @@ async def create_grant(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> GrantOut:
-    return GrantOut.model_validate(await admin.create_grant(actor, payload))
+    return GrantOut.model_validate(await admin.grants.create_grant(actor, payload))
 
 
 @router.delete("/admin/grants/{grant_id}", status_code=204)
@@ -189,7 +191,7 @@ async def revoke_grant(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> None:
-    await admin.revoke_grant(actor, grant_id)
+    await admin.grants.revoke_grant(actor, grant_id)
 
 
 @router.get("/admin/users", response_model=Page[UserOut])
@@ -198,7 +200,7 @@ async def list_users(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> Page[UserOut]:
-    return await admin.list_users(actor, query)
+    return await admin.users.list_users(actor, query)
 
 
 @router.get("/admin/users/{user_id}", response_model=UserDetailOut)
@@ -207,7 +209,7 @@ async def user_detail(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> UserDetailOut:
-    return await admin.user_detail(actor, user_id)
+    return await admin.users.user_detail(actor, user_id)
 
 
 @router.patch("/admin/users/{user_id}", response_model=UserOut)
@@ -217,7 +219,9 @@ async def update_user(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> UserOut:
-    return UserOut.model_validate(await admin.update_user(actor, user_id, payload))
+    return UserOut.model_validate(
+        await admin.users.update_user(actor, user_id, payload)
+    )
 
 
 @router.get("/admin/users/{user_id}/access", response_model=EffectiveAccessOut)
@@ -230,7 +234,7 @@ async def user_access(
     if resource is not None and not is_resource_path(resource):
         msg = f"'{resource}' is not a resource path like demo/order/revenue."
         raise InvalidChangeError(msg)
-    policy = await admin.effective_access(actor, user_id)
+    policy = await admin.users.effective_access(actor, user_id)
     return EffectiveAccessOut.from_policy(policy, resource)
 
 
@@ -240,7 +244,7 @@ async def rbac_changes(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> Page[ChangeOut]:
-    return await admin.list_changes(actor, query)
+    return await admin.audit.list_changes(actor, query)
 
 
 @router.get("/admin/audit/decisions", response_model=Page[AuditDecisionOut])
@@ -249,7 +253,7 @@ async def audit_decisions(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> Page[AuditDecisionOut]:
-    return await admin.list_decisions(actor, query)
+    return await admin.audit.list_decisions(actor, query)
 
 
 @router.get("/admin/audit/summary", response_model=AuditSummaryOut)
@@ -263,7 +267,7 @@ async def audit_summary(
     if window is None:
         msg = "The summary covers 7 or 30 days."
         raise InvalidChangeError(msg)
-    return await admin.audit_summary(actor, window)
+    return await admin.audit.audit_summary(actor, window)
 
 
 # ---- access requests (spec §3.2 step 4; phase 5) -----------------------------
@@ -272,7 +276,7 @@ async def audit_summary(
 @router.get("/me/requests", response_model=list[AccessRequestOut])
 async def my_requests(
     policy: Policy = Depends(get_policy),
-    requests: AccessRequests = Depends(get_access_requests),
+    requests: RequestService = Depends(get_access_requests),
 ) -> list[AccessRequestOut]:
     return await requests.list_own(policy)
 
@@ -281,7 +285,7 @@ async def my_requests(
 async def request_options(
     resource: str = Query(min_length=1, max_length=200),
     policy: Policy = Depends(get_policy),
-    requests: AccessRequests = Depends(get_access_requests),
+    requests: RequestService = Depends(get_access_requests),
 ) -> RequestOptionsOut:
     return await requests.options(policy, resource)
 
@@ -290,7 +294,7 @@ async def request_options(
 async def create_request(
     payload: AccessRequestCreate,
     policy: Policy = Depends(get_policy),
-    requests: AccessRequests = Depends(get_access_requests),
+    requests: RequestService = Depends(get_access_requests),
 ) -> AccessRequestOut:
     return await requests.create(policy, payload)
 
@@ -299,7 +303,7 @@ async def create_request(
 async def cancel_request(
     request_id: UUID,
     policy: Policy = Depends(get_policy),
-    requests: AccessRequests = Depends(get_access_requests),
+    requests: RequestService = Depends(get_access_requests),
 ) -> AccessRequestOut:
     return await requests.cancel(policy, request_id)
 
@@ -313,7 +317,7 @@ async def decidable_requests(
     cursor: str | None = Query(None, max_length=512),
     limit: int = Query(50, ge=1, le=200),
     actor: Actor = Depends(get_actor),
-    requests: AccessRequests = Depends(get_access_requests),
+    requests: RequestService = Depends(get_access_requests),
 ) -> Page[AccessRequestOut]:
     wanted = None if status == "all" else status
     return await requests.list_decidable(actor, wanted, cursor, limit, user_id=user_id)
@@ -324,7 +328,7 @@ async def approve_request(
     request_id: UUID,
     decision: RequestDecision,
     actor: Actor = Depends(get_actor),
-    requests: AccessRequests = Depends(get_access_requests),
+    requests: RequestService = Depends(get_access_requests),
 ) -> AccessRequestOut:
     return await requests.approve(actor, request_id, decision)
 
@@ -334,7 +338,7 @@ async def decline_request(
     request_id: UUID,
     decision: RequestDecision,
     actor: Actor = Depends(get_actor),
-    requests: AccessRequests = Depends(get_access_requests),
+    requests: RequestService = Depends(get_access_requests),
 ) -> AccessRequestOut:
     return await requests.decline(actor, request_id, decision)
 
@@ -348,7 +352,7 @@ async def list_attributes(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> list[AttributeOut]:
-    rows = await admin.list_attributes(actor, user_id)
+    rows = await admin.row_field.list_attributes(actor, user_id)
     return [AttributeOut.model_validate(a) for a in rows]
 
 
@@ -360,7 +364,7 @@ async def put_attribute(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> AttributeOut:
-    row = await admin.set_attribute(actor, user_id, key, payload.value)
+    row = await admin.row_field.set_attribute(actor, user_id, key, payload.value)
     return AttributeOut.model_validate(row)
 
 
@@ -371,14 +375,14 @@ async def delete_attribute(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> None:
-    await admin.delete_attribute(actor, user_id, key)
+    await admin.row_field.delete_attribute(actor, user_id, key)
 
 
 @router.get("/admin/label-classes", response_model=list[LabelClassOut])
 async def list_label_classes(
     actor: Actor = Depends(get_actor), admin: AccessAdmin = Depends(get_access_admin)
 ) -> list[LabelClassOut]:
-    rows = await admin.list_label_classes(actor)
+    rows = await admin.row_field.list_label_classes(actor)
     return [LabelClassOut.model_validate(c) for c in rows]
 
 
@@ -389,7 +393,7 @@ async def put_label_class(
     actor: Actor = Depends(get_actor),
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> LabelClassOut:
-    row = await admin.set_label_class(
+    row = await admin.row_field.set_label_class(
         actor, label_class, payload.mode, payload.bucket_size
     )
     return LabelClassOut.model_validate(row)
@@ -399,5 +403,5 @@ async def put_label_class(
 async def scope_dimensions(
     actor: Actor = Depends(get_actor), admin: AccessAdmin = Depends(get_access_admin)
 ) -> list[ScopeDimensionOut]:
-    rows = await admin.list_scope_dimensions(actor)
+    rows = await admin.row_field.list_scope_dimensions(actor)
     return [ScopeDimensionOut.model_validate(d) for d in rows]

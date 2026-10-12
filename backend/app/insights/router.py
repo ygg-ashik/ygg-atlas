@@ -65,7 +65,7 @@ async def catalog_resources(
     if as_user is None:
         actor.require_any(ADMIN_USERS, ADMIN_GROUPS)
         return build_catalog_resources(registry, None)
-    policy = await admin.effective_access(actor, as_user)
+    policy = await admin.users.effective_access(actor, as_user)
     return build_catalog_resources(registry, policy)
 
 

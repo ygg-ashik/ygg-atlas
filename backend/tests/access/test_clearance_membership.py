@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.access.admin import Actor
+from app.access import Actor
 from app.access.catalog import CLEARANCE_PEOPLE_NAMES
 from app.access.errors import AccessDeniedError
 from app.access.models import Group
@@ -51,7 +51,7 @@ async def test_an_uncleared_admin_cannot_add_a_member_under_a_clearance(db) -> N
     _, child = await _cleared_tree(db)
     sara = await make_user(db, "sara@yougotagift.com")
     with pytest.raises(AccessDeniedError, match="clearance"):
-        await admin_for(db).put_member(
+        await admin_for(db).members.put_member(
             await actor_with(db), child.id, sara.id, "member"
         )
 
@@ -68,7 +68,7 @@ async def test_an_uncleared_manager_cannot_add_a_member_under_a_clearance(
     manager = await actor_with(db, "viewer", member_of=parent, standing="manager")
     sara = await make_user(db, "sara@yougotagift.com")
     with pytest.raises(AccessDeniedError, match="clearance"):
-        await admin_for(db).put_member(
+        await admin_for(db).members.put_member(
             await fresh(db, manager), child_id, sara.id, "member"
         )
 
@@ -81,11 +81,11 @@ async def test_a_cleared_admin_and_the_cli_add_members_under_a_clearance(
     omar = await make_user(db, "omar@yougotagift.com")
     admin = admin_for(db)
 
-    added = await admin.put_member(
+    added = await admin.members.put_member(
         await _cleared_admin(db), child.id, sara.id, "member"
     )
     assert added.user_id == sara.id
-    added = await admin.put_member(Actor.cli(), child.id, omar.id, "member")
+    added = await admin.members.put_member(Actor.cli(), child.id, omar.id, "member")
     assert added.user_id == omar.id
 
 
@@ -100,7 +100,7 @@ async def test_an_expired_clearance_allow_needs_no_clearance(db) -> None:
     )
     sara = await make_user(db, "sara@yougotagift.com")
 
-    added = await admin_for(db).put_member(
+    added = await admin_for(db).members.put_member(
         await actor_with(db), group.id, sara.id, "member"
     )
     assert added.user_id == sara.id
@@ -116,16 +116,16 @@ async def test_moving_a_group_under_a_clearance_needs_it(db) -> None:
     admin = admin_for(db)
 
     with pytest.raises(AccessDeniedError, match="clearance"):
-        await admin.update_group(await actor_with(db), loose.id, move)
+        await admin.groups.update_group(await actor_with(db), loose.id, move)
 
-    moved = await admin.update_group(await _cleared_admin(db), loose.id, move)
+    moved = await admin.groups.update_group(await _cleared_admin(db), loose.id, move)
     assert moved.parent_id == parent.id
 
 
 async def test_the_cli_moves_a_group_under_a_clearance(db) -> None:
     parent, _ = await _cleared_tree(db)
     loose = await make_group(db, "ops")
-    moved = await admin_for(db).update_group(
+    moved = await admin_for(db).groups.update_group(
         Actor.cli(), loose.id, GroupUpdate.model_validate({"parent_id": parent.id})
     )
     assert moved.parent_id == parent.id
@@ -138,15 +138,17 @@ async def test_moving_a_group_out_from_under_a_clearance_deny_needs_it(db) -> No
     detach = GroupUpdate.model_validate({"parent_id": None})
 
     with pytest.raises(AccessDeniedError, match="clearance"):
-        await admin_for(db).update_group(await actor_with(db), child.id, detach)
+        await admin_for(db).groups.update_group(await actor_with(db), child.id, detach)
 
-    moved = await admin_for(db).update_group(await _cleared_admin(db), child.id, detach)
+    moved = await admin_for(db).groups.update_group(
+        await _cleared_admin(db), child.id, detach
+    )
     assert moved.parent_id is None
 
 
 async def test_a_rename_needs_no_clearance(db) -> None:
     _, child = await _cleared_tree(db)
-    renamed = await admin_for(db).update_group(
+    renamed = await admin_for(db).groups.update_group(
         await actor_with(db), child.id, GroupUpdate.model_validate({"name": "uae"})
     )
     assert renamed.name == "uae"
@@ -167,9 +169,9 @@ async def test_removing_a_member_under_a_clearance_deny_needs_it(db) -> None:
     admin = admin_for(db)
 
     with pytest.raises(AccessDeniedError, match="clearance"):
-        await admin.remove_member(await actor_with(db), child_id, sara_id)
+        await admin.members.remove_member(await actor_with(db), child_id, sara_id)
 
-    await admin.remove_member(await _cleared_admin(db), child_id, sara_id)
-    await admin.remove_member(Actor.cli(), child_id, omar_id)
+    await admin.members.remove_member(await _cleared_admin(db), child_id, sara_id)
+    await admin.members.remove_member(Actor.cli(), child_id, omar_id)
     assert await AccessRepository(db).groups.member(child_id, sara_id) is None
     assert await AccessRepository(db).groups.member(child_id, omar_id) is None

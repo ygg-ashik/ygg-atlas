@@ -376,7 +376,7 @@ async def admin_create_service_account(
     admin: AccessAdmin = Depends(get_access_admin),
 ) -> ServiceAccountOut:
     """AccessAdmin checks admin:users and the role ceiling (D10, D13)."""
-    user = await admin.create_service_account(actor, payload.name, payload.role)
+    user = await admin.users.create_service_account(actor, payload.name, payload.role)
     return ServiceAccountOut.model_validate(user)
 
 

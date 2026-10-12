@@ -7,10 +7,11 @@ from typing import Any
 import pytest
 from sqlmodel import col, select
 
-from app.access.admin import Actor, _utcnow
+from app.access import Actor
 from app.access.errors import AccessDeniedError
 from app.access.models import GroupMember, RbacChange
 from app.access.schemas import GrantCreate, UserUpdate
+from app.access.services.grants import _utcnow
 from tests.access_helpers import (
     actor_with,
     add_member,
@@ -40,15 +41,15 @@ async def test_commit_writes_several_changes_with_one_bump(db) -> None:
     sara = await make_user(db, "sara@yougotagift.com")
     version = await policy_version(db)
 
-    async with admin._write(actor):
-        out, member_change = await admin._stage_member(
+    async with admin.writer.write(actor):
+        out, member_change = await admin.members.stage_member(
             actor, group.id, sara.id, "member"
         )
-        grant, grant_change = await admin._stage_grant(
+        grant, grant_change = await admin.grants.stage_grant(
             actor, _group_grant(group.id), _utcnow()
         )
         assert member_change is not None
-        await admin._commit(member_change, grant_change)
+        await admin.writer.commit(member_change, grant_change)
 
     assert out.user_id == sara.id
     assert grant.target == "demo/*"
@@ -69,10 +70,12 @@ async def test_staged_noop_member_returns_none(db) -> None:
     await add_member(db, group, sara)
     version = await policy_version(db)
 
-    async with admin._write(actor):
-        out, change = await admin._stage_member(actor, group.id, sara.id, "member")
+    async with admin.writer.write(actor):
+        out, change = await admin.members.stage_member(
+            actor, group.id, sara.id, "member"
+        )
         assert change is None
-        await admin._repo.commit()
+        await db.commit()
 
     assert out.standing == "member"
     assert await policy_version(db) == version
@@ -85,12 +88,12 @@ async def test_staged_noop_user_update_returns_none(db) -> None:
     sara = await make_user(db, "sara@yougotagift.com", role="viewer")
     version = await policy_version(db)
 
-    async with admin._write(actor):
-        user, change = await admin._stage_user_update(
+    async with admin.writer.write(actor):
+        user, change = await admin.users.stage_user_update(
             actor, sara.id, UserUpdate(role="viewer")
         )
         assert change is None
-        await admin._repo.commit()
+        await db.commit()
 
     assert user.role == "viewer"
     assert await policy_version(db) == version
@@ -108,14 +111,16 @@ async def test_stage_helpers_recheck_authority(db) -> None:
     group_id, sara_id = group.id, sara.id
 
     with pytest.raises(AccessDeniedError):
-        async with admin._write(viewer):
-            await admin._stage_member(viewer, group_id, sara_id, "member")
+        async with admin.writer.write(viewer):
+            await admin.members.stage_member(viewer, group_id, sara_id, "member")
     with pytest.raises(AccessDeniedError):
-        async with admin._write(viewer):
-            await admin._stage_grant(viewer, _group_grant(group_id), _utcnow())
+        async with admin.writer.write(viewer):
+            await admin.grants.stage_grant(viewer, _group_grant(group_id), _utcnow())
     with pytest.raises(AccessDeniedError):
-        async with admin._write(viewer):
-            await admin._stage_user_update(viewer, sara_id, UserUpdate(role="admin"))
+        async with admin.writer.write(viewer):
+            await admin.users.stage_user_update(
+                viewer, sara_id, UserUpdate(role="admin")
+            )
 
     assert await policy_version(db) == version
     assert await _changes(db) == []

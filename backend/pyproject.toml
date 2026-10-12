@@ -211,13 +211,12 @@ exhaustive = true
 layers = [
     "router | cli",
     "dependencies",
-    "requests",
-    "admin",
+    "services",
     "service | startup",
     "repositories",
     "models",
     "schemas",
-    "cache | evaluator",
+    "actor | cache | evaluator",
     "policy",
     "catalog | patterns | facts | errors | cursor",
 ]

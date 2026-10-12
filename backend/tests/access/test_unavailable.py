@@ -55,5 +55,5 @@ async def test_every_repository_raise_site_hides_policy_state(db) -> None:
     await db.rollback()
 
     with pytest.raises(PolicyUnavailableError) as raised:
-        await admin_for(db).create_group(actor, GroupCreate(name="growth"))
+        await admin_for(db).groups.create_group(actor, GroupCreate(name="growth"))
     assert str(raised.value) == PUBLIC

@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import func
 from sqlmodel import select
 
-from app.access.admin import Actor
+from app.access import Actor
 from app.access.errors import (
     AccessDeniedError,
     ConflictError,
@@ -18,8 +18,8 @@ from app.access.facts import GrantFacts, GroupFacts
 from app.access.models import AccessRequest, Group, RbacChange
 from app.access.policy import Policy, decidable_scope
 from app.access.repositories import RequestRepository
-from app.access.requests import groups_granting
 from app.access.schemas import AccessRequestCreate, RequestDecision
+from app.access.services import groups_granting
 from tests.access_helpers import (
     actor_with,
     add_grant,

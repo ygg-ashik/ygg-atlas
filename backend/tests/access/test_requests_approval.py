@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlmodel import col, select
 
-from app.access.admin import Actor
+from app.access import Actor
 from app.access.catalog import CLEARANCE_PEOPLE_NAMES
 from app.access.errors import (
     AccessDeniedError,

@@ -111,7 +111,7 @@ class _Context:
         found: list[UserOut] = []
         cursor: str | None = None
         while True:
-            page = await self.admin.list_users(
+            page = await self.admin.users.list_users(
                 self.actor, UserQuery(q=search, cursor=cursor, limit=_USER_PAGE)
             )
             found.extend(page.items)
@@ -155,7 +155,9 @@ async def _create_pat(ctx: _Context, args: argparse.Namespace) -> None:
 
 
 async def _create_service_account(ctx: _Context, args: argparse.Namespace) -> None:
-    account = await ctx.admin.create_service_account(ctx.actor, args.name, args.role)
+    account = await ctx.admin.users.create_service_account(
+        ctx.actor, args.name, args.role
+    )
     _out(f"created {account.email} ({account.role})")
 
 

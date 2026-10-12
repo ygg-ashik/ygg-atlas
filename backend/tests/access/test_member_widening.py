@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.access.admin import Actor
+from app.access import Actor
 from app.access.cache import PolicyCache
 from app.access.errors import AccessDeniedError
 from app.access.repositories import AccessRepository
@@ -49,7 +49,7 @@ async def test_a_manager_cannot_add_themself_to_a_subgroup(db) -> None:
     child_id, manager_id = child.id, manager.id
 
     with pytest.raises(AccessDeniedError):
-        await admin_for(db).put_member(
+        await admin_for(db).members.put_member(
             await _actor(db, manager), child_id, manager_id, "member"
         )
 
@@ -64,7 +64,7 @@ async def test_an_admin_groups_holder_can_add_themself(db) -> None:
     admin_actor = await actor_with(db)
     assert admin_actor.user_id is not None
 
-    added = await admin_for(db).put_member(
+    added = await admin_for(db).members.put_member(
         admin_actor, group.id, admin_actor.user_id, "member"
     )
 
@@ -80,9 +80,11 @@ async def test_a_manager_cannot_change_or_remove_their_own_membership(db) -> Non
     admin = admin_for(db)
 
     with pytest.raises(AccessDeniedError):
-        await admin.remove_member(await _actor(db, manager), child_id, manager_id)
+        await admin.members.remove_member(
+            await _actor(db, manager), child_id, manager_id
+        )
     with pytest.raises(AccessDeniedError):
-        await admin.put_member(
+        await admin.members.put_member(
             await _actor(db, manager), child_id, manager_id, "member"
         )
 
@@ -100,7 +102,7 @@ async def test_a_manager_cannot_remove_themself_from_a_deny_group(db) -> None:
     child_id, manager_id = child.id, manager.id
 
     with pytest.raises(AccessDeniedError):
-        await admin_for(db).remove_member(
+        await admin_for(db).members.remove_member(
             await _actor(db, manager), child_id, manager_id
         )
 
@@ -118,7 +120,9 @@ async def test_a_manager_cannot_remove_a_member_from_a_deny_group(db) -> None:
     await add_member(db, group, sara)
 
     with pytest.raises(AccessDeniedError):
-        await admin_for(db).remove_member(await _actor(db, manager), group.id, sara.id)
+        await admin_for(db).members.remove_member(
+            await _actor(db, manager), group.id, sara.id
+        )
 
 
 async def test_a_deny_on_an_ancestor_also_blocks_removal(db) -> None:
@@ -131,7 +135,9 @@ async def test_a_deny_on_an_ancestor_also_blocks_removal(db) -> None:
     await add_member(db, child, sara)
 
     with pytest.raises(AccessDeniedError):
-        await admin_for(db).remove_member(await _actor(db, manager), child.id, sara.id)
+        await admin_for(db).members.remove_member(
+            await _actor(db, manager), child.id, sara.id
+        )
 
 
 async def test_an_expired_deny_does_not_block_removal(db) -> None:
@@ -142,7 +148,9 @@ async def test_an_expired_deny_does_not_block_removal(db) -> None:
     sara = await make_user(db, "sara@yougotagift.com")
     await add_member(db, group, sara)
 
-    await admin_for(db).remove_member(await _actor(db, manager), group.id, sara.id)
+    await admin_for(db).members.remove_member(
+        await _actor(db, manager), group.id, sara.id
+    )
 
 
 async def test_an_admin_groups_holder_can_remove_from_a_deny_group(db) -> None:
@@ -151,7 +159,7 @@ async def test_an_admin_groups_holder_can_remove_from_a_deny_group(db) -> None:
     sara = await make_user(db, "sara@yougotagift.com")
     await add_member(db, group, sara)
 
-    await admin_for(db).remove_member(await actor_with(db), group.id, sara.id)
+    await admin_for(db).members.remove_member(await actor_with(db), group.id, sara.id)
 
 
 async def test_the_cli_can_remove_from_a_deny_group(db) -> None:
@@ -160,7 +168,7 @@ async def test_the_cli_can_remove_from_a_deny_group(db) -> None:
     sara = await make_user(db, "sara@yougotagift.com")
     await add_member(db, group, sara)
 
-    await admin_for(db).remove_member(Actor.cli(), group.id, sara.id)
+    await admin_for(db).members.remove_member(Actor.cli(), group.id, sara.id)
 
 
 async def test_a_manager_still_manages_plain_members_without_denies(db) -> None:
@@ -172,8 +180,10 @@ async def test_a_manager_still_manages_plain_members_without_denies(db) -> None:
     child_id, sara_id = child.id, sara.id
     admin = admin_for(db)
 
-    await admin.put_member(await _actor(db, manager), child_id, sara_id, "member")
-    await admin.remove_member(await _actor(db, manager), child_id, sara_id)
+    await admin.members.put_member(
+        await _actor(db, manager), child_id, sara_id, "member"
+    )
+    await admin.members.remove_member(await _actor(db, manager), child_id, sara_id)
 
 
 # ---- service identities ----------------------------------------------------------
@@ -186,7 +196,7 @@ async def test_a_manager_cannot_add_a_service_user(db) -> None:
     manager = await _manager_of(db, group)
 
     with pytest.raises(AccessDeniedError):
-        await admin_for(db).put_member(
+        await admin_for(db).members.put_member(
             await _actor(db, manager), group.id, service.id, "member"
         )
 
@@ -195,7 +205,7 @@ async def test_an_admin_groups_holder_can_add_a_service_user(db) -> None:
     group = await make_group(db, "finance")
     service = await make_user(db, "mcp@atlas.internal", role="analyst", kind="service")
 
-    added = await admin_for(db).put_member(
+    added = await admin_for(db).members.put_member(
         await actor_with(db), group.id, service.id, "member"
     )
 

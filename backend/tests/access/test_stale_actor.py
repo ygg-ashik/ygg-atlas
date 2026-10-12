@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import func
 from sqlmodel import select
 
-from app.access.admin import Actor
+from app.access import Actor
 from app.access.errors import ConflictError
 from app.access.models import RbacChange
 from app.access.schemas import GrantCreate, GroupCreate
@@ -36,7 +36,7 @@ async def test_a_stale_actor_is_refused_and_nothing_is_written(db) -> None:
     version = await policy_version(db)
 
     with pytest.raises(ConflictError, match="Access changed"):
-        await admin_for(db).create_grant(
+        await admin_for(db).grants.create_grant(
             stale,
             GrantCreate(
                 subject_type="user", subject_id=victim_id, target="*", reason="x"
@@ -56,7 +56,7 @@ async def test_a_stale_actor_is_refused_for_membership_changes(db) -> None:
     before = await _change_count(db)
 
     with pytest.raises(ConflictError):
-        await admin_for(db).put_member(stale, group_id, sara_id, "member")
+        await admin_for(db).members.put_member(stale, group_id, sara_id, "member")
 
     assert await _change_count(db) == before
 
@@ -65,11 +65,11 @@ async def test_a_fresh_actor_succeeds(db) -> None:
     actor = await actor_with(db)
     before = await _change_count(db)
 
-    await admin_for(db).create_group(actor, GroupCreate(name="growth"))
+    await admin_for(db).groups.create_group(actor, GroupCreate(name="growth"))
 
     assert await _change_count(db) == before + 1
 
 
 async def test_the_cli_actor_has_no_policy_to_go_stale(db) -> None:
     await bump(db)
-    await admin_for(db).create_group(Actor.cli(), GroupCreate(name="growth"))
+    await admin_for(db).groups.create_group(Actor.cli(), GroupCreate(name="growth"))

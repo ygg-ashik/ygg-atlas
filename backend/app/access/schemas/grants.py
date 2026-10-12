@@ -23,7 +23,7 @@ class GrantCreate(BaseModel):
     target: str = Field(min_length=1, max_length=200)
     reason: str = Field(default="", max_length=500)
     expires_at: AwareDatetime | None = None
-    # None = all rows; else {dimension: [values]}, `$self` allowed (spec §5.5).
+    # None = all rows; else {dimension: [values]}, `$self` allowed.
     row_scope: dict[str, list[str]] | None = None
 
     @field_validator("row_scope")

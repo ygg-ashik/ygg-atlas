@@ -47,7 +47,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
-from app.access.admin import AccessAdmin, Actor
+from app.access.actor import Actor
 from app.access.cache import shared_cache
 from app.access.errors import (
     AccessError,
@@ -70,6 +70,7 @@ from app.access.policy import Conjunction, RowScope
 from app.access.repositories import AccessRepository
 from app.access.schemas import GrantCreate, UserUpdate
 from app.access.service import AccessService
+from app.access.services import AccessAdmin
 from app.database import get_engine, get_session_factory
 from app.identity import User
 
@@ -150,7 +151,7 @@ type _Command = Callable[[_Context, argparse.Namespace], Awaitable[None]]
 
 async def _groups(ctx: _Context, _args: argparse.Namespace) -> None:
     by_parent: dict[UUID | None, list[Group]] = {}
-    for group in await ctx.admin.list_groups(ctx.actor):
+    for group in await ctx.admin.groups.list_groups(ctx.actor):
         by_parent.setdefault(group.parent_id, []).append(group)
 
     def show(parent: UUID | None, depth: int) -> None:
@@ -165,14 +166,14 @@ async def _add_member(ctx: _Context, args: argparse.Namespace) -> None:
     group = await ctx.group(args.group)
     user = await ctx.user(args.email)
     standing = "manager" if args.manager else "member"
-    await ctx.admin.put_member(ctx.actor, group.id, user.id, standing)
+    await ctx.admin.members.put_member(ctx.actor, group.id, user.id, standing)
     _out(f"{user.email} is now a {standing} of {group.name}")
 
 
 async def _remove_member(ctx: _Context, args: argparse.Namespace) -> None:
     group = await ctx.group(args.group)
     user = await ctx.user(args.email)
-    await ctx.admin.remove_member(ctx.actor, group.id, user.id)
+    await ctx.admin.members.remove_member(ctx.actor, group.id, user.id)
     _out(f"{user.email} removed from {group.name}")
 
 
@@ -200,18 +201,18 @@ async def _grant(ctx: _Context, args: argparse.Namespace) -> None:
             "row_scope": _parse_scope(args.scope),
         }
     )
-    grant = await ctx.admin.create_grant(ctx.actor, payload)
+    grant = await ctx.admin.grants.create_grant(ctx.actor, payload)
     _out(f"granted {grant.id}: {grant.effect} {grant.target} to {label}")
 
 
 async def _revoke(ctx: _Context, args: argparse.Namespace) -> None:
-    await ctx.admin.revoke_grant(ctx.actor, UUID(args.grant_id))
+    await ctx.admin.grants.revoke_grant(ctx.actor, UUID(args.grant_id))
     _out(f"revoked {args.grant_id}")
 
 
 async def _set_role(ctx: _Context, args: argparse.Namespace) -> None:
     user = await ctx.user(args.email)
-    await ctx.admin.update_user(ctx.actor, user.id, UserUpdate(role=args.role))
+    await ctx.admin.users.update_user(ctx.actor, user.id, UserUpdate(role=args.role))
     _out(f"{user.email} is now {args.role}")
 
 
@@ -220,7 +221,7 @@ async def _access(ctx: _Context, args: argparse.Namespace) -> None:
         msg = f"'{args.resource}' is not a resource path like demo/order/revenue"
         raise InvalidChangeError(msg)
     user = await ctx.user(args.email)
-    policy = await ctx.admin.effective_access(ctx.actor, user.id)
+    policy = await ctx.admin.users.effective_access(ctx.actor, user.id)
     state = "active" if policy.active else "disabled"
     _out(f"{user.email}: role {policy.role}, {state}")
     _out("capabilities: " + ", ".join(sorted(policy.capabilities)))
@@ -243,19 +244,19 @@ async def _access(ctx: _Context, args: argparse.Namespace) -> None:
 
 async def _set_attr(ctx: _Context, args: argparse.Namespace) -> None:
     user = await ctx.user(args.email)
-    await ctx.admin.set_attribute(ctx.actor, user.id, args.key, args.value)
+    await ctx.admin.row_field.set_attribute(ctx.actor, user.id, args.key, args.value)
     _out(f"{user.email}: attribute {args.key} set")
 
 
 async def _unset_attr(ctx: _Context, args: argparse.Namespace) -> None:
     user = await ctx.user(args.email)
-    await ctx.admin.delete_attribute(ctx.actor, user.id, args.key)
+    await ctx.admin.row_field.delete_attribute(ctx.actor, user.id, args.key)
     _out(f"{user.email}: attribute {args.key} removed")
 
 
 async def _attrs(ctx: _Context, args: argparse.Namespace) -> None:
     user = await ctx.user(args.email)
-    rows = await ctx.admin.list_attributes(ctx.actor, user.id)
+    rows = await ctx.admin.row_field.list_attributes(ctx.actor, user.id)
     if not rows:
         _out(f"{user.email} has no attributes")
     for row in rows:
@@ -263,19 +264,19 @@ async def _attrs(ctx: _Context, args: argparse.Namespace) -> None:
 
 
 async def _label_classes(ctx: _Context, _args: argparse.Namespace) -> None:
-    for row in await ctx.admin.list_label_classes(ctx.actor):
+    for row in await ctx.admin.row_field.list_label_classes(ctx.actor):
         _out(f"{row.label_class}: {row.mode} (bucket size {row.bucket_size})")
 
 
 async def _label_class(ctx: _Context, args: argparse.Namespace) -> None:
-    row = await ctx.admin.set_label_class(
+    row = await ctx.admin.row_field.set_label_class(
         ctx.actor, args.label_class, args.mode, args.bucket_size
     )
     _out(f"{row.label_class}: {row.mode} (bucket size {row.bucket_size})")
 
 
 async def _scope_dimensions(ctx: _Context, _args: argparse.Namespace) -> None:
-    rows = await ctx.admin.list_scope_dimensions(ctx.actor)
+    rows = await ctx.admin.row_field.list_scope_dimensions(ctx.actor)
     if not rows:
         _out("no scope dimensions (no enabled plugin declares any)")
     for row in rows:

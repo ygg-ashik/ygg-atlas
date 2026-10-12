@@ -27,8 +27,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlmodel import col, func, select
 
-from app.access import admin as admin_module
-from app.access.admin import Actor
+from app.access import Actor
 from app.access.catalog import CAPABILITIES
 from app.access.errors import AccessError, ConflictError, InvalidChangeError
 from app.access.models import (
@@ -48,6 +47,7 @@ from app.access.schemas import (
     GroupUpdate,
     RequestDecision,
 )
+from app.access.services import audit as audit_module
 from app.access.startup import prepare_access
 from app.identity.models import User
 from app.models.audit import AtlasAuditLog
@@ -154,14 +154,16 @@ def _widen_race(
 
 async def _create_group(factory: async_sessionmaker[AsyncSession], name: str) -> Group:
     async with factory() as db:
-        return await admin_for(db).create_group(Actor.cli(), GroupCreate(name=name))
+        return await admin_for(db).groups.create_group(
+            Actor.cli(), GroupCreate(name=name)
+        )
 
 
 async def _move_group(
     factory: async_sessionmaker[AsyncSession], group: Group, parent: Group
 ) -> Group:
     async with factory() as db:
-        return await admin_for(db).update_group(
+        return await admin_for(db).groups.update_group(
             Actor.cli(), group.id, GroupUpdate(parent_id=parent.id)
         )
 
@@ -377,7 +379,7 @@ async def test_summary_buckets_by_utc_day_whatever_the_session_time_zone(
     """Postgres's date() of a timestamptz follows the session time zone; the
     summary must bucket by UTC day regardless (22:30 UTC is 02:30 in Dubai)."""
     clock = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
-    monkeypatch.setattr(admin_module, "_utcnow", lambda: clock)
+    monkeypatch.setattr(audit_module, "_utcnow", lambda: clock)
     late = datetime(2026, 10, 8, 22, 30, tzinfo=UTC)
     async with factory() as db:
         user = User(email="sara@yougotagift.com", display_name="Sara")
@@ -398,7 +400,7 @@ async def test_summary_buckets_by_utc_day_whatever_the_session_time_zone(
     async with factory() as db:
         await db.execute(text("SET TIME ZONE 'Asia/Dubai'"))
         zone = (await db.execute(text("SHOW TIME ZONE"))).scalar_one()
-        summary = await admin_for(db).audit_summary(Actor.cli(), 7)
+        summary = await admin_for(db).audit.audit_summary(Actor.cli(), 7)
 
     assert zone == "Asia/Dubai"
     per_day = {d.date: (d.allow, d.deny) for d in summary.per_day}
