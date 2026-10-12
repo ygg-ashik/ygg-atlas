@@ -25,7 +25,7 @@ from app.access.errors import AccessError, PolicyUnavailableError
 from app.access.evaluator import evaluate
 from app.access.facts import GrantFacts, PolicyInputs, UserFacts
 from app.access.policy import Policy
-from app.access.router import router as access_router
+from app.access.routers import router as access_router
 from app.access.schemas import UserOut, UserQuery
 from app.access.service import policy_for
 from app.access.services import AccessAdmin

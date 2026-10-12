@@ -209,7 +209,7 @@ type = "layers"
 containers = ["app.access"]
 exhaustive = true
 layers = [
-    "router | cli",
+    "routers | cli",
     "dependencies",
     "services",
     "service | startup",

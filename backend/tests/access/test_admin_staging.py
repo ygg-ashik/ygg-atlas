@@ -1,6 +1,7 @@
 # pyright: reportPrivateUsage=false
-"""The staged AccessAdmin seams: helpers stage rows under `_write`, and
-`_commit` lands several changes with exactly one policy_version bump."""
+"""The staged seams: topic-service helpers stage rows under
+`AccessWriter.write`, and `AccessWriter.commit` lands several changes with
+exactly one policy_version bump."""
 
 from typing import Any
 
