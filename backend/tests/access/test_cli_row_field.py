@@ -5,7 +5,7 @@ from sqlmodel import col, select
 
 from app.access import cli
 from app.access.models import LabelClassSetting, RbacChange, UserAttribute
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from tests.access_helpers import (
     add_grant,
     make_group,
@@ -41,7 +41,7 @@ async def test_grant_with_a_self_scope_stores_it(db) -> None:
     )
 
     assert code == 0
-    grants = await AccessRepository(db).list_grants("group", group.id)
+    grants = await AccessRepository(db).grants.list_grants("group", group.id)
     assert grants[0].row_scope == {"csm": ["$self"]}
 
 
@@ -65,7 +65,7 @@ async def test_scope_values_split_on_commas_and_repeats_merge(db) -> None:
     )
 
     assert code == 0
-    grants = await AccessRepository(db).list_grants("group", group.id)
+    grants = await AccessRepository(db).grants.list_grants("group", group.id)
     assert grants[0].row_scope == {"country": ["AE", "KW", "SA"], "csm": ["$self"]}
     created = await _changes(db, "grant.create")
     assert created[0].via == "cli"
@@ -100,7 +100,7 @@ async def test_grant_a_clearance_with_kind(db) -> None:
     )
 
     assert code == 0
-    grants = await AccessRepository(db).list_grants("user", user.id)
+    grants = await AccessRepository(db).grants.list_grants("user", user.id)
     assert (grants[0].target_kind, grants[0].target) == (
         "clearance",
         "fields:people_names",

@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import func
 from sqlmodel import select
 
-from app.access.admin import Actor
+from app.access import Actor
 from app.access.errors import (
     AccessDeniedError,
     ConflictError,
@@ -17,9 +17,9 @@ from app.access.errors import (
 from app.access.facts import GrantFacts, GroupFacts
 from app.access.models import AccessRequest, Group, RbacChange
 from app.access.policy import Policy, decidable_scope
-from app.access.repository import AccessRepository
-from app.access.requests import groups_granting
+from app.access.repositories import RequestRepository
 from app.access.schemas import AccessRequestCreate, RequestDecision
+from app.access.services import groups_granting
 from tests.access_helpers import (
     actor_with,
     add_grant,
@@ -173,7 +173,7 @@ async def test_partial_index_violation_maps_to_409(
     async def no_pending(*_args: object) -> None:
         return None
 
-    monkeypatch.setattr(AccessRepository, "pending_request", no_pending)
+    monkeypatch.setattr(RequestRepository, "pending_request", no_pending)
     with pytest.raises(ConflictError, match="already asked"):
         await service.create(policy, _ask("resource", REVENUE))
     # The session is usable again after the mapped failure.

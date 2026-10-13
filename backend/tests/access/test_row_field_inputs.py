@@ -7,7 +7,7 @@ from uuid import uuid4
 from structlog.testing import capture_logs
 
 from app.access.cache import PolicyCache
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.service import AccessService
 from tests.access_helpers import (
     add_grant,
@@ -29,7 +29,7 @@ async def test_grants_for_returns_row_scope(db) -> None:
     await add_grant(db, user, "demo/*", row_scope={"channel": ["b2c", "b2b"]})
     await add_grant(db, user, "deepsales/*")
 
-    facts = await AccessRepository(db).grants_for(user.id, [])
+    facts = await AccessRepository(db).grants.grants_for(user.id, [])
 
     scopes = {g.target: g.row_scope for g in facts}
     assert scopes == {"demo/*": {"channel": ["b2c", "b2b"]}, "deepsales/*": None}
@@ -44,7 +44,7 @@ async def test_attributes_include_the_builtins(db) -> None:
     other = await make_user(db, "omar@yougotagift.com")
     await set_attribute(db, other, "csm_name", "Omar")
 
-    attributes = await AccessRepository(db).attributes_for(user.id)
+    attributes = await AccessRepository(db).row_field.attributes_for(user.id)
 
     assert attributes == {
         "csm_name": "Sara Khan",
@@ -54,19 +54,19 @@ async def test_attributes_include_the_builtins(db) -> None:
 
 
 async def test_attributes_of_an_unknown_user_are_empty(db) -> None:
-    assert await AccessRepository(db).attributes_for(uuid4()) == {}
+    assert await AccessRepository(db).row_field.attributes_for(uuid4()) == {}
 
 
 async def test_label_modes_are_read(db) -> None:
     await seed_label_classes(db, person="bucket", business="suppress", bucket=3)
 
-    modes = await AccessRepository(db).label_modes()
+    modes = await AccessRepository(db).row_field.label_modes()
 
     assert modes == {"person_name": ("bucket", 3), "business_name": ("suppress", 3)}
 
 
 async def test_label_modes_are_empty_without_settings(db) -> None:
-    assert await AccessRepository(db).label_modes() == {}
+    assert await AccessRepository(db).row_field.label_modes() == {}
 
 
 async def test_self_attributes_come_from_the_mirror(db) -> None:
@@ -82,7 +82,7 @@ async def test_self_attributes_come_from_the_mirror(db) -> None:
     )
 
     with capture_logs() as logs:
-        mapping = await AccessRepository(db).self_attributes()
+        mapping = await AccessRepository(db).row_field.self_attributes()
 
     assert mapping == {"csm": "csm_name"}
     conflicts = [e for e in logs if e["event"] == "access.self_attribute_conflict"]

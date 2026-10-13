@@ -8,7 +8,7 @@ import { useReviewedWrite } from '../hooks/use-reviewed-write';
 import { roleChangeLines, statusChangeLines } from '../review-lines';
 import { ReviewSlot } from './review-slot';
 
-/** The backend's refusal for a self-edit (`_not_self` in app/access/admin.py). */
+/** The backend's refusal for a self-edit (`_not_self` in app/access/services/users.py). */
 export const SELF_EDIT = "You can't change your own role or status. Ask another admin.";
 
 interface RoleStatusEditorProps {

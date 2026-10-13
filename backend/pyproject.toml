@@ -124,7 +124,7 @@ venv = ".venv"
 typeCheckingMode = "standard"
 reportMissingTypeStubs = false
 # Ratchet: new self-contained modules are added here and checked in strict mode.
-strict = ["app/insights", "app/identity", "app/access", "app/atlas/scope.py", "app/atlas/masking.py", "app/mcp"]
+strict = ["app/insights", "app/identity", "app/access", "app/atlas/scope.py", "app/atlas/masking.py", "app/atlas/tools", "app/mcp"]
 
 [tool.importlinter]
 root_package = "app"
@@ -191,7 +191,7 @@ layers = [
     "repository",
     "models",
     "schemas",
-    "principal | tokens | errors | api_tokens",
+    "principal | tokens | errors | api_tokens | clock",
 ]
 
 [[tool.importlinter.contracts]]
@@ -209,15 +209,14 @@ type = "layers"
 containers = ["app.access"]
 exhaustive = true
 layers = [
-    "router | cli",
+    "routers | cli",
     "dependencies",
-    "requests",
-    "admin",
+    "services",
     "service | startup",
-    "repository",
+    "repositories",
     "models",
     "schemas",
-    "cache | evaluator",
+    "actor | cache | evaluator",
     "policy",
     "catalog | patterns | facts | errors | cursor",
 ]

@@ -1,5 +1,5 @@
 // Access requests: the caller's own (/me/requests*) and the decision queue
-// (/admin/requests*). Shapes: backend app/access/schemas.py (phase 5, B3).
+// (/admin/requests*). Shapes: backend app/access/schemas/requests.py.
 import { api } from './axios-instance';
 import { type Page } from './cursor';
 import { compactParams, seg } from './params';

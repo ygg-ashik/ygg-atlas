@@ -38,11 +38,11 @@ async def test_disabling_a_user_revokes_all_their_tokens(db) -> None:
     actor = await actor_with(db)
     sara, tokens, _ = await _sara_with_tokens(db)
 
-    await admin_for(db).update_user(actor, sara.id, UserUpdate(status="disabled"))
+    await admin_for(db).users.update_user(actor, sara.id, UserUpdate(status="disabled"))
 
     creds = CredentialRepository(db)
     for token in tokens:
-        row = await creds.token(token.id, fresh=True)
+        row = await creds.tokens.token(token.id, fresh=True)
         assert row is not None
         assert row.revoked_at is not None
         assert row.revoked_reason == REVOKED_USER_DISABLED
@@ -68,11 +68,11 @@ async def test_role_change_does_not_revoke_tokens(db) -> None:
     actor = await actor_with(db)
     sara, tokens, _ = await _sara_with_tokens(db)
 
-    await admin_for(db).update_user(actor, sara.id, UserUpdate(role="analyst"))
+    await admin_for(db).users.update_user(actor, sara.id, UserUpdate(role="analyst"))
 
     creds = CredentialRepository(db)
     for token in tokens:
-        row = await creds.token(token.id, fresh=True)
+        row = await creds.tokens.token(token.id, fresh=True)
         assert row is not None
         assert row.revoked_at is None
 
@@ -88,12 +88,12 @@ async def test_disabled_user_is_refused_even_if_revocation_failed(
 
     monkeypatch.setattr(TokenService, "revoke_all_tokens", _boom)
 
-    user = await admin_for(db).update_user(
+    user = await admin_for(db).users.update_user(
         actor, sara.id, UserUpdate(status="disabled")
     )
 
     assert user.status == "disabled"
-    row = await CredentialRepository(db).token(tokens[0].id, fresh=True)
+    row = await CredentialRepository(db).tokens.token(tokens[0].id, fresh=True)
     assert row is not None
     assert row.revoked_at is None
     with pytest.raises(ForbiddenError):

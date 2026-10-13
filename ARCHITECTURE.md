@@ -52,7 +52,7 @@ New top-level packages must be added to the contracts in `backend/pyproject.toml
 change. The plugin independence contract lists plugins by name: **a new source plugin must be
 added to it** in the change that creates the plugin.
 
-### 2.2 Module anatomy (every new feature module)
+### 2.2 Module anatomy (every feature module)
 
 A feature module (for example `app/identity`, `app/access`, `app/chat`) is a vertical slice:
 
@@ -82,6 +82,49 @@ async def create_group(
     return await service.create_group(principal, payload)
 ```
 
+#### One topic per file, from the first commit
+
+This is the default way to build, not a clean-up for later. Before writing a module, name its
+**topics** (the domain nouns it manages: groups, members, grants, requests…). Then:
+
+- **One topic:** the flat anatomy above (`router.py`, `service.py`, …) is right.
+- **Two or more topics:** each layer is a **package with one file per topic** from the start
+  (`routers/`, `services/`, `repositories/`, `schemas/`). Never write a second topic into an
+  existing single-topic file; adding a topic is the moment the layer becomes a package.
+- A new topic in an existing module gets its own file in each layer it touches, in the same PR.
+
+Split by domain topic, never by phase, ticket or author. Example (`access`: groups, members,
+grants, users, requests, audit, row and field):
+
+```
+app/access/
+    __init__.py            public interface (unchanged when files move)
+    routers/               one APIRouter per resource; __init__.py composes them
+        __init__.py        router = APIRouter(); router.include_router(groups.router) ...
+        groups.py  users.py  requests.py  audit.py  row_field.py  me.py
+    services/              one service per topic
+        writer.py          the shared write discipline (lock, stale-actor check, audit row,
+                           version bump); every write service uses it, none re-implements it
+        groups.py  members.py  grants.py  users.py  requests.py  row_field.py
+    repositories/          queries grouped by the tables they read and write
+    schemas/               request/response models per topic
+    models.py  evaluator.py  policy.py  ...   (single files stay single while they fit)
+```
+
+- **Two router levels, no more.** `main.py` mounts each module's router; the module's
+  `routers/__init__.py` composes its resource routers. Never chain routers deeper.
+- **Composition over inheritance.** Services share behaviour by calling a collaborator (the
+  writer, another topic's service), never by subclassing another service to reuse its methods.
+- **A package's `__init__.py` re-exports its public names**, so moving code between files
+  inside a module never changes what other modules import.
+- **Layer contracts stay valid.** A layer that becomes a package keeps its place in the module's
+  import-linter `layers` contract; add the package name, not each file.
+- **Section-comment banners are a smell.** A comment like `# ---- groups ----` inside a long
+  file means the file holds several topics; split it instead. Comments say what code does,
+  never which phase or spec section it came from (history lives in git and `docs/`).
+- **Don't over-split.** Thirty 30-line files are as hard to read as one 1,000-line file.
+  A file is one cohesive topic, typically 150 to 400 lines.
+
 ### 2.3 Where code goes
 
 | Situation | Place |
@@ -100,6 +143,11 @@ async def create_group(
   (`dict[str, Any]`), never as a shortcut.
 - Size limits: cyclomatic complexity ≤ 10, ≤ 6 arguments, ≤ 12 branches, ≤ 6 returns,
   ≤ 50 statements per function.
+- Module and class limits (`scripts/check_module_size.py`, run by `make check`):
+  **≤ 500 lines per app module**, **≤ 800 lines per test module**, **≤ 20 methods per class**.
+  Migrations are exempt. Topic-per-file (§2.2) is the design rule; these limits are the backstop
+  that catches a file holding more than one topic. A class past 20 methods is doing several jobs; split it by topic
+  and compose. These are hard limits, not targets: aim for 150 to 400 lines.
 - No `print` in app code (use `structlog`), no commented-out code, no mutable global state
   (`global`); use `functools.cache` factories or explicit holders.
 - Datetimes are timezone-aware UTC only (Ruff `DTZ`, plus the `CLAUDE.md` UTC rule).
@@ -198,7 +246,7 @@ features/<name>/
 |---|---|---|
 | Claude | `engineering-standards` skill before writing code; `production-code-review` skill before calling work done | every coding task |
 | Pre-commit | Ruff (fix and format), Prettier, ESLint on changed files; import contracts; secret scan; whitespace and large-file checks | `git commit` |
-| `make check` | Backend: `ruff format --check`, `ruff check`, `pyright`, `lint-imports`, `pytest -n auto --cov`. Frontend: Prettier check, ESLint, `tsc`, Vitest, build | before every PR |
+| `make check` | Backend: `ruff format --check`, `ruff check`, `pyright`, `lint-imports`, module and class size check, `pytest -n auto --cov`. Frontend: Prettier check, ESLint, `tsc`, Vitest, build | before every PR |
 | `make audit` | Dependency scan: `pip-audit` on lockfile pins resolved for this platform (`scripts/locked_requirements.py`, because pip-audit evaluates markers against its own interpreter, not the project venv), and `pnpm audit --prod` | before dependency changes |
 | CI | Everything in `make check`, plus `make audit` and a gitleaks secret scan | every push and PR; a red build cannot merge |
 

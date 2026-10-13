@@ -3,7 +3,7 @@
 Other modules import only from here.
 """
 
-from app.access.admin import AccessAdmin, Actor
+from app.access.actor import Actor
 from app.access.catalog import (
     ADMIN_AUDIT,
     ADMIN_CLIENTS,
@@ -25,9 +25,10 @@ from app.access.errors import AccessError, PolicyUnavailableError
 from app.access.evaluator import evaluate
 from app.access.facts import GrantFacts, PolicyInputs, UserFacts
 from app.access.policy import Policy
-from app.access.router import router as access_router
+from app.access.routers import router as access_router
 from app.access.schemas import UserOut, UserQuery
 from app.access.service import policy_for
+from app.access.services import AccessAdmin
 from app.access.startup import prepare_access, sync_scope_dimensions
 
 __all__ = [

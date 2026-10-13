@@ -38,7 +38,7 @@ from app.identity.errors import (
 )
 from app.identity.models import ApiToken, CredentialEvent, User
 from app.identity.oauth import OAuthGrantError, OAuthService
-from app.identity.repository import CredentialRepository
+from app.identity.repository import CredentialRepository, TokenRepository
 from app.identity.tokens import InvalidTokenError
 from tests.access_helpers import make_user
 from tests.identity.credential_helpers import (
@@ -99,7 +99,7 @@ async def _events(db: AsyncSession, event: str) -> list[CredentialEvent]:
 
 
 async def _reload(db: AsyncSession, token_id: UUID) -> ApiToken:
-    row = await CredentialRepository(db).token(token_id, fresh=True)
+    row = await CredentialRepository(db).tokens.token(token_id, fresh=True)
     assert row is not None
     return row
 
@@ -573,10 +573,10 @@ async def test_revoke_user_tokens_never_raises(
 ) -> None:
     user = await _human(db)
 
-    async def _boom(self: CredentialRepository, *args: object) -> int:
+    async def _boom(self: TokenRepository, *args: object) -> int:
         raise RuntimeError("database is gone")
 
-    monkeypatch.setattr(CredentialRepository, "revoke_user_tokens", _boom)
+    monkeypatch.setattr(TokenRepository, "revoke_user_tokens", _boom)
     with capture_logs() as logs:
         await revoke_user_tokens(
             user.id, reason=REVOKED_USER_DISABLED, actor_user_id=None, via="cli"

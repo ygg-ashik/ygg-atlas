@@ -49,7 +49,12 @@ from app.identity.oauth import (
     RefreshGrant,
     TokenPair,
 )
-from app.identity.repository import CredentialRepository
+from app.identity.repository import (
+    CodeRepository,
+    CredentialRepository,
+    FamilyRepository,
+    TokenRepository,
+)
 from tests.identity.credential_helpers import make_client
 from tests.identity.oauth_helpers import (
     always_eligible,
@@ -118,18 +123,20 @@ async def setup(factory: Factory) -> tuple[User, str]:
         return user, client.client_id
 
 
-def _hold_until_both_arrive(monkeypatch: pytest.MonkeyPatch, method: str) -> None:
-    """Hold each caller at `CredentialRepository.<method>` until both arrive, or
+def _hold_until_both_arrive(
+    monkeypatch: pytest.MonkeyPatch, repository: type, method: str
+) -> None:
+    """Hold each caller at `<repository>.<method>` until both arrive, or
     0.5 s pass, so the two callers really do race instead of running one after the
     other. Note: issuing callers take the client row lock first (touch_client), so
     held at mark_code_used or mark_rotated the second caller blocks there and
     reaches the conditional UPDATE only after the winner commits; these tests prove
     the outcome, and the conditional UPDATE is defence in depth."""
-    original = getattr(CredentialRepository, method)
+    original = getattr(repository, method)
     arrived = 0
     both = asyncio.Event()
 
-    async def held(self: CredentialRepository, *args: object) -> object:
+    async def held(self: object, *args: object) -> object:
         nonlocal arrived
         arrived += 1
         if arrived >= 2:
@@ -138,7 +145,7 @@ def _hold_until_both_arrive(monkeypatch: pytest.MonkeyPatch, method: str) -> Non
             await asyncio.wait_for(both.wait(), 0.5)
         return await original(self, *args)
 
-    monkeypatch.setattr(CredentialRepository, method, held)
+    monkeypatch.setattr(repository, method, held)
 
 
 def _service(db: AsyncSession) -> OAuthService:
@@ -174,7 +181,7 @@ async def test_concurrent_code_exchange_exactly_one_wins(
     user, client_id = setup
     async with factory() as db:
         _, grant = await approved_code(_service(db), user, client_id)
-    _hold_until_both_arrive(monkeypatch, "mark_code_used")
+    _hold_until_both_arrive(monkeypatch, CodeRepository, "mark_code_used")
 
     results = await asyncio.gather(
         _exchange(factory, client_id, grant),
@@ -212,7 +219,7 @@ async def test_concurrent_refresh_same_client_both_succeed_within_grace(
         pair = await service.exchange_code(client_id, code, always_eligible)
         grant = await service.load_refresh(client_id, pair.refresh_token)
         assert grant is not None
-    _hold_until_both_arrive(monkeypatch, "mark_rotated")
+    _hold_until_both_arrive(monkeypatch, TokenRepository, "mark_rotated")
 
     results = await asyncio.gather(
         _rotate(factory, client_id, grant),
@@ -232,7 +239,7 @@ async def test_concurrent_consent_approve_exactly_one_code(
     user, client_id = setup
     async with factory() as db:
         txn = await begin(_service(db), client_id)
-    _hold_until_both_arrive(monkeypatch, "consume_request")
+    _hold_until_both_arrive(monkeypatch, CodeRepository, "consume_request")
 
     results = await asyncio.gather(
         _approve(factory, txn, user),
@@ -251,10 +258,10 @@ async def test_concurrent_consent_approve_exactly_one_code(
 
 
 async def _revoke_family(factory: Factory, grant: RefreshGrant) -> int:
-    """What an admin disconnect does from another request (credentials.py)."""
+    """What an admin disconnect does from another request (TokenService)."""
     async with factory() as db:
         repository = CredentialRepository(db)
-        count = await repository.revoke_family(
+        count = await repository.families.revoke_family(
             grant.family_id, REVOKED_BY_ADMIN, datetime.now(UTC)
         )
         await repository.commit()
@@ -275,15 +282,15 @@ async def test_family_revoke_racing_a_rotation_leaves_no_live_token(
         pair = await service.exchange_code(client_id, code, always_eligible)
         grant = await service.load_refresh(client_id, pair.refresh_token)
         assert grant is not None
-    _hold_until_both_arrive(monkeypatch, "lock_family")
-    original = CredentialRepository.mark_rotated
+    _hold_until_both_arrive(monkeypatch, FamilyRepository, "lock_family")
+    original = TokenRepository.mark_rotated
 
-    async def slow_mark(self: CredentialRepository, *args: Any) -> bool:
+    async def slow_mark(self: TokenRepository, *args: Any) -> bool:
         rotated = await original(self, *args)
         await asyncio.sleep(0.3)  # widen the window before the insert
         return rotated
 
-    monkeypatch.setattr(CredentialRepository, "mark_rotated", slow_mark)
+    monkeypatch.setattr(TokenRepository, "mark_rotated", slow_mark)
 
     with capture_logs() as logs:
         results = await asyncio.gather(
@@ -295,7 +302,7 @@ async def test_family_revoke_racing_a_rotation_leaves_no_live_token(
     _assert_no_database_error(results[0], logs)
     assert isinstance(results[1], int), results
     async with factory() as db:
-        live = await CredentialRepository(db).family_has_live_token(
+        live = await CredentialRepository(db).families.family_has_live_token(
             grant.family_id, datetime.now(UTC)
         )
     assert not live
@@ -324,14 +331,14 @@ async def test_client_revoke_racing_a_rotation_neither_deadlocks_nor_leaks(
         pair = await service.exchange_code(client_id, code, always_eligible)
         grant = await service.load_refresh(client_id, pair.refresh_token)
         assert grant is not None
-    original = CredentialRepository.mark_rotated
+    original = TokenRepository.mark_rotated
 
-    async def slow_mark(self: CredentialRepository, *args: Any) -> bool:
+    async def slow_mark(self: TokenRepository, *args: Any) -> bool:
         rotated = await original(self, *args)
         await asyncio.sleep(0.4)
         return rotated
 
-    monkeypatch.setattr(CredentialRepository, "mark_rotated", slow_mark)
+    monkeypatch.setattr(TokenRepository, "mark_rotated", slow_mark)
 
     with capture_logs() as logs:
         results = await asyncio.gather(
@@ -343,7 +350,7 @@ async def test_client_revoke_racing_a_rotation_neither_deadlocks_nor_leaks(
     assert results[1] is True, results
     _assert_no_database_error(results[0], logs)
     async with factory() as db:
-        live = await CredentialRepository(db).family_has_live_token(
+        live = await CredentialRepository(db).families.family_has_live_token(
             grant.family_id, datetime.now(UTC)
         )
     assert not live
@@ -528,13 +535,15 @@ async def test_overlapping_multi_row_revokes_do_not_deadlock(
         async with factory() as db:
             repository = CredentialRepository(db)
             if how == "family":
-                count = await repository.revoke_family(family, REVOKED_BY_ADMIN, now)
+                count = await repository.families.revoke_family(
+                    family, REVOKED_BY_ADMIN, now
+                )
             elif how == "client":
-                count = await repository.revoke_client_tokens(
+                count = await repository.tokens.revoke_client_tokens(
                     client_id, REVOKED_BY_ADMIN, now
                 )
             else:
-                count = await repository.revoke_user_tokens(
+                count = await repository.tokens.revoke_user_tokens(
                     user.id, REVOKED_BY_ADMIN, now
                 )
             await asyncio.sleep(0.05)  # hold the row locks a moment

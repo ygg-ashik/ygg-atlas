@@ -1,5 +1,5 @@
 // The caller's own access (GET /me/access) and the capability catalog
-// (GET /meta/capabilities). Shapes: backend app/access/schemas.py.
+// (GET /meta/capabilities). Shapes: backend app/access/schemas/.
 import { api } from './axios-instance';
 
 export type GroupStanding = 'member' | 'manager';

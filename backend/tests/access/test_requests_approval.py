@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlmodel import col, select
 
-from app.access.admin import Actor
+from app.access import Actor
 from app.access.catalog import CLEARANCE_PEOPLE_NAMES
 from app.access.errors import (
     AccessDeniedError,
@@ -17,7 +17,7 @@ from app.access.errors import (
 )
 from app.access.models import AccessRequest, Grant, GroupMember, RbacChange
 from app.access.policy import decidable_scope
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.schemas import AccessRequestCreate, AccessRequestOut, RequestDecision
 from app.identity.models import User
 from tests.access_helpers import (
@@ -525,8 +525,10 @@ async def test_count_decidable_matches_the_list(db) -> None:
     lead = await fresh(db, lead)
     assert lead.policy is not None
     assert admin.policy is not None
-    assert await repo.count_decidable("ygg", decidable_scope(lead.policy)) == 1
-    assert await repo.count_decidable("ygg", decidable_scope(admin.policy)) == 2
+    assert await repo.requests.count_decidable("ygg", decidable_scope(lead.policy)) == 1
+    assert (
+        await repo.requests.count_decidable("ygg", decidable_scope(admin.policy)) == 2
+    )
 
 
 async def test_approving_for_a_disabled_requester_is_409(db) -> None:
@@ -558,7 +560,8 @@ async def test_approving_for_a_disabled_requester_is_409(db) -> None:
 
 async def test_approving_into_a_cleared_group_needs_the_clearance(db) -> None:
     # C10: joining inherits the lineage's clearance allows, so the approval
-    # path (_stage_member) refuses an uncleared decider, as put_member does.
+    # path (MemberService.stage_member) refuses an uncleared decider, as
+    # put_member does.
     growth = await make_group(db, "growth")
     await add_grant(db, growth, CLEARANCE_PEOPLE_NAMES, kind="clearance")
     sara = await make_user(db, "sara@yougotagift.com")
@@ -578,8 +581,8 @@ async def test_approving_into_a_cleared_group_needs_the_clearance(db) -> None:
 
 
 async def test_an_approved_resource_grant_is_unscoped(db) -> None:
-    # The approval path builds its grant in _stage_grant with no row scope:
-    # a scoped grant only ever comes from the grant editor.
+    # The approval path builds its grant in GrantService.stage_grant with no row
+    # scope: a scoped grant only ever comes from the grant editor.
     sara = await make_user(db, "sara@yougotagift.com")
     admin = await _holding(db, "viewer", "admin:users")
     request = await _ask(db, sara, "resource", REVENUE)

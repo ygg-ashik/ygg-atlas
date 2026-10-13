@@ -87,7 +87,7 @@ async def _request(
 
 
 async def _reason(creds: CredentialRepository, row: ApiToken) -> str | None:
-    fresh = await creds.token(row.id, fresh=True)
+    fresh = await creds.tokens.token(row.id, fresh=True)
     assert fresh is not None
     return fresh.revoked_reason
 
@@ -115,14 +115,14 @@ async def test_token_lookups(db) -> None:
     row, _ = await insert_token(db, user, TokenKind.PAT)
     creds = CredentialRepository(db)
 
-    by_hash = await creds.token_by_hash(row.token_hash)
+    by_hash = await creds.tokens.token_by_hash(row.token_hash)
     assert by_hash is not None
     assert by_hash.id == row.id
-    assert await creds.token_by_hash("0" * 64) is None
-    fresh = await creds.token(row.id, fresh=True)
+    assert await creds.tokens.token_by_hash("0" * 64) is None
+    fresh = await creds.tokens.token(row.id, fresh=True)
     assert fresh is not None
     assert fresh.id == row.id
-    assert await creds.token(uuid4()) is None
+    assert await creds.tokens.token(uuid4()) is None
 
 
 async def test_mark_code_used_succeeds_once(db) -> None:
@@ -131,13 +131,13 @@ async def test_mark_code_used_succeeds_once(db) -> None:
     code = await _code(db, user, client, expires_in=timedelta(seconds=60))
     creds = CredentialRepository(db)
 
-    assert await creds.mark_code_used(code.id, _now()) is True
+    assert await creds.codes.mark_code_used(code.id, _now()) is True
     await creds.commit()
-    assert await creds.mark_code_used(code.id, _now()) is False
-    fresh = await creds.code(code.id, fresh=True)
+    assert await creds.codes.mark_code_used(code.id, _now()) is False
+    fresh = await creds.codes.code(code.id, fresh=True)
     assert fresh is not None
     assert fresh.used_at is not None
-    by_hash = await creds.code_by_hash(code.code_hash)
+    by_hash = await creds.codes.code_by_hash(code.code_hash)
     assert by_hash is not None
     assert by_hash.id == code.id
 
@@ -147,7 +147,7 @@ async def test_mark_code_used_refuses_an_expired_code(db) -> None:
     client = await make_client(db)
     code = await _code(db, user, client, expires_in=timedelta(seconds=-1))
 
-    assert await CredentialRepository(db).mark_code_used(code.id, _now()) is False
+    assert await CredentialRepository(db).codes.mark_code_used(code.id, _now()) is False
 
 
 async def test_mark_rotated_succeeds_once(db) -> None:
@@ -158,10 +158,10 @@ async def test_mark_rotated_succeeds_once(db) -> None:
     )
     creds = CredentialRepository(db)
 
-    assert await creds.mark_rotated(row.id, _now()) is True
+    assert await creds.tokens.mark_rotated(row.id, _now()) is True
     await creds.commit()
-    assert await creds.mark_rotated(row.id, _now()) is False
-    fresh = await creds.token(row.id, fresh=True)
+    assert await creds.tokens.mark_rotated(row.id, _now()) is False
+    fresh = await creds.tokens.token(row.id, fresh=True)
     assert fresh is not None
     assert fresh.revoked_reason == REVOKED_ROTATED
 
@@ -172,16 +172,16 @@ async def test_consume_request_succeeds_once_and_never_after_expiry(db) -> None:
     stale = await _request(db, client, expires_in=timedelta(seconds=-1))
     creds = CredentialRepository(db)
 
-    assert await creds.pending_request(live.id, _now()) is not None
-    consumed = await creds.consume_request(live.id, _now())
+    assert await creds.codes.pending_request(live.id, _now()) is not None
+    consumed = await creds.codes.consume_request(live.id, _now())
     assert consumed is not None
     assert consumed.consumed_at is not None
     await creds.commit()
-    assert await creds.consume_request(live.id, _now()) is None
-    assert await creds.pending_request(live.id, _now()) is None
-    assert await creds.pending_request(stale.id, _now()) is None
-    assert await creds.consume_request(stale.id, _now()) is None
-    assert await creds.consume_request("missing", _now()) is None
+    assert await creds.codes.consume_request(live.id, _now()) is None
+    assert await creds.codes.pending_request(live.id, _now()) is None
+    assert await creds.codes.pending_request(stale.id, _now()) is None
+    assert await creds.codes.consume_request(stale.id, _now()) is None
+    assert await creds.codes.consume_request("missing", _now()) is None
 
 
 async def test_revoke_family_keeps_earlier_reasons(db) -> None:
@@ -204,7 +204,7 @@ async def test_revoke_family_keeps_earlier_reasons(db) -> None:
     )
     creds = CredentialRepository(db)
 
-    assert await creds.revoke_family(family, REVOKED_CODE_REUSE, _now()) == 1
+    assert await creds.families.revoke_family(family, REVOKED_CODE_REUSE, _now()) == 1
     await creds.commit()
 
     reasons = {r.id: await _reason(creds, r) for r in (rotated, live, other)}
@@ -220,7 +220,7 @@ async def test_family_has_live_token(db) -> None:
     client = await make_client(db)
     family = uuid4()
     creds = CredentialRepository(db)
-    assert await creds.family_has_live_token(family, _now()) is False
+    assert await creds.families.family_has_live_token(family, _now()) is False
 
     await insert_token(
         db,
@@ -238,12 +238,12 @@ async def test_family_has_live_token(db) -> None:
         client_id=client.client_id,
         expires_in=timedelta(seconds=-1),
     )
-    assert await creds.family_has_live_token(family, _now()) is False
+    assert await creds.families.family_has_live_token(family, _now()) is False
 
     await insert_token(
         db, user, TokenKind.OAUTH_REFRESH, family_id=family, client_id=client.client_id
     )
-    assert await creds.family_has_live_token(family, _now()) is True
+    assert await creds.families.family_has_live_token(family, _now()) is True
 
 
 async def test_revoke_user_and_client_tokens(db) -> None:
@@ -259,13 +259,22 @@ async def test_revoke_user_and_client_tokens(db) -> None:
     )
     creds = CredentialRepository(db)
 
-    assert await creds.revoke_user_tokens(sara.id, REVOKED_USER_DISABLED, _now()) == 2
-    assert await creds.revoke_user_tokens(sara.id, REVOKED_USER_DISABLED, _now()) == 0
     assert (
-        await creds.revoke_client_tokens(client.client_id, REVOKED_CLIENT, _now()) == 1
+        await creds.tokens.revoke_user_tokens(sara.id, REVOKED_USER_DISABLED, _now())
+        == 2
     )
-    assert await creds.revoke_client(client.client_id, _now()) is True
-    assert await creds.revoke_client(client.client_id, _now()) is False
+    assert (
+        await creds.tokens.revoke_user_tokens(sara.id, REVOKED_USER_DISABLED, _now())
+        == 0
+    )
+    assert (
+        await creds.tokens.revoke_client_tokens(
+            client.client_id, REVOKED_CLIENT, _now()
+        )
+        == 1
+    )
+    assert await creds.clients.revoke_client(client.client_id, _now()) is True
+    assert await creds.clients.revoke_client(client.client_id, _now()) is False
     await creds.commit()
 
     for row, reason in (
@@ -273,10 +282,10 @@ async def test_revoke_user_and_client_tokens(db) -> None:
         (access, REVOKED_USER_DISABLED),
         (omars, REVOKED_CLIENT),
     ):
-        fresh = await creds.token(row.id, fresh=True)
+        fresh = await creds.tokens.token(row.id, fresh=True)
         assert fresh is not None
         assert fresh.revoked_reason == reason
-    revoked = await creds.client(client.client_id)
+    revoked = await creds.clients.client(client.client_id)
     assert revoked is not None
     assert revoked.revoked_at is not None
 
@@ -286,10 +295,13 @@ async def test_revoke_token_is_conditional(db) -> None:
     row, _ = await insert_token(db, user, TokenKind.PAT)
     creds = CredentialRepository(db)
 
-    assert await creds.revoke_token(row.id, REVOKED_BY_USER, _now()) is True
-    assert await creds.revoke_token(row.id, REVOKED_APP_DISCONNECTED, _now()) is False
+    assert await creds.tokens.revoke_token(row.id, REVOKED_BY_USER, _now()) is True
+    assert (
+        await creds.tokens.revoke_token(row.id, REVOKED_APP_DISCONNECTED, _now())
+        is False
+    )
     await creds.commit()
-    fresh = await creds.token(row.id, fresh=True)
+    fresh = await creds.tokens.token(row.id, fresh=True)
     assert fresh is not None
     assert fresh.revoked_reason == REVOKED_BY_USER
 
@@ -302,7 +314,8 @@ async def test_count_live_counts_only_live_tokens_of_the_kind(db) -> None:
     await insert_token(db, user, TokenKind.SERVICE)
 
     assert (
-        await CredentialRepository(db).count_live(user.id, TokenKind.PAT, _now()) == 1
+        await CredentialRepository(db).tokens.count_live(user.id, TokenKind.PAT, _now())
+        == 1
     )
 
 
@@ -313,12 +326,12 @@ async def test_touch_writes_last_used(db) -> None:
     creds = CredentialRepository(db)
     moment = _now()
 
-    await creds.touch_token(row.id, moment)
-    await creds.touch_client(client.client_id, moment)
+    await creds.tokens.touch_token(row.id, moment)
+    await creds.clients.touch_client(client.client_id, moment)
     await creds.commit()
 
-    token = await creds.token(row.id, fresh=True)
-    touched = await creds.client(client.client_id)
+    token = await creds.tokens.token(row.id, fresh=True)
+    touched = await creds.clients.client(client.client_id)
     assert token is not None
     assert token.last_used_at is not None
     assert touched is not None
@@ -340,17 +353,21 @@ async def test_list_tokens_is_tenant_scoped(db) -> None:
     await insert_token(db, other, TokenKind.PAT)
     creds = CredentialRepository(db)
 
-    ygg = await creds.list_tokens(tenant="ygg", kinds=[TokenKind.PAT])
+    ygg = await creds.tokens.list_tokens(tenant="ygg", kinds=[TokenKind.PAT])
     assert [t.id for t in ygg] == [pat.id]
-    everything = await creds.list_tokens(
+    everything = await creds.tokens.list_tokens(
         tenant="ygg", kinds=[TokenKind.PAT], user_id=sara.id, include_revoked=True
     )
     assert {t.id for t in everything} == {pat.id, revoked.id}
     assert (
-        await creds.list_tokens(tenant="ygg", kinds=[TokenKind.PAT], user_id=other.id)
+        await creds.tokens.list_tokens(
+            tenant="ygg", kinds=[TokenKind.PAT], user_id=other.id
+        )
         == []
     )
-    assert len(await creds.list_tokens(tenant="other", kinds=[TokenKind.PAT])) == 1
+    assert (
+        len(await creds.tokens.list_tokens(tenant="other", kinds=[TokenKind.PAT])) == 1
+    )
 
 
 async def test_list_events_is_tenant_scoped_and_newest_first(db) -> None:
@@ -375,16 +392,16 @@ async def test_list_events_is_tenant_scoped_and_newest_first(db) -> None:
     await db.commit()
     creds = CredentialRepository(db)
 
-    mine = await creds.list_events(tenant="ygg", user_id=sara.id)
+    mine = await creds.events.list_events(tenant="ygg", user_id=sara.id)
     assert [e.event for e in mine] == ["token.revoked", "token.created"]
-    ygg = await creds.list_events(tenant="ygg")
+    ygg = await creds.events.list_events(tenant="ygg")
     assert {e.event for e in ygg} == {
         "token.created",
         "token.revoked",
         "credentials.gc",
     }
     assert all(e.user_id != other.id for e in ygg)
-    assert len(await creds.list_events(tenant="ygg", limit=1)) == 1
+    assert len(await creds.events.list_events(tenant="ygg", limit=1)) == 1
 
 
 async def test_clients_and_connected_apps(db) -> None:
@@ -409,15 +426,15 @@ async def test_clients_and_connected_apps(db) -> None:
     )
     creds = CredentialRepository(db)
 
-    apps = await creds.connected_apps(sara.id, _now())
+    apps = await creds.families.connected_apps(sara.id, _now())
     assert [(a.family_id, a.client_id, a.client_name) for a in apps] == [
         (family, client.client_id, "Claude Code")
     ]
     assert apps[0].redirect_uris == (LOOPBACK_REDIRECT,)
-    assert await creds.live_family_counts(_now()) == {client.client_id: 1}
-    listed = await creds.list_clients()
+    assert await creds.families.live_family_counts(_now()) == {client.client_id: 1}
+    listed = await creds.clients.list_clients()
     assert {c.client_id for c in listed} == {client.client_id, other.client_id}
-    assert await creds.client("missing") is None
+    assert await creds.clients.client("missing") is None
 
 
 async def test_rollback_discards_staged_writes(db) -> None:
@@ -427,13 +444,13 @@ async def test_rollback_discards_staged_writes(db) -> None:
     creds = CredentialRepository(db)
 
     creds.add(CredentialEvent(event="token.revoked", user_id=user.id, via="api"))
-    assert await creds.revoke_token(token_id, REVOKED_BY_USER, _now()) is True
+    assert await creds.tokens.revoke_token(token_id, REVOKED_BY_USER, _now()) is True
     await creds.rollback()
 
-    fresh = await creds.token(token_id, fresh=True)
+    fresh = await creds.tokens.token(token_id, fresh=True)
     assert fresh is not None
     assert fresh.revoked_at is None
-    assert await creds.list_events(tenant="ygg") == []
+    assert await creds.events.list_events(tenant="ygg") == []
 
 
 async def test_delete_stale_removes_only_dead_oauth_rows(db) -> None:
@@ -504,7 +521,7 @@ async def test_delete_stale_removes_only_dead_oauth_rows(db) -> None:
     await db.commit()
     creds = CredentialRepository(db)
 
-    counts = await creds.delete_stale(now)
+    counts = await creds.gc.delete_stale(now)
     await creds.commit()
 
     assert (counts.codes, counts.requests, counts.tokens, counts.clients) == (
@@ -514,13 +531,13 @@ async def test_delete_stale_removes_only_dead_oauth_rows(db) -> None:
         2,
     )
     for gone in (expired, long_revoked):
-        assert await creds.token(gone.id, fresh=True) is None
+        assert await creds.tokens.token(gone.id, fresh=True) is None
     for kept in (pat, live, kept_on_idle, recently_revoked):
-        assert await creds.token(kept.id, fresh=True) is not None
-    assert await creds.code(old_code.id, fresh=True) is None
-    assert await creds.code(new_code.id, fresh=True) is not None
-    assert await creds.pending_request(new_request.id, now) is not None
-    assert {c.client_id for c in await creds.list_clients()} == {
+        assert await creds.tokens.token(kept.id, fresh=True) is not None
+    assert await creds.codes.code(old_code.id, fresh=True) is None
+    assert await creds.codes.code(new_code.id, fresh=True) is not None
+    assert await creds.codes.pending_request(new_request.id, now) is not None
+    assert {c.client_id for c in await creds.clients.list_clients()} == {
         live_client.client_id,
         idle_with_tokens.client_id,
     }

@@ -11,10 +11,10 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.access import admin as admin_module
 from app.access.cursor import encode_cursor
 from app.access.models import RbacChange
 from app.access.schemas import GroupCreate
+from app.access.services import audit as audit_module
 from app.identity.models import User
 from app.main import app as asgi_app
 from app.models.audit import AtlasAuditLog
@@ -187,10 +187,10 @@ async def test_changes_filters(api: AsyncClient, db) -> None:
 async def test_changes_carry_the_actor_ref(db) -> None:
     actor = await actor_with(db)
     admin = admin_for(db)
-    await admin.create_group(actor, GroupCreate(name="growth"))
+    await admin.groups.create_group(actor, GroupCreate(name="growth"))
     await _save(db, _change(NOW - timedelta(days=1), via="cli"))
 
-    page = await admin.list_changes(actor)
+    page = await admin.audit.list_changes(actor)
 
     by_via = {c.via: c for c in page.items}
     api_ref = by_via["api"].actor
@@ -342,7 +342,7 @@ async def test_summary_counts_per_day_and_tops(
     # A fixed clock: the window is computed from "now", so a real clock could
     # cross UTC midnight between inserting the rows and asking for the summary.
     clock = datetime(2026, 10, 9, 22, 30, tzinfo=UTC)
-    monkeypatch.setattr(admin_module, "_utcnow", lambda: clock)
+    monkeypatch.setattr(audit_module, "_utcnow", lambda: clock)
     await make_user(db, DEV, role="admin")
     sara = User(email="sara@yougotagift.com", display_name="Sara Ali")
     omar = User(email="omar@yougotagift.com", display_name="Omar")

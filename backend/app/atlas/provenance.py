@@ -3,6 +3,8 @@
 from datetime import UTC, datetime
 from typing import Any
 
+from app.atlas.scope import RowScope
+
 
 def build_provenance(  # noqa: PLR0913  # one flat record; fields are keyword-only
     tool: str,
@@ -25,4 +27,14 @@ def build_provenance(  # noqa: PLR0913  # one flat record; fields are keyword-on
         "executed_at": datetime.now(UTC).isoformat(),
         "scope": scope,
         "masking": masking,
+    }
+
+
+def provenance_scope(scope: RowScope | None) -> dict[str, Any]:
+    """The row scope as provenance: dimension names only, never values."""
+    if scope is None:
+        return {"restricted": False, "dimensions": []}
+    return {
+        "restricted": True,
+        "dimensions": sorted({dim for alternative in scope for dim in alternative}),
     }

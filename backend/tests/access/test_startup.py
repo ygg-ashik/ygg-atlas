@@ -5,7 +5,7 @@ from sqlmodel import select
 from app.access.catalog import CAPABILITIES, CHAT_USE
 from app.access.errors import PolicyUnavailableError
 from app.access.models import Capability, PolicyState
-from app.access.repository import AccessRepository
+from app.access.repositories import AccessRepository
 from app.access.startup import prepare_access
 
 
@@ -44,7 +44,7 @@ async def test_sync_capabilities_undeprecates_a_returning_code(db) -> None:
     db.add(Capability(code=CHAT_USE, description="old", deprecated=True))
     await db.commit()
 
-    await AccessRepository(db).sync_capabilities(CAPABILITIES)
+    await AccessRepository(db).state.sync_capabilities(CAPABILITIES)
     await db.commit()
 
     row = await db.get(Capability, CHAT_USE, populate_existing=True)
@@ -57,7 +57,7 @@ async def test_sync_capabilities_updates_the_description(db) -> None:
     db.add(Capability(code=CHAT_USE, description="stale description"))
     await db.commit()
 
-    await AccessRepository(db).sync_capabilities(CAPABILITIES)
+    await AccessRepository(db).state.sync_capabilities(CAPABILITIES)
     await db.commit()
 
     row = await db.get(Capability, CHAT_USE, populate_existing=True)
@@ -70,5 +70,5 @@ async def test_bump_version_raises_when_the_row_is_missing(db) -> None:
     await db.commit()
 
     with pytest.raises(PolicyUnavailableError) as raised:
-        await AccessRepository(db).bump_version()
+        await AccessRepository(db).state.bump_version()
     assert raised.value.reason == "policy_state has no row"
